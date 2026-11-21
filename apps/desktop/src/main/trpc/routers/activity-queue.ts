@@ -8,11 +8,16 @@ import {
 	later,
 	listWorkspaceQueue,
 	undoDone,
+	workspaceAnswer,
 	workspaceDone,
 } from "../../activity-queue/workspace-queue";
 import { publicProcedure, router } from "../index";
 
 const workspaceRevision = z.object({
+	members: z
+		.array(z.object({ id: z.string().min(1), revision: z.number().int().positive() }))
+		.max(10)
+		.optional(),
 	id: z.string().min(1),
 	revision: z.number().int().positive(),
 });
@@ -25,6 +30,14 @@ export const activityQueueRouter = router({
 				.optional()
 		)
 		.query(({ input }) => listWorkspaceQueue(input)),
+	workspaceAnswer: publicProcedure
+		.input(
+			workspaceRevision.extend({
+				questionId: z.string().min(1),
+				content: z.string().trim().min(1).max(16000),
+			})
+		)
+		.mutation(({ input }) => workspaceAnswer(input)),
 	workspaceDone: publicProcedure
 		.input(workspaceRevision)
 		.mutation(({ input }) => workspaceDone(input)),

@@ -177,9 +177,17 @@ export class AgentSessionManager {
 		return getDb().transaction(() => this.applyAgentEvent(event));
 	}
 
-	private applyAgentEvent(event: AgentEvent): AgentEvent | null {
+	private applyAgentEvent(incoming: AgentEvent): AgentEvent | null {
+		let event = incoming;
 		if (!isAgentProvider(event.agent)) return null;
-		if (!observeValidatedAgentEvent(event)) return null;
+		let confirmedPrompt = false;
+		if (
+			!observeValidatedAgentEvent(event, (normalized, snapshot) => {
+				event = normalized;
+				confirmedPrompt = snapshot.ordering === "identified" && snapshot.continuation === "prompt";
+			})
+		)
+			return null;
 		const resolved = this.resolveEventTarget(event, event.agent);
 		if (!resolved) return null;
 
@@ -261,6 +269,7 @@ export class AgentSessionManager {
 		// a sibling terminal must not advance another chat's workspace status.
 		if (
 			event.rawEvent === "UserPromptSubmit" &&
+			confirmedPrompt &&
 			event.turnId &&
 			event.providerSessionId &&
 			event.providerSessionId === existing?.providerSessionId &&

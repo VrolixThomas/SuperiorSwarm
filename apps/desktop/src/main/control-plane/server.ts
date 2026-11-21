@@ -27,6 +27,7 @@ import {
 	sendMessageRequestSchema,
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
+import { workspaceReporter } from "../activity-queue/agent-source";
 import { getDb } from "../db";
 import {
 	crossRepoOrchestratorProjects,
@@ -295,6 +296,31 @@ function resolveCaller(
 	projectIdHint: string | null
 ): CallerContext | { error: string } {
 	const wsId = req.headers["x-workspace-id"];
+	const pinnedHeader = req.headers["x-queue-reporter"];
+	let pinned: ReturnType<typeof workspaceReporter> = null;
+	if (typeof pinnedHeader === "string") {
+		try {
+			pinned = JSON.parse(pinnedHeader);
+		} catch {
+			return { error: "invalid queue reporter" };
+		}
+		if (pinned) {
+			const live = workspaceReporter(pinned.workspaceId, pinned.terminalId);
+			if (
+				!live ||
+				live.provider !== pinned.provider ||
+				live.providerSessionId !== pinned.providerSessionId ||
+				req.headers["x-terminal-id"] !== live.terminalId ||
+				(req.headers["x-workspace-id"] ?? req.headers["x-cross-repo-orchestrator-id"]) !==
+					live.workspaceId
+			)
+				return {
+					error: "queue reporter conversation changed; restart MCP in the intended conversation",
+				};
+		}
+	}
+	const queueIdentityVerified = Boolean(pinned);
+
 	const xroId = req.headers["x-cross-repo-orchestrator-id"];
 
 	if (typeof xroId === "string" && xroId.length > 0) {
@@ -325,6 +351,13 @@ function resolveCaller(
 		}
 		return {
 			kind: "xro",
+			queueIdentityVerified,
+			terminalId:
+				pinnedHeader !== undefined && !pinned
+					? undefined
+					: typeof req.headers["x-terminal-id"] === "string"
+						? req.headers["x-terminal-id"]
+						: undefined,
 			xroId,
 			linkedProjectIds,
 			external: row.kind === "external",
@@ -350,7 +383,12 @@ function resolveCaller(
 		kind: "workspace",
 		workspaceId: wsId,
 		projectId: row.projectId,
-		...(typeof terminalId === "string" && terminalId ? { terminalId } : {}),
+		queueIdentityVerified,
+		...(pinnedHeader !== undefined && !pinned
+			? {}
+			: typeof terminalId === "string" && terminalId
+				? { terminalId }
+				: {}),
 	};
 }
 
@@ -629,7 +667,16 @@ async function handleRequest(
 						.where(eq(workspaces.id, workspaceId))
 						.get();
 					if (workspace) {
-						respond(res, 200, requestId, workspaceAgentContext(workspace));
+						respond(res, 200, requestId, {
+							...workspaceAgentContext(workspace),
+							queueReporter: workspaceReporter(
+								workspaceId,
+								typeof req.headers["x-terminal-id"] === "string"
+									? req.headers["x-terminal-id"]
+									: undefined
+							),
+							queueProtocol: 1,
+						});
 						return;
 					}
 					// Coordinator terminal tabs use their cross-repo ID as workspaceId.
@@ -648,7 +695,16 @@ async function handleRequest(
 						)
 						.get();
 					if (coordinator) {
-						respond(res, 200, requestId, crossRepoContext(coordinator));
+						respond(res, 200, requestId, {
+							...crossRepoContext(coordinator),
+							queueReporter: workspaceReporter(
+								workspaceId,
+								typeof req.headers["x-terminal-id"] === "string"
+									? req.headers["x-terminal-id"]
+									: undefined
+							),
+							queueProtocol: 1,
+						});
 						return;
 					}
 					respond(res, 401, requestId, {

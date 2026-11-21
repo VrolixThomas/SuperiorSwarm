@@ -3,9 +3,11 @@ import type { ActivityQueueCandidate, ActivityQueueTarget } from "../../shared/a
 import type { AgentEvent } from "../../shared/agent-events";
 import { AGENT_PROVIDERS } from "../../shared/agent-session";
 import { getDb } from "../db";
-import { agentMessages, agentSessions, projects, terminalSessions, workspaces } from "../db/schema";
+import { agentMessages, agentSessions, projects, terminalSessions } from "../db/schema";
 import { activityQueueSources } from "../db/schema-activity-queue";
-import { nextAgentEventSnapshot } from "./agent-event-order";
+import { type AgentEventSnapshot, nextAgentEventSnapshot } from "./agent-event-order";
+import { transitionAgentEvent } from "./agent-event-transition";
+import { queueEntities } from "./entities";
 import { ActivityQueueService } from "./service";
 
 export type WorkspaceReporter = Extract<ActivityQueueTarget, { type: "terminal" }>;
@@ -15,7 +17,7 @@ export function workspaceReporter(
 	workspaceId: string,
 	terminalId?: string
 ): WorkspaceReporter | null {
-	if (!terminalId) return null;
+	if (!terminalId || !queueEntities().has(workspaceId)) return null;
 	const db = getDb();
 	const terminal = db
 		.select()
@@ -35,6 +37,7 @@ export function workspaceReporter(
 		return null;
 	return {
 		type: "terminal",
+		entity: queueEntities().get(workspaceId)?.entity,
 		workspaceId,
 		terminalId,
 		provider: session.provider,
@@ -93,7 +96,10 @@ export const sessionSourceId = (
  * No cwd, active workspace, or single-terminal-in-workspace inference is used here.
  * Called before the legacy session manager can normalize or persist an event.
  */
-export function observeValidatedAgentEvent(event: AgentEvent): boolean {
+export function observeValidatedAgentEvent(
+	event: AgentEvent,
+	accepted?: (event: AgentEvent, snapshot: AgentEventSnapshot) => void
+): boolean {
 	const db = getDb();
 	if (
 		!(AGENT_PROVIDERS as readonly string[]).includes(event.agent) ||
@@ -151,15 +157,23 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 					known.providerSessionId !== event.providerSessionId)))
 	)
 		return false;
-	const workspace = db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get();
+	const workspace = queueEntities().get(workspaceId);
 	if (!workspace) return false;
-	const project = db.select().from(projects).where(eq(projects.id, workspace.projectId)).get();
+
 	const providerSessionId = event.providerSessionId || known?.providerSessionId || null;
 	const sourceId = sessionSourceId(workspaceId, terminalId, event.agent, providerSessionId);
 	const queue = new ActivityQueueService(db);
 	const previous = queue.read(sourceId);
-	const snapshot = nextAgentEventSnapshot(previous?.snapshot, event);
-	if (!snapshot) return false;
+	if (
+		newGeneration &&
+		known &&
+		(known.provider !== event.agent || known.providerSessionId !== providerSessionId) &&
+		previous
+	)
+		return false;
+	const transition = transitionAgentEvent(previous?.snapshot, event);
+	if (!transition) return false;
+	const { snapshot, attention } = transition;
 	// Resuming a conversation to view it is navigation, not a reply. Preserve
 	// its attention until a prompt or actual tool activity is observed.
 	if (
@@ -168,8 +182,10 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 		previous?.candidate &&
 		known?.provider === event.agent &&
 		known.providerSessionId === providerSessionId
-	)
+	) {
+		accepted?.({ ...event, alert: snapshot.alert }, snapshot);
 		return true;
+	}
 	if (
 		newGeneration &&
 		known &&
@@ -180,45 +196,37 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 			event.timestamp
 		);
 	}
-	const needsInput = event.alert === "needs-input";
-	const failed = event.rawEvent === "StopFailure";
-	const label = failed
-		? "Agent turn failed; needs attention"
-		: needsInput
-			? "Agent needs input"
-			: "Ready for next input";
-	const candidate: ActivityQueueCandidate | null =
-		event.alert === "active"
-			? null
-			: {
-					kind: needsInput ? "agent-input" : "agent-ready",
-					title: workspace.name,
-					summary: label,
-					projectId: workspace.projectId,
-					projectName: project?.name,
-					occurredAt: event.timestamp,
-					reasons: [
-						{
-							code: failed ? "turn-failed" : needsInput ? "session-needs-input" : "turn-ended",
-							label,
-						},
-					],
-					target: {
-						type: "terminal",
-						workspaceId,
-						terminalId,
-						provider: event.agent,
-						providerSessionId,
-					},
-				};
+	const candidate: ActivityQueueCandidate | null = attention
+		? {
+				kind: attention.kind,
+				title: workspace.name,
+				summary: attention.summary,
+				projectId: workspace.projectId,
+				projectName: workspace.projectName,
+				occurredAt: event.timestamp,
+				reasons: [attention.reason],
+				target: {
+					type: "terminal",
+					entity: workspace.entity,
+					workspaceId,
+					terminalId,
+					provider: event.agent,
+					providerSessionId,
+				},
+			}
+		: null;
 	queue.observe({
 		sourceId,
 		sourceType: "agent-session",
 		snapshot,
-		fingerprint: JSON.stringify([event.alert, snapshot.turnId, failed ? "turn-failed" : null]),
+		fingerprint: transition.fingerprint,
 		candidate,
 		observedAt: event.timestamp,
 	});
+	accepted?.(
+		{ ...event, alert: attention?.kind === "agent-input" ? "needs-input" : snapshot.alert },
+		snapshot
+	);
 	return true;
 }
 
@@ -235,14 +243,9 @@ export function reconcileAgentSources(statusChange?: {
 	const queue = new ActivityQueueService(db);
 	const now = Date.now();
 	db.transaction(() => {
-		const workspaceRows = db
-			.select({ workspace: workspaces, project: projects })
-			.from(workspaces)
-			.innerJoin(projects, eq(workspaces.projectId, projects.id))
-			.all();
-		const byWorkspace = new Map(workspaceRows.map((row) => [row.workspace.id, row]));
+		const byWorkspace = queueEntities();
 		const seen = new Set<string>();
-		for (const { workspace, project } of workspaceRows) {
+		for (const workspace of byWorkspace.values()) {
 			const sourceId = workspaceSourceId(workspace.id);
 			seen.add(sourceId);
 			const needsInput = workspace.currentPhase === "blocked" || Boolean(workspace.needs?.trim());
@@ -301,11 +304,15 @@ export function reconcileAgentSources(statusChange?: {
 								kind: needsInput ? "agent-input" : "agent-ready",
 								title: workspace.name,
 								summary: workspace.needs || workspace.statusText || label,
-								projectId: project.id,
-								projectName: project.name,
+								projectId: workspace.projectId,
+								projectName: workspace.projectName,
 								occurredAt: (workspace.statusUpdatedAt ?? workspace.updatedAt).getTime(),
 								reasons: [{ code: needsInput ? "workspace-blocked" : "task-complete", label }],
-								target: { type: "workspace", workspaceId: workspace.id },
+								target:
+									reporter ??
+									(workspace.entity.kind === "coordinator"
+										? { type: "coordinator", coordinatorId: workspace.id }
+										: { type: "workspace", workspaceId: workspace.id }),
 							}
 						: null,
 			});
@@ -316,7 +323,7 @@ export function reconcileAgentSources(statusChange?: {
 			.where(
 				and(
 					eq(agentMessages.kind, "question"),
-					sql`NOT EXISTS (SELECT 1 FROM agent_messages AS answer WHERE answer.kind = 'answer' AND answer.in_reply_to = ${agentMessages.id} AND answer.project_id = ${agentMessages.projectId} AND (answer.to_workspace_id = ${agentMessages.fromWorkspaceId} OR answer.to_workspace_id IS NULL) AND answer.created_at >= ${agentMessages.createdAt})`
+					sql`NOT EXISTS (SELECT 1 FROM agent_messages AS answer WHERE answer.kind = 'answer' AND answer.in_reply_to = ${agentMessages.id} AND answer.project_id = ${agentMessages.projectId} AND (answer.to_workspace_id = ${agentMessages.fromWorkspaceId} OR answer.to_workspace_id IS NULL) AND answer.created_at >= ${agentMessages.createdAt} AND (answer.recipient IS NULL OR answer.retrieved_at IS NOT NULL))`
 				)
 			)
 			.all();
@@ -331,14 +338,14 @@ export function reconcileAgentSources(statusChange?: {
 			const sourceId = questionSourceId(question.id);
 			seen.add(sourceId);
 			const sender = question.fromWorkspaceId
-				? byWorkspace.get(question.fromWorkspaceId)?.workspace
+				? byWorkspace.get(question.fromWorkspaceId)
 				: undefined;
 			// Deleted workspace senders cannot be navigated to; remove their obsolete work.
 			if (!sender) continue;
 			queue.observe({
 				sourceId,
 				sourceType: "agent-question",
-				snapshot: { version: 1, messageId: question.id },
+				snapshot: { version: 1, messageId: question.id, reporter: question.reporter },
 				fingerprint: question.content,
 				observedAt: now,
 				candidate: {
@@ -349,7 +356,11 @@ export function reconcileAgentSources(statusChange?: {
 					projectName: projectNames.get(question.projectId),
 					occurredAt: question.createdAt.getTime(),
 					reasons: [{ code: "unanswered-question", label: "Unanswered question" }],
-					target: { type: "workspace", workspaceId: sender.id },
+					target:
+						question.reporter ??
+						(sender.entity.kind === "coordinator"
+							? { type: "coordinator", coordinatorId: sender.id }
+							: { type: "workspace", workspaceId: sender.id }),
 				},
 			});
 		}

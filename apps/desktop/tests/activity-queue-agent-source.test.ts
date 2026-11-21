@@ -178,6 +178,7 @@ test("two terminals remain independent; Stop means next input and active clears 
 			type: "terminal",
 			workspaceId,
 			terminalId: "one",
+			entity: { kind: "workspace", id: workspaceId },
 			provider: "codex",
 			providerSessionId: "one-provider",
 		},
@@ -194,7 +195,7 @@ for (const provider of ["codex", "claude"] as const) {
 			.set({ provider })
 			.where(eq(agentSessions.terminalId, "dispatched"))
 			.run();
-		const ctx = { kind: "workspace" as const, projectId, workspaceId };
+		const ctx = { kind: "workspace" as const, projectId, workspaceId, terminalId: "dispatched" };
 		let stamp = Date.now() + 1;
 		const deliver = (rawEvent: string, turnId: string, alert: AgentEvent["alert"]) => {
 			stamp = Math.max(stamp + 1, Date.now() + 1);

@@ -8,9 +8,7 @@ export const ACTIVITY_QUEUE_KINDS = [
 export type ActivityQueueKind = (typeof ACTIVITY_QUEUE_KINDS)[number];
 
 /** IDs remain existing workspace/coordinator IDs; never synthesize workspace rows. */
-export type QueueEntity =
-	| { kind: "workspace"; id: string }
-	| { kind: "coordinator"; id: string };
+export type QueueEntity = { kind: "workspace"; id: string } | { kind: "coordinator"; id: string };
 
 export type ActivityQueueTarget =
 	| { type: "workspace"; workspaceId: string }
@@ -117,6 +115,7 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 	};
 	context: {
 		entity?: QueueEntity;
+		linkedProjects?: { id: string; name: string; kind: "repo" | "folder"; path: string }[];
 		projectKind?: "repo" | "folder";
 		projectPath?: string;
 		role?: "workspace" | "orchestrator" | "coordinator";
@@ -132,6 +131,9 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 		provider?: string;
 		terminalTitle?: string;
 	};
+	providerEvidence?: import("./agent-events").AgentEvidence[];
+	permission?: import("./agent-events").AgentPermission;
+	ordering?: "identified" | "uncertain";
 	evidence: string[];
 	snoozed?: { until: number | null; untilChange: boolean };
 }

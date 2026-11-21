@@ -974,6 +974,9 @@ if (isWorkspaceAgentOrCrossRepo) {
 			const callerHeader = isCrossRepoMode
 				? {
 						"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
+						...(process.env.AGENT_NOTIFY_TERMINAL_ID
+							? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
+							: {}),
 						...(isExternalManagerMode && process.env.SUPERIORSWARM_MANAGER_TOKEN
 							? { "X-Manager-Token": process.env.SUPERIORSWARM_MANAGER_TOKEN }
 							: {}),
@@ -989,6 +992,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 				headers: {
 					Authorization: authHeader,
 					...callerHeader,
+					"X-Queue-Reporter": JSON.stringify(ctx.queueReporter ?? null),
 					...(body ? { "Content-Type": "application/json" } : {}),
 				},
 				body: body ? JSON.stringify(body) : undefined,

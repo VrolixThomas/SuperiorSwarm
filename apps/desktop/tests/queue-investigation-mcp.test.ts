@@ -189,6 +189,28 @@ test.skipIf(process.platform !== "darwin")(
 				workDir: root,
 				projectIds: [repoId, folderId],
 			});
+			getDb()
+				.insert(terminalSessions)
+				.values({
+					id: "synthetic-xro-terminal",
+					workspaceId: xroId,
+					title: "Coordinator",
+					cwd: root,
+					sortOrder: 0,
+					updatedAt: new Date(),
+				})
+				.run();
+			getDb()
+				.insert(agentSessions)
+				.values({
+					terminalId: "synthetic-xro-terminal",
+					workspaceId: xroId,
+					provider: "claude",
+					providerSessionId: "coordinator-conversation",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.run();
 			const client = new Client({ name: "isolated-coordinator-investigator", version: "1" });
 			const transport = new StdioClientTransport({
 				command: electron,
@@ -229,7 +251,21 @@ test.skipIf(process.platform !== "darwin")(
 						},
 					}
 				);
-				expect(queue.items).toHaveLength(0);
+				expect(queue.items).toHaveLength(1);
+				expect(queue.items[0]?.target).toMatchObject({
+					type: "terminal",
+					entity: { kind: "coordinator", id: xroId },
+					terminalId: "synthetic-xro-terminal",
+					providerSessionId: "coordinator-conversation",
+				});
+				expect(queue.items[0]?.summary).toBe("Synthetic cross-repo decision");
+				expect(
+					getDb()
+						.select()
+						.from(crossRepoOrchestrators)
+						.where(eq(crossRepoOrchestrators.id, xroId))
+						.get()?.statusText
+				).toBe("Synthetic linked repo and folder");
 				evidence.push({
 					mode: "cross-repo",
 					linkedKinds: ["repo", "folder"],
@@ -240,7 +276,10 @@ test.skipIf(process.platform !== "darwin")(
 			} finally {
 				await client.close();
 			}
-			const out = resolve(import.meta.dir, "../../../.hermes/investigations/queue-e2e-2026-11-21");
+			const out = resolve(
+				import.meta.dir,
+				"../../../.hermes/verification/queue-ownership-2026-11-21"
+			);
 			mkdirSync(out, { recursive: true });
 			writeFileSync(join(out, "mcp-processes.json"), JSON.stringify(evidence, null, 2));
 		} finally {

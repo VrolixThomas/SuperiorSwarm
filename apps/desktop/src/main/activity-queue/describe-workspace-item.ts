@@ -3,6 +3,8 @@ import type {
 	ActivityQueueSource,
 	WorkspaceQueueItem,
 } from "../../shared/activity-queue";
+import { validateAgentEvidence } from "../../shared/agent-evidence";
+import type { AgentEventSnapshot } from "./agent-event-order";
 
 export function projectTint(projectId: string): number {
 	let hash = 0;
@@ -17,6 +19,7 @@ export function describeWorkspaceItem(
 	context: WorkspaceQueueItem["context"]
 ): WorkspaceQueueItem {
 	const snapshot = source.snapshot;
+	const eventSnapshot = snapshot as Partial<AgentEventSnapshot> | null;
 	const rawEvent =
 		snapshot && typeof snapshot === "object" && "rawEvent" in snapshot ? snapshot.rawEvent : null;
 	const hasReason = (code: string) => item.reasons.some((reason) => reason.code === code);
@@ -25,7 +28,7 @@ export function describeWorkspaceItem(
 			? "agent-question"
 			: hasReason("turn-failed") || rawEvent === "StopFailure"
 				? "agent-failed"
-				: rawEvent === "PermissionRequest"
+				: hasReason("permission-unresolved") || rawEvent === "PermissionRequest"
 					? "agent-permission"
 					: item.kind === "agent-ready"
 						? "agent-done"
@@ -45,8 +48,9 @@ export function describeWorkspaceItem(
 	const descriptions = {
 		"agent-question": {
 			why: "Answer the question",
-			nextAction: "Open the workspace and answer the agent’s question below.",
-			openLabel: "Open workspace to answer",
+			nextAction:
+				"Submit an explicit correlated answer. Ordinary chat input does not answer this MCP question.",
+			openLabel: "Open question’s conversation",
 			detailLabel: "Question from the agent",
 			missingContext: "The question text is unavailable here. Open the workspace to read it.",
 		},
@@ -108,7 +112,17 @@ export function describeWorkspaceItem(
 		"Unanswered question",
 	]);
 	const summary = item.summary.trim();
-	const evidence = summary && !generic.has(summary) ? [summary] : [];
+	const providerEvidence = validateAgentEvidence(
+		eventSnapshot?.evidence,
+		context.provider ?? "",
+		typeof rawEvent === "string" ? rawEvent : ""
+	);
+	const evidence = [
+		...new Set([
+			...(summary && !generic.has(summary) ? [summary] : []),
+			...providerEvidence.map((value) => value.text),
+		]),
+	];
 	const terminalTitle = context.terminalTitle?.trim();
 	const questionText = summary.replace(/\s+/g, " ");
 	const questionTitle = questionText.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() || questionText;
@@ -137,6 +151,9 @@ export function describeWorkspaceItem(
 		clearsWhen:
 			"Done removes this item from the queue. It does not send a reply or finish the task.",
 		context,
+		providerEvidence,
+		permission: eventSnapshot?.permission ?? undefined,
+		ordering: eventSnapshot?.ordering,
 		evidence,
 	};
 }

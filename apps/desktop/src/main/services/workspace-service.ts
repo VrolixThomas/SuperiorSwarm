@@ -692,9 +692,17 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 }
 
 export type CallerContext =
-	| { kind: "workspace"; workspaceId: string; projectId: string; terminalId?: string }
+	| {
+			kind: "workspace";
+			workspaceId: string;
+			projectId: string;
+			terminalId?: string;
+			queueIdentityVerified?: boolean;
+	  }
 	| {
 			kind: "xro";
+			queueIdentityVerified?: boolean;
+			terminalId?: string;
 			xroId: string;
 			linkedProjectIds: string[];
 			/** True when the xro row is an external manager (kind="external"). */
@@ -722,9 +730,20 @@ export async function setStatus(
 		if (!xro) throw new NotFoundError(ctx.xroId);
 
 		db.update(crossRepoOrchestrators)
-			.set({ status: input.phase, updatedAt: now })
+			.set({
+				status: input.phase,
+				statusText: input.statusText ?? null,
+				needs: input.needs ?? null,
+				statusUpdatedAt: now,
+				updatedAt: now,
+			})
 			.where(eq(crossRepoOrchestrators.id, ctx.xroId))
 			.run();
+
+		const reporter = workspaceReporter(ctx.xroId, ctx.terminalId);
+		reconcileAgentSources({ workspaceId: ctx.xroId, reportedAt: now.getTime(), reporter });
+		if (reporter && input.phase === "working" && !input.needs?.trim())
+			resolveReporterAttention(reporter, now.getTime());
 
 		// Write the status event directly to the xro's events file.
 		// Emitting on per-project buses would produce one duplicate line per linked
@@ -790,10 +809,19 @@ export function continueWorkspaceAfterPrompt(
 	workspaceId: string,
 	producedAt: number,
 	reporter: WorkspaceReporter,
-	managed: boolean
+	_managed: boolean
 ): void {
 	const db = getDb();
-	const workspace = db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get();
+	const coordinator = db
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, workspaceId))
+		.get();
+	const workspace =
+		db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get() ??
+		(coordinator
+			? { ...coordinator, currentPhase: coordinator.status, projectId: null }
+			: undefined);
 	const snapshot = getActivityQueueService().read(workspaceSourceId(workspaceId))?.snapshot as
 		| { reportedAt?: number; reporter?: WorkspaceReporter | null }
 		| undefined;
@@ -803,7 +831,7 @@ export function continueWorkspaceAfterPrompt(
 			owner.provider === reporter.provider &&
 			owner.providerSessionId === reporter.providerSessionId &&
 			owner.workspaceId === workspaceId
-		: managed;
+		: false;
 	if (
 		!ownsReport ||
 		!workspace ||
@@ -816,6 +844,20 @@ export function continueWorkspaceAfterPrompt(
 	)
 		return;
 	const now = new Date();
+	if (coordinator) {
+		db.update(crossRepoOrchestrators)
+			.set({
+				status: "working",
+				statusText: null,
+				needs: null,
+				statusUpdatedAt: now,
+				updatedAt: now,
+			})
+			.where(eq(crossRepoOrchestrators.id, workspaceId))
+			.run();
+		reconcileAgentSources();
+		return;
+	}
 	db.update(workspaces)
 		.set({
 			currentPhase: "working",
@@ -827,14 +869,15 @@ export function continueWorkspaceAfterPrompt(
 		.where(eq(workspaces.id, workspaceId))
 		.run();
 	reconcileAgentSources();
-	eventBus?.emit(workspace.projectId, {
-		event: "status",
-		workspaceId,
-		phase: "working",
-		statusText: null,
-		needs: null,
-		ts: now.toISOString(),
-	});
+	if (workspace.projectId)
+		eventBus?.emit(workspace.projectId, {
+			event: "status",
+			workspaceId,
+			phase: "working",
+			statusText: null,
+			needs: null,
+			ts: now.toISOString(),
+		});
 }
 
 export async function setOrchestrator(
@@ -918,6 +961,10 @@ export async function sendMessage(
 	input: SendMessageRequest
 ): Promise<SendMessageResponse> {
 	const db = getDb();
+	const reporter =
+		ctx.queueIdentityVerified === false
+			? null
+			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
 
 	function insertAndEmitDm(opts: {
 		projectId: string;
@@ -935,6 +982,7 @@ export async function sendMessage(
 				kind: input.kind,
 				content: input.content,
 				inReplyTo: input.inReplyTo ?? null,
+				reporter,
 				createdAt: now,
 			})
 			.run();
@@ -986,6 +1034,7 @@ export async function sendMessage(
 					kind: input.kind,
 					content: input.content,
 					inReplyTo: input.inReplyTo ?? null,
+					reporter,
 					createdAt: now,
 				})
 				.run();
@@ -1026,6 +1075,31 @@ export async function readMessages(
 	input: ReadMessagesRequest
 ): Promise<ReadMessagesResponse> {
 	const db = getDb();
+	const caller =
+		ctx.queueIdentityVerified === false
+			? null
+			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
+	function visible(rows: (typeof agentMessages.$inferSelect)[]) {
+		return rows.filter((row) => {
+			const recipient = row.recipient;
+			if (!recipient) return true;
+			if (
+				recipient.type !== "terminal" ||
+				!caller ||
+				recipient.workspaceId !== caller.workspaceId ||
+				recipient.terminalId !== caller.terminalId ||
+				recipient.provider !== caller.provider ||
+				recipient.providerSessionId !== caller.providerSessionId
+			)
+				return false;
+			if (!row.retrievedAt)
+				db.update(agentMessages)
+					.set({ retrievedAt: new Date() })
+					.where(eq(agentMessages.id, row.id))
+					.run();
+			return true;
+		});
+	}
 	const includeBroadcasts = input.includeBroadcasts ?? true;
 	const sinceDate = input.since ? new Date(input.since) : new Date(0);
 
@@ -1049,7 +1123,7 @@ export async function readMessages(
 			.limit(200)
 			.all();
 
-		return { messages: rows.map(messageRowToDto) };
+		return { messages: visible(rows).map(messageRowToDto) };
 	}
 
 	const targetFilter = includeBroadcasts
@@ -1070,7 +1144,7 @@ export async function readMessages(
 		.limit(200)
 		.all();
 
-	return { messages: rows.map(messageRowToDto) };
+	return { messages: visible(rows).map(messageRowToDto) };
 }
 
 export interface RespawnAgentArgs {
