@@ -172,3 +172,16 @@ export interface WorkspaceQueueAnswerInput extends WorkspaceQueueRevisionInput {
 export type WorkspaceQueueAnswerResult =
 	| { status: "saved"; messageId: string; delivery: "saved"; detail: string }
 	| { status: "conflict" | "not-found" | "unavailable"; reason?: string };
+
+/** A capability is advisory; admission revalidates the entire occurrence and target. */
+export type WorkspaceQueueReplyCapability =
+	| { status: "available"; mode: "reply" | "resume"; detail: string }
+	| { status: "unavailable"; reason: string };
+export interface WorkspaceQueueReplyInput extends WorkspaceQueueRevisionInput {
+	/** Persist this ID across transport errors. Never retry an uncertain send with a new ID. */
+	requestId: string;
+	content: string;
+}
+export type WorkspaceQueueReplyResult =
+	| { status: "admitted" | "uncertain"; requestId: string; detail: string }
+	| { status: "conflict" | "not-found" | "unavailable" | "rejected"; reason: string };
