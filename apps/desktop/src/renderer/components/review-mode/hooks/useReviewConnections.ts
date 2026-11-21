@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPRDetails, PRContext } from "../../../../shared/github-types";
 import type {
 	ReviewPathIdentity,
@@ -18,20 +18,42 @@ export function useReviewConnections(
 ) {
 	const [attachmentError, setAttachmentError] = useState<string>();
 	const { mutateAsync: attach } = trpc.workspaces.attachTerminal.useMutation();
+	const scopeKey = JSON.stringify([
+		workspaceId,
+		prCtx.provider,
+		prCtx.owner,
+		prCtx.repo,
+		prCtx.number,
+		details?.headCommitOid,
+	]);
+	const currentScope = useRef<string | null>(scopeKey);
+	currentScope.current = scopeKey;
+	useEffect(() => {
+		currentScope.current = scopeKey;
+		setAttachmentError(undefined);
+		return () => {
+			currentScope.current = null;
+		};
+	}, [scopeKey]);
 	const onLaunch = useCallback(
 		(launch: ReviewPathLaunchResult) => {
+			const isCurrent = () => currentScope.current === scopeKey;
+			if (!isCurrent()) return;
 			setAttachmentError(undefined);
-			void attachReadingPathTerminal(workspaceId, launch, attach)
+			void attachReadingPathTerminal(workspaceId, launch, attach, isCurrent)
 				.then((ok) => {
-					if (!ok) setAttachmentError("The agent terminal did not match this review workspace.");
+					if (!ok && isCurrent())
+						setAttachmentError("The agent terminal did not match this review workspace.");
 				})
-				.catch((error) =>
-					setAttachmentError(
-						error instanceof Error ? error.message : "Could not attach the agent terminal."
-					)
+				.catch(
+					(error) =>
+						isCurrent() &&
+						setAttachmentError(
+							error instanceof Error ? error.message : "Could not attach the agent terminal."
+						)
 				);
 		},
-		[workspaceId, attach]
+		[workspaceId, attach, scopeKey]
 	);
 	const identity = useMemo<ReviewPathIdentity | undefined>(
 		() =>

@@ -97,6 +97,15 @@ export function ReviewWorkspace({
 		onNextPR: nextPR,
 		onPreviousPR: previousPR,
 	});
+	const previousHead = useRef(data.details?.headCommitOid);
+	useEffect(() => {
+		const head = data.details?.headCommitOid;
+		if (head && previousHead.current && previousHead.current !== head) {
+			nav.resetAnchors();
+			reveal.current = null;
+		}
+		if (head) previousHead.current = head;
+	}, [data.details?.headCommitOid, nav.resetAnchors]);
 	const onReference = useCallback(
 		(ref: CodeReference) => {
 			reveal.current = ref;

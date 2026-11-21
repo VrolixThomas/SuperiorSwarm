@@ -88,6 +88,7 @@ export function normalizeDraftStatus(status: string): AIDraftThread["status"] {
 }
 
 export function matchesFilter(t: UnifiedThread, f: ThreadFilter): boolean {
+	if (!t.isAIDraft && t.resolutionKnown === false && f !== "all") return false;
 	return f === "all" || threadBucket(t) === f;
 }
 
@@ -98,7 +99,7 @@ export function filtersForReviewFilter(filter: ReviewCommentFilter): ThreadFilte
 
 export function matchesReviewFilter(t: UnifiedThread, filter: ReviewCommentFilter): boolean {
 	const filters = filtersForReviewFilter(filter);
-	return filters.includes("all") || filters.includes(threadBucket(t));
+	return filters.some((filter) => matchesFilter(t, filter));
 }
 
 export function threadCounts(threads: UnifiedThread[]): Record<ThreadFilter, number> {
@@ -112,6 +113,7 @@ export function threadCounts(threads: UnifiedThread[]): Record<ThreadFilter, num
 	};
 
 	for (const thread of threads) {
+		if (!thread.isAIDraft && thread.resolutionKnown === false) continue;
 		counts[threadBucket(thread)] += 1;
 	}
 
@@ -152,7 +154,7 @@ export function fileCommentCounts(threads: UnifiedThread[]): Map<string, number>
 	for (const thread of threads) {
 		if (thread.isAIDraft) {
 			if (!isDraftCountedForFileBadge(thread.status)) continue;
-		} else if (thread.isResolved) {
+		} else if (thread.isResolved || thread.resolutionKnown === false) {
 			continue;
 		}
 		counts.set(thread.path, (counts.get(thread.path) ?? 0) + 1);

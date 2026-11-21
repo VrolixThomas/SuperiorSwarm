@@ -35,8 +35,8 @@ export function AskTab({
 	const input = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => {
 		setQuestion(initialQuestion);
-		if (available) input.current?.focus();
-	}, [initialQuestion, available]);
+		input.current?.focus();
+	}, [initialQuestion]);
 	const send = () => {
 		if (!available || pending || !question.trim()) return;
 		onSend(question.trim(), anchor ?? undefined);

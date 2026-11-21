@@ -48,3 +48,22 @@ test("reject descriptors from another workspace and do not register failed attac
 	).rejects.toThrow("Attach failed");
 	expect(useReviewModeStore.getState().terminals["current"]).toBeUndefined();
 });
+
+test("a terminal attachment completing after the selected head changed cannot replace current UI state", async () => {
+	useReviewModeStore.setState({ terminals: {} });
+	let current = true;
+	let finish: (() => void) | undefined;
+	const waiting = attachReadingPathTerminal(
+		"review-ws",
+		{ terminalId: "review-path:old:1", reviewWorkspaceId: "review-ws", worktreePath: "/review" },
+		() =>
+			new Promise<void>((resolve) => {
+				finish = resolve;
+			}),
+		() => current
+	);
+	current = false;
+	finish?.();
+	expect(await waiting).toBe(false);
+	expect(useReviewModeStore.getState().terminals["review-ws"]).toBeUndefined();
+});

@@ -132,6 +132,16 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 							status: "available",
 							identity: { id: "42", login: "verified-login" },
 						};
+					if (path === "aiReview.getReviewDrafts")
+						return [
+							{
+								id: "wrong-provider",
+								prProvider: "bitbucket",
+								prIdentifier: "org/repo#5",
+								status: "ready",
+								createdAt: new Date().toISOString(),
+							},
+						];
 					if (path === "aiReview.getSettings") return { cliPreset: "codex" };
 					if (path.startsWith("reviewPath.") && path.endsWith("Settings")) return settings;
 					if (path === "reviewPath.get") return snapshot;
@@ -215,6 +225,16 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 			await h.settle();
 			expect(h.calls.filter((call) => call.path === "reviewPath.ask")).toHaveLength(1);
 			expect(terminalWrites).toBe(0);
+			expect(h.calls.some((call) => call.path === "aiReview.getReviewDraft")).toBe(false);
+			await act(async () => {
+				useReviewModeStore
+					.getState()
+					.setAskAnchor({ path: "file.ts", side: "RIGHT", startLine: 1, endLine: 1 });
+				details.headCommitOid = "c".repeat(40);
+				await h.queryClient.invalidateQueries();
+			});
+			await h.settle();
+			expect(useReviewModeStore.getState().askAnchor).toBeNull();
 		} finally {
 			await h.cleanup();
 		}

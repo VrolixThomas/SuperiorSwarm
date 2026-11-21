@@ -100,3 +100,16 @@ test("unmapped files are alphabetical with folder labels and share keyboard orde
 	expect(items.map((item) => item.path)).toEqual(["lib/a.ts", "test/b.ts", "src/z.ts"]);
 	expect(items[0]?.folderLabel).toBe("lib");
 });
+
+test("unknown provider resolution is not counted as known open", () => {
+	const unknown = {
+		id: "unknown",
+		path: "a.ts",
+		line: 1,
+		diffSide: "RIGHT" as const,
+		isResolved: false,
+		resolutionKnown: false,
+		comments: [],
+	};
+	expect(countsByPath([unknown]).get("a.ts")?.openThreads).toBe(0);
+});

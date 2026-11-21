@@ -5,15 +5,18 @@ import { useReviewModeStore } from "../stores/review-mode-store";
 export async function attachReadingPathTerminal(
 	workspaceId: string,
 	launch: ReviewPathLaunchResult,
-	attach: (input: { workspaceId: string; terminalId: string }) => Promise<unknown>
+	attach: (input: { workspaceId: string; terminalId: string }) => Promise<unknown>,
+	isCurrent: () => boolean = () => true
 ): Promise<boolean> {
 	if (
+		!isCurrent() ||
 		launch.reviewWorkspaceId !== workspaceId ||
 		!launch.worktreePath ||
 		!launch.terminalId?.startsWith("review-path:")
 	)
 		return false;
 	await attach({ workspaceId, terminalId: launch.terminalId });
+	if (!isCurrent()) return false;
 	useReviewModeStore
 		.getState()
 		.setTerminal({ workspaceId, tabId: launch.terminalId, cwd: launch.worktreePath });

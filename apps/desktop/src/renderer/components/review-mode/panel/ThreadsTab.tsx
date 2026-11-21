@@ -21,14 +21,16 @@ export function ThreadsTab({
 	onOpen,
 	onAsk,
 }: ThreadsTabProps) {
-	const [filter, setFilter] = useState<"open" | "resolved" | "mine">("open");
+	const [filter, setFilter] = useState<"open" | "resolved" | "mine" | "unknown">("open");
 	const groups = useMemo(() => {
 		const numbers = path ? numberSteps(path) : new Map<string, number>();
 		const result = new Map<string, UnifiedThread[]>();
 		for (const thread of threads) {
 			if (thread.isAIDraft) continue;
-			if (filter === "open" && thread.isResolved) continue;
-			if (filter === "resolved" && !thread.isResolved) continue;
+			if (filter === "open" && (thread.isResolved || thread.resolutionKnown === false)) continue;
+			if (filter === "resolved" && (!thread.isResolved || thread.resolutionKnown === false))
+				continue;
+			if (filter === "unknown" && thread.resolutionKnown !== false) continue;
 			if (
 				filter === "mine" &&
 				!thread.comments.some((c) =>
@@ -52,9 +54,18 @@ export function ThreadsTab({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex gap-1 border-b border-[var(--border-subtle)] p-3">
-				{(["open", "resolved", "mine"] as const).map((value) => (
+				{(
+					[
+						"open",
+						"resolved",
+						"mine",
+						...(threads.some((thread) => !thread.isAIDraft && thread.resolutionKnown === false)
+							? ["unknown" as const]
+							: []),
+					] as const
+				).map((value) => (
 					<button
-						key={value}
+						key={value === "unknown" ? "Unknown" : value}
 						type="button"
 						data-filter={value}
 						aria-pressed={filter === value}
@@ -100,6 +111,11 @@ export function ThreadsTab({
 													? "File comment"
 													: `line ${thread.line}`}
 										</span>
+										{thread.resolutionKnown === false && (
+											<span className="text-[11px] text-[var(--text-tertiary)]">
+												Resolution unknown
+											</span>
+										)}
 										{thread.isOutdated && (
 											<span className="rounded border border-[var(--tag-amber-border)] px-1 text-[11px] text-[var(--tag-amber-fg)]">
 												outdated

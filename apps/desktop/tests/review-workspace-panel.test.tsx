@@ -169,4 +169,70 @@ if (inIsolatedFileBrowserTest(import.meta.path, "reading path panels in isolatio
 			await h.cleanup();
 		}
 	});
+	test("Ask preserves typed text during connection loss and exposes cancellation", async () => {
+		let cancelled = "";
+		const questions = [
+			{
+				id: "q1",
+				conversationId: "conv",
+				runId: "run",
+				state: "pending" as const,
+				message: { id: "msg", role: "user" as const, text: "Question", createdAt: "" },
+			},
+		];
+		const view = (available: boolean) => (
+			<AskTab
+				messages={[]}
+				available={available}
+				questions={questions}
+				pending
+				onCancelQuestion={(id) => {
+					cancelled = id;
+				}}
+				onSend={() => {}}
+				onReference={() => {}}
+			/>
+		);
+		const h = await renderBrowserTest(view(true));
+		try {
+			const field = h.container.querySelector("textarea");
+			await act(async () => {
+				if (field) {
+					Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set?.call(
+						field,
+						"Unsent follow-up"
+					);
+					field.dispatchEvent(new window.Event("input", { bubbles: true }));
+				}
+			});
+			await h.rerender(view(false));
+			expect(h.container.querySelector("textarea")?.value).toBe("Unsent follow-up");
+			await act(async () =>
+				[...h.container.querySelectorAll("button")]
+					.find((button) => button.textContent === "Cancel question")
+					?.click()
+			);
+			expect(cancelled).toBe("q1");
+		} finally {
+			await h.cleanup();
+		}
+	});
+	test("unknown resolution stays accessible without being labeled open", async () => {
+		const first = threads[0];
+		if (!first) throw new Error("Missing fixture");
+		const unknown = { ...first, id: "unknown", resolutionKnown: false };
+		const h = await renderBrowserTest(
+			<ThreadsTab threads={[unknown]} path={PR129_PATH} onOpen={() => {}} onAsk={() => {}} />
+		);
+		try {
+			expect(h.container.querySelector('[data-thread-id="unknown"]')).toBeNull();
+			await act(async () =>
+				h.container.querySelector<HTMLButtonElement>('[data-filter="unknown"]')?.click()
+			);
+			expect(h.container.textContent).toContain("Resolution unknown");
+			expect(h.container.querySelector('[data-thread-id="unknown"]')).not.toBeNull();
+		} finally {
+			await h.cleanup();
+		}
+	});
 }

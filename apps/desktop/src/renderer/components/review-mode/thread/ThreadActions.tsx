@@ -100,7 +100,7 @@ export function ThreadActions({
 			buttons.push(<GhostButton key="reply" label="Reply" onClick={onStartReply} />);
 		}
 
-		if (callbacks.onResolve) {
+		if (callbacks.onResolve && thread.resolutionKnown !== false) {
 			buttons.push(
 				<GhostButton
 					key="resolve"

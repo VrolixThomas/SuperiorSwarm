@@ -186,7 +186,14 @@ export function useReadingNavigation({
 			onClose,
 		]
 	);
+	const resetAnchors = useCallback(() => {
+		setSelection(null);
+		setCommentRequest(undefined);
+		setCancelCommentNonce((nonce) => nonce + 1);
+		useReviewModeStore.getState().setAskAnchor(null);
+	}, []);
 	return {
+		resetAnchors,
 		mode,
 		items,
 		fileOrder,

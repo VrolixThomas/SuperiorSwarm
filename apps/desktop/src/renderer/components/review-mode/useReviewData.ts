@@ -89,12 +89,20 @@ export function useReviewData(
 	});
 
 	const matchingDraft = useMemo(
-		() => pickLatestDraft(reviewDraftsQuery.data, prIdentifier),
-		[reviewDraftsQuery.data, prIdentifier]
+		() =>
+			pickLatestDraft(
+				reviewDraftsQuery.data?.filter((draft) => draft.prProvider === prCtx.provider),
+				prIdentifier
+			),
+		[reviewDraftsQuery.data, prIdentifier, prCtx.provider]
 	);
 	const activeDraft = useMemo(
-		() => pickActiveDraft(reviewDraftsQuery.data, prIdentifier),
-		[reviewDraftsQuery.data, prIdentifier]
+		() =>
+			pickActiveDraft(
+				reviewDraftsQuery.data?.filter((draft) => draft.prProvider === prCtx.provider),
+				prIdentifier
+			),
+		[reviewDraftsQuery.data, prIdentifier, prCtx.provider]
 	);
 
 	const draftActive = matchingDraft?.status === "queued" || matchingDraft?.status === "in_progress";
