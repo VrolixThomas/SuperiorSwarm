@@ -82,7 +82,7 @@ async function fixture() {
 	});
 	const type = async (text: string) =>
 		act(() => {
-			const el = document.querySelector("textarea")!;
+			const el = browser.document.querySelector("textarea")!;
 			Object.getOwnPropertyDescriptor(browser.HTMLTextAreaElement.prototype, "value")?.set?.call(
 				el,
 				text

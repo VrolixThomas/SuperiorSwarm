@@ -73,7 +73,7 @@ test("browser failures are visible without dismissing the linked work", async ()
 		host.querySelector("button")?.click();
 		await Promise.resolve();
 	});
-	expect(urls).toEqual([links[0]?.url]);
+	expect(urls).toEqual(["https://linear.app/superiorset/issue/SUP-4"]);
 	expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not open");
 	expect(host.textContent).toContain("Fix followups");
 });
