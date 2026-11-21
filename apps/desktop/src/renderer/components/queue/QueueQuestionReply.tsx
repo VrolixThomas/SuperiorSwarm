@@ -23,7 +23,7 @@ export interface QueueAnswerContinuationActions {
 const itemReceipt = (item: WorkspaceQueueItem): WorkspaceQueueRevisionInput => ({
 	id: item.id,
 	revision: item.revision,
-	members: item.members,
+	members: item.members?.map(({ id, revision }) => ({ id, revision })),
 });
 type Continuation = { input: QueueAnswerContinueInput; result?: QueueAnswerContinueResult };
 type Draft = {

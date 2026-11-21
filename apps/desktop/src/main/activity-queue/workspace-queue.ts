@@ -487,6 +487,7 @@ export async function workspaceAnswer(
 	return getDb().transaction(() => {
 		const checked = validateCurrent(input, current);
 		if (checked.status !== "current") return checked;
+		if (!validateMembers(input, current)) return { status: "conflict" };
 		if (checked.source.acknowledgedRevision === input.revision) return { status: "conflict" };
 		if (
 			checked.source.sourceType !== "agent-question" ||

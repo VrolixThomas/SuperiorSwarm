@@ -332,3 +332,20 @@ test("capability rechecks persisted envelope size after save", async () => {
 	expect(result.status).toBe("unavailable");
 	expect(checks).toBe(0);
 });
+
+test("a forged or changed displayed member receipt cannot save or continue an answer", async () => {
+	const f = await fixture();
+	const result = await workspaceAnswerAndContinue(
+		{
+			...f.input,
+			members: [
+				{ id: f.input.id, revision: f.input.revision },
+				{ id: "other-occurrence", revision: 3 },
+			],
+		},
+		f.transport
+	);
+	expect(result.answer).toBeNull();
+	expect(f.answers()).toHaveLength(0);
+	expect(f.submissions).toHaveLength(0);
+});

@@ -1,12 +1,14 @@
-import { useId, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type {
 	WorkspaceQueueItem,
 	WorkspaceQueueRevisionInput,
 } from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
+import { useQueueAnswerContinuationActions } from "../../hooks/useQueueAnswerContinuationActions";
 import { trpc } from "../../trpc/client";
 import { QueueItemActions } from "./QueueItemActions";
 import { queueButton } from "./QueuePanel";
+import type { QueueAnswerContinuationActions } from "./QueueQuestionReply";
 import { QueueQuestionReply } from "./QueueQuestionReply";
 
 /** Buttons only: a terminal keeps its own letter keys while the queue bar is visible. */
@@ -29,6 +31,7 @@ export function QueueCompactActions({
 	const later = trpc.activityQueue.later.useMutation();
 	const undoDone = trpc.activityQueue.undoDone.useMutation();
 	const answer = trpc.activityQueue.workspaceAnswer.useMutation();
+	const answerContinuationActions = useQueueAnswerContinuationActions();
 	const lock = useRef(false);
 	const answerInputId = useId();
 	const [busy, setBusy] = useState(false);
@@ -36,6 +39,27 @@ export function QueueCompactActions({
 	const [message, setMessage] = useState<string | null>(null);
 	const [undo, setUndo] = useState<WorkspaceQueueRevisionInput | null>(null);
 	const [expanded, setExpanded] = useState(!compact);
+	const guardedAnswerContinuation = useMemo<QueueAnswerContinuationActions>(
+		() => ({
+			...answerContinuationActions,
+			continue: async (input) => {
+				if (lock.current)
+					return {
+						answer: null,
+						continuation: { status: "unavailable", reason: "Another queue action is running." },
+					};
+				lock.current = true;
+				setBusy(true);
+				try {
+					return await answerContinuationActions.continue(input);
+				} finally {
+					lock.current = false;
+					setBusy(false);
+				}
+			},
+		}),
+		[answerContinuationActions]
+	);
 	const receipt = (): WorkspaceQueueRevisionInput => ({
 		id: item.id,
 		revision: item.revision,
@@ -111,6 +135,7 @@ export function QueueCompactActions({
 				{item.question && (
 					<QueueQuestionReply
 						inputId={answerInputId}
+						continuationActions={guardedAnswerContinuation}
 						item={item}
 						available={!disabled && !busy}
 						answer={async (input) => {
