@@ -173,6 +173,7 @@ async function run() {
 		width: 1440,
 		height: 900,
 		webPreferences: {
+			backgroundThrottling: false,
 			preload: join(root, "preload.cjs"),
 			contextIsolation: true,
 			nodeIntegration: false,
@@ -515,6 +516,9 @@ async function run() {
 				const row = `[...document.querySelectorAll('[data-queue-row]')].find(el=>el.dataset.queueRow===${JSON.stringify(initial[0]?.id)})`;
 				await until(() => js<boolean>(`!!(${row})`));
 				await js(`(${row}).click()`);
+				app.focus({ steal: true });
+				win.focus();
+				contents.focus();
 				await js(
 					"Promise.race([new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Fixture compositor did not paint')),2000))])"
 				);

@@ -514,6 +514,10 @@ lines.on('line', line => {
 			bounds.bottom > bounds.viewportHeight + 1
 		)
 			throw new Error("Queue does not fit viewport");
+		app.focus({ steal: true });
+		win.focus();
+		contents.focus();
+		await until(() => js<boolean>("document.hasFocus()"));
 		await js("document.querySelector('#activity-queue-panel').focus()");
 		contents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
 		contents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
