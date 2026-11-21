@@ -1,0 +1,55 @@
+{
+  "requestedSource": "7e244cbfbbb0824f754d0b795b508138100f6784",
+  "checkedMergeHead": "02a198db211d7bf47fdf283df936f5e376718c91",
+  "movingStagingRefObserved": "f9921a2d74d68adb3528f37c1d34e3a49d0afb81",
+  "productionDifferenceFromRequestedSource": [],
+  "case": "codex-folder-manual",
+  "testCount": 1,
+  "pass": true,
+  "elapsedMs": 23142.75,
+  "requiredMcp": false,
+  "contextDelayEnvInherited": null,
+  "candidate": {
+    "contextResponseMs": 1795284392105,
+    "contextReporter": null,
+    "admissionOffered": true,
+    "catalogSentMs": 1795284392115,
+    "contextResponseToCatalogMs": 10,
+    "catalogLeadBeforeSessionStartMs": 1486,
+    "catalogLeadBeforeUserPromptSubmitMs": 1552,
+    "preToolUseMs": 1795284399087,
+    "postToolUseMs": 1795284399159,
+    "toolLifecycleIntervalMs": 72,
+    "firstActionReporterSession": "01a1ff49-d7fa-7f90-9e95-8ad11fdfe632",
+    "firstCliSession": "01a1ff49-d7fa-7f90-9e95-8ad11fdfe632",
+    "sameFollowupSession": "01a1ff49-d7fa-7f90-9e95-8ad11fdfe632",
+    "firstMcpCompleted": true,
+    "followupSucceeded": true,
+    "realSiblingPreserved": true
+  },
+  "baseline": {
+    "sourceDirectory": "/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/.hermes/investigations/queue-e2e-postpatch-2026-11-21/catalog-readiness-failure",
+    "recordedContextResolveLatencyMs": 1620,
+    "contextResponseMs": 1795283350756,
+    "catalogSentMs": 1795283350764,
+    "contextResponseToCatalogMs": 8,
+    "reporterAlreadyBoundAtContext": true,
+    "firstCliSession": "01a1ff39-edda-7000-8216-5ddcfc393c9b",
+    "providerOutput": "TOOL_UNAVAILABLE",
+    "firstMcpAction": "not executed",
+    "testFailed": true,
+    "exactSessionStartTiming": "not included in preserved baseline files"
+  },
+  "limits": [
+    "single bounded comparison only",
+    "native QueueView + actual print/exec CLI via readline adapter, not provider TUI",
+    "existing reviewed global Codex hook bridge",
+    "tool lifecycle interval is not exact HTTP execution duration",
+    "no required=true result claimed"
+  ],
+  "baselineSha256": {
+    "mcp-startup.jsonl": "52fab207a18aea2e8eabbc7a7417e4230fbccb37627da690d7df336068c9332e",
+    "driver-codex-folder-manual.json": "2078d9ab342a3dcc53c04437c30a3554359294d1cc54e5f539cd14d5563ce01b",
+    "native-catalog-diagnostic.log": "57182d82c9b51fedbe1ea1c5f26a47b76dcaf87681dd48579f1b4c5b56b2cb1c"
+  }
+}

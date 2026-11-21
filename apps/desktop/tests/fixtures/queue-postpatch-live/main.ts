@@ -57,7 +57,9 @@ const stagingHeadAtLaunch = execFileSync(
 	["-C", desktop, "rev-parse", "integration/queue-remediation-2026-11-21"],
 	{ encoding: "utf8" }
 ).trim();
-const evidence = join(desktop, "../../.hermes/investigations/queue-e2e-postpatch-2026-11-21");
+const evidence =
+	process.env["SS_QUEUE_EVIDENCE_DIR"] ||
+	join(desktop, "../../.hermes/investigations/queue-e2e-postpatch-2026-11-21");
 app.setPath("userData", join(root, "profile"));
 app.setPath("sessionData", join(root, "profile"));
 app.setAppLogsPath(join(root, "logs"));
