@@ -3,37 +3,37 @@ vite v6.4.1 building SSR bundle for production...
 transforming...
 ✓ 472 modules transformed.
 rendering chunks...
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/git/operations.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/terminal-sessions.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/terminal-sessions.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/ai-review/review-workspace.ts, <lane-b-worktree>/apps/desktop/src/main/atlassian/bitbucket.ts, <lane-b-worktree>/apps/desktop/src/main/db/index.ts, <lane-b-worktree>/apps/desktop/src/main/git/branch-ops.ts, <lane-b-worktree>/apps/desktop/src/main/git/cached-ops.ts, <lane-b-worktree>/apps/desktop/src/main/git/merge-ops.ts, <lane-b-worktree>/apps/desktop/src/main/git/repo-watcher.ts, <lane-b-worktree>/apps/desktop/src/main/services/folder-projects.ts, <lane-b-worktree>/apps/desktop/src/main/services/workspace-service.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/diff.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/merge.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/projects.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/terminal-sessions.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/services/workspace-service.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/ai-review/cleanup.ts, <lane-b-worktree>/apps/desktop/src/main/control-plane/server.ts, <lane-b-worktree>/apps/desktop/src/main/index.ts, <lane-b-worktree>/apps/desktop/src/main/services/agent-session-manager.ts, <lane-b-worktree>/apps/desktop/src/main/services/cross-repo-orchestrators.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/ai-review/cleanup.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/ai-review/commit-poller.ts, <lane-b-worktree>/apps/desktop/src/main/index.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/ai-review.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/ai-review/pr-poller.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/ai-review/comment-poller.ts, <lane-b-worktree>/apps/desktop/src/main/ai-review/create-and-queue-solve.ts, <lane-b-worktree>/apps/desktop/src/main/index.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/pr-poller.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/services/cross-repo-orchestrator-membership.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/control-plane/server.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/services/cross-repo-orchestrators.ts, <lane-b-worktree>/apps/desktop/src/main/services/external-managers.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/cross-repo-orchestrators.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/terminal/daemon-ownership.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/index.ts, <lane-b-worktree>/apps/desktop/src/main/index.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/terminal/daemon-client.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/atlassian/jira.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/providers/jira-adapter.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/atlassian.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/tickets/cache.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/atlassian.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/linear.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/linear.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/atlassian.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/linear.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/telemetry/sync.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/index.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/supabase/auth.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/linear/linear.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/providers/linear-adapter.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/linear.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/tickets.ts, dynamic import will not move module into another chunk.
 
-[plugin vite:reporter] 
+[plugin vite:reporter]
 (!) <lane-b-worktree>/apps/desktop/src/main/services/folder-projects.ts is dynamically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/projects.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/projects.ts, <lane-b-worktree>/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by <lane-b-worktree>/apps/desktop/src/main/trpc/routers/projects.ts, dynamic import will not move module into another chunk.
 
 out/main/process-watchdog-entry.js                0.69 kB

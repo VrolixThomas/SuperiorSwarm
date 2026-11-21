@@ -14,11 +14,11 @@ error: expect(received).toEqual(expected)
 -   "status": 0,
 -   "stderr": "",
 +   "status": 1,
-+   "stderr": 
++   "stderr":
 + "node:internal/modules/run_main:122
 +     triggerUncaughtException(
 +     ^
-+ 
++
 + AssertionError [ERR_ASSERTION]: Missing expected exception: competing WAL writer must not commit between validation and PTY handoff
 +     at file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-native-admission-Tc2UoZ/main.mjs:82:10
 +     at file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-native-admission-Tc2UoZ/main.mjs:27:18
@@ -35,7 +35,7 @@ error: expect(received).toEqual(expected)
 +   operator: 'throws',
 +   diff: 'simple'
 + }
-+ 
++
 + Node.js v24.14.0
 + "
 + ,
