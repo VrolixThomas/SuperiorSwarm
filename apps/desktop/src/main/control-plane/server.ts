@@ -1289,7 +1289,10 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
 				respond(res, 200, requestId, await setStatus(caller, parsed.data));
@@ -1305,7 +1308,10 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
 				respond(res, 200, requestId, await sendMessage(caller, parsed.data));
@@ -1323,7 +1329,10 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
 				respond(
@@ -1346,7 +1355,10 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, null);
 				if ("error" in caller || !caller.queueIdentityVerified) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
 				respond(res, 200, requestId, acknowledgeQuestionAnswers(caller, parsed.data.messageIds));

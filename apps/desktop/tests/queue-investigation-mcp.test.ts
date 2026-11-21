@@ -255,6 +255,7 @@ test.skipIf(process.platform !== "darwin")(
 								arguments: { phase: "done", status_text: "Must not replace reporter" },
 							});
 							expect(stale.isError).toBe(true);
+							expect(JSON.stringify(stale)).toContain("conversation changed");
 						}
 					} finally {
 						await client.close();
