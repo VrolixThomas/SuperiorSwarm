@@ -1,0 +1,36 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-question-reply.test.tsx:
+(pass) correlated answer uses displayed message, owner and revision; saved is not retrieved or resumed [14.11ms]
+(pass) transport error preserves input; stale revision refuses send until explicitly reviewed [9.62ms]
+(pass) backend conflict preserves the pending answer and does not claim delivery [2.98ms]
+(pass) refresh failure after saved cannot reenable duplicate delivery [2.56ms]
+(pass) drafts remain associated with their question when selecting another item [1.32ms]
+(pass) persisted saved answer remains readable after remount without claiming task execution [0.98ms]
+(pass) recipient uses human names once and keeps binding identifiers in collapsed technical details [4.12ms]
+(pass) coordinator recipient names its own chat rather than a linked project [0.74ms]
+
+tests/queue-view.test.tsx:
+(pass) Open only navigates; Done sends displayed revision and Undo restores it [19.04ms]
+(pass) conflict refreshes same item without advancing or opening another [7.11ms]
+(pass) Later then Bring back use exact revisions and keyboard options [11.83ms]
+(pass) selection survives refresh and typing never runs quick actions [5.40ms]
+(pass) new revision closes the Later menu instead of acting on unseen activity [4.99ms]
+(pass) loading, empty and fetch errors offer honest recovery states [0.81ms]
+(pass) unavailable permission items remain readable but cannot be handled [6.76ms]
+(pass) keyboard focus follows the next row after Done [9.71ms]
+(pass) Later keeps category counts tied to pending items [9.49ms]
+(pass) Later does not offer an Undo receipt for a different previously completed item [8.63ms]
+(pass) selected item keeps its source and next action visible [1.97ms]
+(pass) narrow details action exposes full context and returns keyboard focus [4.88ms]
+(pass) canonical grouped actions preserve every displayed member receipt including Undo [13.60ms]
+(pass) provider request evidence keeps provenance and does not claim permission execution [2.25ms]
+(pass) handling an item from narrow details returns focus to the visible next row [5.66ms]
+(pass) unconfirmed permission outcome is shown as unknown without invented success [1.36ms]
+(pass) an in-flight answer blocks other queue actions and preserves its draft on failure [9.52ms]
+(pass) question, reply and command error evidence preserve multiline plain text [1.34ms]
+
+ 26 pass
+ 0 fail
+ 121 expect() calls
+Ran 26 tests across 2 files. [262.00ms]

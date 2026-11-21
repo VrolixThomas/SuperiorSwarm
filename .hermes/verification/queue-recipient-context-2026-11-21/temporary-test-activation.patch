@@ -1,0 +1,6 @@
+--- a/apps/desktop/tests/fixtures/workspace-queue-electron/main.ts
++++ b/apps/desktop/tests/fixtures/workspace-queue-electron/main.ts
+@@ -324,0 +325 @@
++	app.focus({ steal: true });
+@@ -325,0 +327 @@
++	contents.focus();
