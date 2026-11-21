@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import { describeWorkspaceItem } from "../src/main/activity-queue/describe-workspace-item";
 import type { ActivityQueueItem, ActivityQueueSource } from "../src/shared/activity-queue";
 
-function describe(sourceType: string, summary: string, rawEvent = "Stop") {
+function describe(
+	sourceType: string,
+	summary: string,
+	rawEvent = "Stop",
+	extraSnapshot: Record<string, unknown> = {}
+) {
 	const item: ActivityQueueItem = {
 		id: "source",
 		revision: 4,
@@ -27,7 +32,7 @@ function describe(sourceType: string, summary: string, rawEvent = "Stop") {
 	const source: ActivityQueueSource = {
 		sourceId: "source",
 		sourceType,
-		snapshot: { rawEvent },
+		snapshot: { rawEvent, ...extraSnapshot },
 		candidate: item,
 		fingerprint: "unchanged",
 		observedAt: 1000,
@@ -89,4 +94,27 @@ test("permission and failure notifications admit when their details are absent",
 	const failure = describe("agent-session", "Agent turn failed; needs attention", "StopFailure");
 	expect(failure.openLabel).toBe("Open chat to inspect error");
 	expect(failure.missingContext).toContain("without an error message");
+});
+
+test("latched failure remains a failed-turn explanation after a generic Stop", () => {
+	const item = describe("agent-session", "Synthetic error detail", "Stop", {
+		failure: true,
+		permission: { outcome: "pending" },
+	});
+	expect(item.situation).toBe("agent-failed");
+	expect(item.why).toBe("Review the failed turn");
+	expect(item.evidence).toEqual(["Synthetic error detail"]);
+});
+
+test("unconfirmed permission outcome asks for review rather than another approval", () => {
+	const item = describe(
+		"agent-session",
+		"Permission outcome not confirmed; review the conversation",
+		"PermissionRequest",
+		{ permission: { outcome: "unconfirmed" } }
+	);
+	expect(item.situation).toBe("agent-permission");
+	expect(item.why).toBe("Review the permission outcome");
+	expect(item.openLabel).toBe("Open chat to review outcome");
+	expect(item.nextAction).toContain("result was not reported");
 });

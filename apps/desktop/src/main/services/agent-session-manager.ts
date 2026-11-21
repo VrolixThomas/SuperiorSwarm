@@ -116,6 +116,8 @@ export class AgentSessionManager {
 	}
 
 	registerManagedSession(input: RegisterManagedAgentInput): AgentSessionInfo {
+		const entity = queueEntities().get(input.workspaceId);
+		if (!entity) throw new Error("Unknown or ambiguous agent entity");
 		const db = getDb();
 		const now = new Date();
 		db.transaction((tx) => {
@@ -136,7 +138,7 @@ export class AgentSessionManager {
 				.values({
 					terminalId: input.terminalId,
 					workspaceId: input.workspaceId,
-					entityKind: queueEntities().get(input.workspaceId)?.entity.kind ?? "workspace",
+					entityKind: entity.entity.kind,
 					provider: input.provider,
 					providerSessionId: input.providerSessionId,
 					state: "running",
@@ -154,7 +156,7 @@ export class AgentSessionManager {
 					target: agentSessions.terminalId,
 					set: {
 						workspaceId: input.workspaceId,
-						entityKind: queueEntities().get(input.workspaceId)?.entity.kind ?? "workspace",
+						entityKind: entity.entity.kind,
 						provider: input.provider,
 						providerSessionId: input.providerSessionId,
 						state: "running",

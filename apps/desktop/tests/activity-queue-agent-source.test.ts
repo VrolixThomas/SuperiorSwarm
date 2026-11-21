@@ -5,6 +5,7 @@ import {
 	observeValidatedAgentEvent,
 	questionSourceId,
 	reconcileAgentSources,
+	sessionSourceId,
 	workspaceSourceId,
 } from "../src/main/activity-queue/agent-source";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
@@ -648,7 +649,9 @@ for (const provider of ["codex", "claude"] as const) {
 				expect(agent.getSession("one")?.state).toBe(turn % 5 === 0 ? "needs-input" : "idle");
 				const ready = queue().list().items[0];
 				expect(ready?.summary).toBe(
-					turn % 5 === 0 ? "Permission request remains unresolved" : "Ready for next input"
+					turn % 5 === 0
+						? "Permission outcome not confirmed; review the conversation"
+						: "Ready for next input"
 				);
 				queue().acknowledge({ id: ready?.id ?? "", revision: ready?.revision ?? 0 });
 				await deliver("Stop", turn, previousStop);
@@ -879,4 +882,32 @@ test("working status without a valid reporter cannot clear arbitrary chats", asy
 	} finally {
 		agent.dispose();
 	}
+});
+
+test("replacement retires even a registered generation that never emitted its first callback", () => {
+	const agent = manager();
+	register(agent, "one");
+	const start = Date.now();
+	expect(
+		agent.handleAgentEvent({
+			...event("one", "active"),
+			providerSessionId: "replacement",
+			rawEvent: "SessionStart",
+			sessionSource: "startup",
+			timestamp: start,
+		})
+	).not.toBeNull();
+	expect(
+		agent.handleAgentEvent({
+			...event("one", "active"),
+			rawEvent: "SessionStart",
+			sessionSource: "startup",
+			timestamp: start + 1,
+		})
+	).toBeNull();
+	expect(agent.getSession("one")?.providerSessionId).toBe("replacement");
+	expect(
+		queue().read(sessionSourceId(workspaceId, "one", "codex", "one-provider"))?.candidate
+	).toBeNull();
+	agent.dispose();
 });

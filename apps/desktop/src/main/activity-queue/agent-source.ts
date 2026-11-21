@@ -191,10 +191,22 @@ export function observeValidatedAgentEvent(
 		known &&
 		(known.provider !== event.agent || known.providerSessionId !== providerSessionId)
 	) {
-		queue.resolve(
-			sessionSourceId(known.workspaceId, known.terminalId, known.provider, known.providerSessionId),
-			event.timestamp
+		const retiredId = sessionSourceId(
+			known.workspaceId,
+			known.terminalId,
+			known.provider,
+			known.providerSessionId
 		);
+		if (queue.read(retiredId)) queue.resolve(retiredId, event.timestamp);
+		else
+			queue.observe({
+				sourceId: retiredId,
+				sourceType: "agent-session",
+				snapshot: { generationRetired: true },
+				fingerprint: "retired-generation",
+				candidate: null,
+				observedAt: event.timestamp,
+			});
 	}
 	const candidate: ActivityQueueCandidate | null = attention
 		? {

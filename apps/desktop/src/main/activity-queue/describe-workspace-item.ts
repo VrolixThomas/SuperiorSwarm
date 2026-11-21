@@ -26,7 +26,7 @@ export function describeWorkspaceItem(
 	const situation: WorkspaceQueueItem["situation"] =
 		source.sourceType === "agent-question"
 			? "agent-question"
-			: hasReason("turn-failed") || rawEvent === "StopFailure"
+			: hasReason("turn-failed") || eventSnapshot?.failure === true || rawEvent === "StopFailure"
 				? "agent-failed"
 				: hasReason("permission-unresolved") || rawEvent === "PermissionRequest"
 					? "agent-permission"
@@ -105,7 +105,16 @@ export function describeWorkspaceItem(
 				"The notification says input is needed, but does not include the request. Open the chat to see what the agent is asking.",
 		},
 	};
-	const description = descriptions[situation];
+	const description =
+		situation === "agent-permission" && eventSnapshot?.permission?.outcome === "unconfirmed"
+			? {
+					...descriptions[situation],
+					why: "Review the permission outcome",
+					nextAction:
+						"The permission result was not reported. Review the conversation before continuing.",
+					openLabel: "Open chat to review outcome",
+				}
+			: descriptions[situation];
 	// Generic lifecycle labels are not a question, reply or completion report.
 	const generic = new Set([
 		"Ready for next input",
