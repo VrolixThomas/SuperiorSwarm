@@ -14,7 +14,7 @@ export interface AgentEvidence {
 
 export interface AgentPermission {
 	requestId?: string;
-	outcome: "pending" | "allowed" | "denied" | "cancelled";
+	outcome: "pending" | "unconfirmed" | "allowed" | "denied" | "cancelled";
 }
 
 export interface AgentEvent {

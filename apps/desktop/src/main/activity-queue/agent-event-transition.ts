@@ -34,8 +34,10 @@ export function transitionAgentEvent(
 	const uncertain = ordering === "uncertain";
 	const label = needsPermission
 		? permission.outcome === "pending"
-			? "Permission request remains unresolved"
-			: `Permission ${permission.outcome}; review the conversation`
+			? "Permission requested"
+			: permission.outcome === "unconfirmed"
+				? "Permission outcome not confirmed; review the conversation"
+				: `Permission ${permission.outcome}; review the conversation`
 		: uncertain
 			? "Callback ordering is uncertain; confirm in the conversation"
 			: failed
@@ -80,7 +82,14 @@ export function transitionAgentEvent(
 			value.turnId,
 			value.failure ?? value.rawEvent === "StopFailure",
 			value.evidence ?? [],
-			value.permission ?? null,
+			value.permission
+				? {
+						...value.permission,
+						outcome: ["pending", "unconfirmed"].includes(value.permission.outcome)
+							? "unresolved"
+							: value.permission.outcome,
+					}
+				: null,
 			value.continuation ?? "none",
 		]);
 	const fingerprint = semanticFingerprint(snapshot);

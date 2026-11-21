@@ -106,6 +106,14 @@ export function nextAgentEventSnapshot(
 		permission = before?.permission ?? null;
 	}
 	if (event.rawEvent === "PermissionRequest" && !permission) permission = { outcome: "pending" };
+	if (
+		permission?.outcome === "pending" &&
+		["Stop", "Interrupt", "StopFailure", "PostToolUse", "PostToolUseFailure"].includes(
+			event.rawEvent ?? ""
+		)
+	) {
+		permission = { ...permission, outcome: "unconfirmed" };
+	}
 	const failure =
 		!prompt &&
 		!reported &&

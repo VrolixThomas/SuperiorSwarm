@@ -50,7 +50,7 @@ for (const provider of ["claude", "codex"])
 					})
 				);
 				expect(state?.attention?.kind).toBe("agent-input");
-				expect(state?.attention?.permission?.outcome).toBe("pending");
+				expect(state?.attention?.permission?.outcome).toBe("unconfirmed");
 				expect(state?.attention?.reason.code).toBe("permission-unresolved");
 				expect(
 					state?.attention?.evidence.some((e) => e.text === "Allow synthetic status update?")
@@ -68,7 +68,7 @@ for (const provider of ["claude", "codex"])
 			expect(next?.snapshot.continuation).toBe("prompt");
 			const stop = transition(next?.snapshot, event("Stop", { turnId: "turn-2" }));
 			expect(stop?.attention?.kind).toBe("agent-ready");
-			expect(stop?.attention?.permission?.outcome).toBe("pending");
+			expect(stop?.attention?.permission?.outcome).toBe("unconfirmed");
 		});
 		test("only a matching explicit permission outcome changes pending permission", () => {
 			const request = transition(
@@ -79,7 +79,7 @@ for (const provider of ["claude", "codex"])
 				request?.snapshot,
 				event("PostToolUse", { permission: { requestId: "p2", outcome: "allowed" } })
 			);
-			expect(wrong?.attention?.permission?.outcome).toBe("pending");
+			expect(wrong?.attention?.permission?.outcome).toBe("unconfirmed");
 			expect(
 				transition(
 					request?.snapshot,
@@ -314,4 +314,15 @@ test("failure receipt and error survive generic Stop and compaction until a real
 	expect(
 		transition(continued?.snapshot, event("Stop", { turnId: "turn-2" }))?.attention?.kind
 	).toBe("agent-ready");
+});
+
+test("unconfirmed permission outcome updates wording without reopening an exact receipt", () => {
+	const request = transition(null, event("PermissionRequest"));
+	const stop = transition(request?.snapshot, event("Stop"));
+	expect(stop?.attention?.permission?.outcome).toBe("unconfirmed");
+	expect(stop?.attention?.reason.label).toBe(
+		"Permission outcome not confirmed; review the conversation"
+	);
+	expect(stop?.fingerprint).toBe(request?.fingerprint);
+	expect(stop?.preserveRevision).toBe(true);
 });

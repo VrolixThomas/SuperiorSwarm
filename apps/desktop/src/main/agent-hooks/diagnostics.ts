@@ -11,7 +11,7 @@ interface HookDiagnostic {
 	/** Capabilities observed on the last callback, not installation-time promises. */
 	lastIdentity: "turn" | "event" | "provider-time" | "legacy-uncertain" | null;
 	lastEvidenceFields: string[];
-	lastPermissionOutcome: "pending" | "allowed" | "denied" | "cancelled" | null;
+	lastPermissionOutcome: "pending" | "unconfirmed" | "allowed" | "denied" | "cancelled" | null;
 }
 const diagnostics = new Map<string, HookDiagnostic>();
 function get(provider: string): HookDiagnostic {
