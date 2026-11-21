@@ -144,16 +144,19 @@ export class DaemonClient {
 	}
 	async completeQueueSleep(id: string, generation: string): Promise<boolean> {
 		if (!this.supportsQueueResume || this.pendingInputTerminals.has(id)) return false;
-		return (
-			(
-				await this.fileRequest({
-					type: "queue-sleep-complete",
-					id,
-					generation,
-					requestId: randomUUID(),
-				})
-			)?.delivery === "admitted"
-		);
+		const deadline = Date.now() + 2000;
+		do {
+			const response = await this.fileRequest({
+				type: "queue-sleep-complete",
+				id,
+				generation,
+				requestId: randomUUID(),
+			});
+			if (response?.delivery === "admitted") return true;
+			if (!response || this.pendingInputTerminals.has(id)) return false;
+			await new Promise((resolve) => setTimeout(resolve, 25));
+		} while (Date.now() < deadline);
+		return false;
 	}
 	async parkQueueRoot(id: string): Promise<boolean> {
 		const generation = this.sleepGuards.get(id);
@@ -171,20 +174,19 @@ export class DaemonClient {
 		reserve = true,
 		allowPending = false
 	): Promise<DaemonFileTarget | null> {
-		if (!this.supportsQueueResume || (!allowPending && this.pendingInputTerminals.has(id)))
-			return null;
-		return (
-			(
-				await this.fileRequest({
-					type: "queue-resume-target",
-					id,
-					provider,
-					providerSessionId,
-					reserve,
-					requestId: randomUUID(),
-				})
-			)?.target ?? null
-		);
+		if (!this.supportsQueueResume) return null;
+		if (!allowPending && this.pendingInputTerminals.has(id))
+			throw Error("Manual input is pending for this chat");
+		const result = await this.fileRequest({
+			type: "queue-resume-target",
+			id,
+			provider,
+			providerSessionId,
+			reserve,
+			requestId: randomUUID(),
+		});
+		if (!result || !("target" in result)) throw Error("Could not verify the sleeping conversation");
+		return result.target ?? null;
 	}
 	async resumeQueueView(
 		id: string,

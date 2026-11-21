@@ -176,6 +176,48 @@ export class QueueDeliveryAdmission {
 				return false;
 			questionSource = `agent-question:${binding.questionId}`;
 		}
+		// Message insertion is independent of lazy queue projection. Validate authoritative questions too.
+		const rawQuestions = this.db
+			.prepare("SELECT * FROM agent_messages WHERE kind='question' AND reporter IS NOT NULL")
+			.all() as Record<string, unknown>[];
+		for (const q of rawQuestions) {
+			const reporter = JSON.parse(String(q["reporter"]));
+			if (
+				reporter?.type !== "terminal" ||
+				queueOwnerKey(reporter) !== queueOwnerKey(target) ||
+				q["id"] === binding?.questionId
+			)
+				continue;
+			const source = this.db
+				.prepare(
+					"SELECT revision,acknowledged_revision,fingerprint FROM activity_queue_sources WHERE source_id=?"
+				)
+				.get(`agent-question:${q["id"]}`) as
+				| { revision: number; acknowledged_revision: number | null; fingerprint: string }
+				| undefined;
+			if (
+				source &&
+				source.revision === source.acknowledged_revision &&
+				source.fingerprint === q["content"]
+			)
+				continue;
+			const answers = this.db
+				.prepare(
+					"SELECT recipient FROM agent_messages WHERE kind='answer' AND in_reply_to=? AND retrieved_at IS NOT NULL AND project_id=? AND to_workspace_id=? AND created_at>=?"
+				)
+				.all(q["id"], q["project_id"], q["from_workspace_id"], q["created_at"]) as {
+				recipient: string | null;
+			}[];
+			if (
+				!answers.some((a) => {
+					const recipient = a.recipient ? JSON.parse(a.recipient) : null;
+					return (
+						recipient?.type === "terminal" && queueOwnerKey(recipient) === queueOwnerKey(target)
+					);
+				})
+			)
+				return false;
+		}
 		const members = JSON.parse(row.members) as { id: string; revision: number }[];
 		let failed = false;
 		for (const member of members) {
@@ -229,6 +271,7 @@ export class QueueDeliveryAdmission {
 				((!members.some((member) => member.id === source.source_id) &&
 					source.acknowledged_revision !== source.revision) ||
 					(candidate.kind === "agent-input" &&
+						source.acknowledged_revision !== source.revision &&
 						source.source_id !== questionSource &&
 						!(binding && source.source_id.startsWith("agent-workspace:")) &&
 						!candidate.reasons?.some((r: { code: string }) => r.code === "turn-failed")))

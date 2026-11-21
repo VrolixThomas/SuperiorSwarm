@@ -78,9 +78,13 @@ async function lease(item: WorkspaceQueueItem, reserve: boolean) {
 	const t = item.target;
 	const daemon = getDaemonClient();
 	if (t.type !== "terminal" || !t.providerSessionId || !daemon) return null;
-	return mode(item) === "resume"
-		? daemon.queueResumeTarget(t.terminalId, t.provider, t.providerSessionId, reserve)
-		: daemon.queueReplyTarget(t.terminalId, t.provider, t.providerSessionId, reserve);
+	try {
+		return mode(item) === "resume"
+			? daemon.queueResumeTarget(t.terminalId, t.provider, t.providerSessionId, reserve)
+			: daemon.queueReplyTarget(t.terminalId, t.provider, t.providerSessionId, reserve);
+	} catch {
+		return null;
+	}
 }
 export async function workspaceContinuationCapability(
 	input: WorkspaceQueueRevisionInput,

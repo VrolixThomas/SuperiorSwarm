@@ -38,7 +38,7 @@ export interface RegisterManagedAgentInput {
 	providerSessionId: string | null;
 	skipPermissions: boolean;
 	queueLaunch?: QueueLaunchDescriptor;
- queueLaunchId?:string;
+	queueLaunchId?: string;
 }
 
 interface AgentSessionManagerOptions {
@@ -109,13 +109,15 @@ export class AgentSessionManager {
 			descriptor: QueueLaunchDescriptor;
 			workspaceId: string;
 			createdAt: number;
- launchId?:string;authorized:boolean;
+			launchId?: string;
+			authorized: boolean;
 			providerSessionId: string | null;
 		}
 	>();
 	async registerQueueLaunch(
 		terminalId: string,
-		descriptor: QueueLaunchDescriptor, launchId?:string
+		descriptor: QueueLaunchDescriptor,
+		launchId?: string
 	): Promise<boolean> {
 		const session = this.getSession(terminalId);
 		if (
@@ -131,18 +133,23 @@ export class AgentSessionManager {
 			.get();
 		if (!persisted) return false;
 		this.queueLaunches.set(terminalId, {
-			descriptor: structuredClone(descriptor),launchId,authorized:!launchId,
+			descriptor: structuredClone(descriptor),
+			launchId,
+			authorized: !launchId,
 			workspaceId: session.workspaceId,
 			createdAt: persisted.createdAt.getTime(),
 			providerSessionId: session.providerSessionId,
 		});
 		return this.syncQueueLaunch(terminalId);
 	}
-	private async syncQueueLaunch(terminalId: string,launchId?:string): Promise<boolean> {
+	private async syncQueueLaunch(terminalId: string, launchId?: string): Promise<boolean> {
 		const launch = this.queueLaunches.get(terminalId);
 		const current = this.getSession(terminalId);
 		if (!launch || !current) return false;
- if(!launch.authorized){if(!launchId||launchId!==launch.launchId)return false;launch.authorized=true;}
+		if (!launch.authorized) {
+			if (!launchId || launchId !== launch.launchId) return false;
+			launch.authorized = true;
+		}
 		if (
 			!current.managed ||
 			current.workspaceId !== launch.workspaceId ||
@@ -161,9 +168,13 @@ export class AgentSessionManager {
 		if (!current.providerSessionId) return false;
 		launch.providerSessionId = current.providerSessionId;
 		const owner = workspaceReporter(current.workspaceId, terminalId);
-const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && await this.options.daemonClient.queueRegisterLaunch(terminalId,owner,launch.descriptor);
-  if(registered && this.queueLaunches.get(terminalId)===launch)this.queueLaunches.delete(terminalId);
-  return registered;
+		const registered =
+			!!owner &&
+			!!this.options.daemonClient.queueRegisterLaunch &&
+			(await this.options.daemonClient.queueRegisterLaunch(terminalId, owner, launch.descriptor));
+		if (registered && this.queueLaunches.get(terminalId) === launch)
+			this.queueLaunches.delete(terminalId);
+		return registered;
 	}
 
 	private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -245,7 +256,8 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 		if (reporter) reporterAdmissions.record(reporter);
 		publishCurrentHookEndpoint(input.terminalId);
 		this.emit(session);
-		if (input.queueLaunch) void this.registerQueueLaunch(input.terminalId, input.queueLaunch,input.queueLaunchId);
+		if (input.queueLaunch)
+			void this.registerQueueLaunch(input.terminalId, input.queueLaunch, input.queueLaunchId);
 		return session;
 	}
 
@@ -406,7 +418,7 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 			this.emit(session);
 		}
 
-		void this.syncQueueLaunch(resolved.terminalId,event.launchId);
+		void this.syncQueueLaunch(resolved.terminalId, event.launchId);
 		recordAcceptedHookEvent(event);
 		publishCurrentHookEndpoint(resolved.terminalId);
 		return {
@@ -442,7 +454,7 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 			this.visibleTerminals.add(terminalId);
 			this.cancelTimer(terminalId);
 			await this.waitForTransition(terminalId);
-			await this.wake(terminalId, undefined, undefined, true);
+			await this.wake(terminalId);
 			return;
 		}
 		this.visibleTerminals.delete(terminalId);
@@ -456,8 +468,13 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 		await this.waitForTransition(terminalId);
 		const session = this.getSession(terminalId);
 		if (!session) return;
+		if (session.state === "resuming" && session.lastError) throw Error(session.lastError);
 		if (session.state === "hibernated") {
-			await this.wake(terminalId);
+			const resumed = await this.wake(terminalId, undefined, undefined, true);
+			if (!resumed || resumed.lastError || !["running", "resuming"].includes(resumed.state))
+				throw Error(
+					resumed?.lastError ?? "The sleeping chat could not be resumed; no input was sent"
+				);
 			return;
 		}
 		if (session.state === "idle" || session.state === "needs-input") {
@@ -502,6 +519,7 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 		this.transitions.add(terminalId);
 		this.cancelTimer(terminalId);
 
+		let structuredAttempt = false;
 		try {
 			const daemonSession = (await this.options.daemonClient.listSessions()).find(
 				(candidate) => candidate.id === terminalId
@@ -522,6 +540,7 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 				});
 			}
 			if (this.options.daemonClient.supportsQueueResume) {
+				structuredAttempt = true;
 				const lease = await this.options.daemonClient.queueResumeTarget(
 					terminalId,
 					session.provider,
@@ -557,6 +576,7 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 					return this.getSession(terminalId);
 				}
 			}
+			structuredAttempt = false;
 			const command = buildAgentResumeCommand(session, prompt);
 			this.updateState(terminalId, "resuming", { lastError: null });
 			this.options.daemonClient.write(terminalId, `${command}\r`);
@@ -567,9 +587,17 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 			});
 		} catch (error) {
 			if (canContinue && !canContinue()) return null;
-			return this.updateState(terminalId, "error", {
-				lastError: error instanceof Error ? error.message : "Failed to resume agent",
-			});
+			return this.updateState(
+				terminalId,
+				structuredAttempt
+					? this.getSession(terminalId)?.state === "resuming"
+						? "resuming"
+						: "hibernated"
+					: "error",
+				{
+					lastError: error instanceof Error ? error.message : "Failed to resume agent",
+				}
+			);
 		} finally {
 			this.transitions.delete(terminalId);
 		}
@@ -857,6 +885,12 @@ const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && a
 			if (this.disposed) return session;
 			if (canContinue && (!canContinue() || this.getSession(terminalId)?.state !== "hibernating"))
 				return null;
+			if (
+				!result.ok &&
+				sleepGuard &&
+				(await this.options.daemonClient.completeQueueSleep?.(terminalId, sleepGuard))
+			)
+				result = { ok: true };
 			if (!result.ok) {
 				const state: AgentSessionState = automatic ? "idle" : "error";
 				return (

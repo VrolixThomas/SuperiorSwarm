@@ -126,7 +126,7 @@ export class FileInputSessions {
 	input(id: string, data: string | Buffer): void {
 		// Terminal device replies are protocol traffic, not a user draft.
 		// biome-ignore lint/suspicious/noControlCharactersInRegex: exact ANSI cursor-position reply
-		if (/^\x1b\[\d{1,5};\d{1,5}R$/.test(String(data))) return;
+		if (/^\x1b\[\d{1,5};\d{1,5}R$/.test(String(data)) && !this.sessions.get(id)?.sleep) return;
 		const active = this.sessions.get(id);
 		if (active && data.length) {
 			active.inputDirty = true;
@@ -363,7 +363,8 @@ export class FileInputSessions {
 		const s = this.sessions.get(id);
 		const proof = s?.sleep;
 		const identity = s?.inspect?.();
-		if (!s?.clients.has(client) || !s.launch) return null;
+		if (!s || !s.clients.has(client)) return { generation: "", foreground: "", supported: false };
+		if (!s.launch) return null;
 		const target = {
 			generation: randomUUID(),
 			foreground: identity?.name ?? "",
