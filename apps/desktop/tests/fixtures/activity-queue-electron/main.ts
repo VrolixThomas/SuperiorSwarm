@@ -320,7 +320,7 @@ lines.on('line', line => {
 						kind: "workspace",
 						projectId: "project",
 						workspaceId: "workspace",
-						...(managed ? {} : { terminalId: "terminal" }),
+						terminalId: "terminal",
 					},
 					{
 						phase,
@@ -417,7 +417,10 @@ lines.on('line', line => {
 	await hook("PermissionRequest", "turn-2");
 	step = "same-session next-turn input";
 	await until(() => hasCount(1));
-	await until(() => js<boolean>("document.body.textContent.includes('Agent needs input')"));
+	await until(() => js<boolean>("document.body.textContent.includes('Permission requested')"));
+	await hook("Stop", "turn-2");
+	if ((await listCurrentActivityQueue()).items[0]?.kind !== "agent-input")
+		throw new Error("Same-turn Stop discarded unresolved permission");
 	const beforeDisconnect = (await listCurrentActivityQueue()).items.map((item) => item.id);
 	daemon.disconnect();
 	const disconnected = await listCurrentActivityQueue();
