@@ -93,6 +93,11 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 	subject: string;
 	why: string;
 	clearsWhen: string;
+	sourceLabel: string;
+	nextAction: string;
+	openLabel: string;
+	detailLabel: string;
+	missingContext?: string;
 	context: {
 		projectId?: string;
 		projectName: string;
@@ -102,6 +107,7 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 		workspaceId: string;
 		workspaceName: string;
 		provider?: string;
+		terminalTitle?: string;
 	};
 	evidence: string[];
 	snoozed?: { until: number | null; untilChange: boolean };

@@ -49,8 +49,14 @@ export function QueueRow({
 				/>
 				<span className="truncate">{item.context.projectName}</span>
 			</span>
-			<span className="truncate text-[var(--text)]" title={item.subject}>
-				{item.subject}
+			<span
+				className="flex min-w-0 flex-col justify-center"
+				title={`${item.subject} — ${item.sourceLabel}: ${item.why}`}
+			>
+				<span className="truncate leading-4 text-[var(--text)]">{item.subject}</span>
+				<span className="truncate text-[10px] leading-4 text-[var(--text-tertiary)]">
+					{item.sourceLabel} · {item.why}
+				</span>
 			</span>
 			{selected ? (
 				<span className="col-span-2 flex items-center justify-end gap-4 whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">
@@ -74,8 +80,11 @@ export function QueueRow({
 				</span>
 			) : (
 				<>
-					<span className="truncate text-[var(--text-tertiary)]" title={item.why}>
-						{item.why}
+					<span
+						className="truncate text-[var(--text-tertiary)]"
+						title={item.evidence[0] ?? item.why}
+					>
+						{item.evidence[0] ?? item.why}
 					</span>
 					<span className="text-right text-[10px] tabular-nums text-[var(--text-quaternary)]">
 						{queueAge(item.occurredAt)}

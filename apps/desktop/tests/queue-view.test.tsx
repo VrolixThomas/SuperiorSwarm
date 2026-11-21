@@ -34,6 +34,10 @@ function row(
 		subject: id,
 		summary: "Waiting for your input",
 		why: "Waiting for your input",
+		sourceLabel: "Workspace update",
+		nextAction: "Open the workspace and respond to the agent.",
+		openLabel: "Open workspace to respond",
+		detailLabel: "What the agent needs",
 		occurredAt: 1000,
 		acknowledged: false,
 		stale: false,
@@ -308,7 +312,7 @@ test("Later keeps category counts tied to pending items", async () => {
 	const tabs = [...document.querySelectorAll('[role="tab"]')].map((el) =>
 		el.textContent?.replace(/\s/g, "")
 	);
-	expect(tabs).toContain("Ready1");
+	expect(tabs).toContain("Toreview1");
 	expect(tabs).not.toContain("Needsinput1");
 });
 
@@ -323,4 +327,22 @@ test("Later does not offer an Undo receipt for a different previously completed 
 	).toBe(false);
 	await key("z");
 	expect(f.calls.some((c) => c.action === "undo")).toBe(false);
+});
+
+test("selected item keeps its source and next action visible", async () => {
+	const item = row("queue-chat", "agent-ready");
+	item.sourceLabel = "Codex chat";
+	item.nextAction = "Read the latest reply, then continue or mark this item Done.";
+	item.openLabel = "Open chat to read reply";
+	item.evidence = [];
+	item.missingContext = "The reply text is not included in this notification.";
+	item.clearsWhen =
+		"Done removes this item from the queue. It does not send a reply or finish the task.";
+	await mount([item]);
+	expect(document.querySelector("[data-queue-row]")?.textContent).toContain("Codex chat");
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.textContent).toContain(item.nextAction);
+	expect(panel?.textContent).toContain(item.missingContext);
+	expect(panel?.textContent).toContain(item.clearsWhen);
+	expect(panel?.querySelector("button")?.textContent).toContain("Open chat to read reply");
 });

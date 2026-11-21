@@ -218,7 +218,7 @@ test("classification uses structured permission/failure/question evidence, never
 	});
 	expect(items.find((item) => item.id === questionSourceId("question"))).toMatchObject({
 		situation: "agent-question",
-		evidence: ["Which branch?", "Unanswered question"],
+		evidence: ["Which branch?"],
 	});
 	session("StopFailure");
 	expect(
@@ -557,4 +557,24 @@ test("concurrent restore mutations use persisted receipts rather than their pre-
 	const restored = await Promise.all([bringBack(receipt, daemon), bringBack(receipt, daemon)]);
 	expect(restored.map((result) => result.status).sort()).toEqual(["conflict", "restored"]);
 	expect(await caller.workspaceList()).toMatchObject({ totalPending: 1, laterCount: 0 });
+});
+
+test("chat titles identify the conversation without changing its source revision", async () => {
+	const sourceId = session("Stop", "task-complete");
+	const before = (await caller.workspaceList()).items.find((item) => item.id === sourceId);
+	const fingerprint = queue().read(sourceId)?.fingerprint;
+	getDb()
+		.update(terminalSessions)
+		.set({ title: "Investigate queue callbacks" })
+		.where(eq(terminalSessions.id, "live"))
+		.run();
+	const after = (await caller.workspaceList()).items.find((item) => item.id === sourceId);
+	expect(after).toMatchObject({
+		subject: "Investigate queue callbacks",
+		sourceLabel: "Codex chat",
+		openLabel: "Open chat to read reply",
+		revision: before?.revision,
+		target: before?.target,
+	});
+	expect(queue().read(sourceId)?.fingerprint).toBe(fingerprint);
 });

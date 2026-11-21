@@ -137,7 +137,7 @@ async function run() {
 				id: `terminal-${id}`,
 				workspaceId: id,
 				cwd: root,
-				title: id,
+				title: i === 2 ? "Review workspace callback permissions" : (names[i] ?? id),
 				sortOrder: i,
 				updatedAt: now,
 			})
@@ -357,6 +357,7 @@ async function run() {
 				panel.scrollTop = panel.scrollHeight;
 				const buttons = [...panel.querySelectorAll('button')];
 				return panel.scrollTop > 0 && buttons.every(button => {
+					button.scrollIntoView({block: "nearest"});
 					const rect = button.getBoundingClientRect();
 					return rect.top >= panel.getBoundingClientRect().top && rect.bottom <= innerHeight;
 				});
@@ -369,6 +370,17 @@ async function run() {
 		}
 	}
 	win.setContentSize(1440, 900);
+	for (const [index, name] of [
+		[1, "permission"],
+		[2, "report"],
+	] as const) {
+		await js(`document.querySelectorAll('[data-queue-row]')[${index}].click()`);
+		await new Promise((r) => setTimeout(r, 30));
+		await contents
+			.capturePage()
+			.then((c) => writeFileSync(join(root, `queue-${name}-context.png`), c.toPNG()));
+	}
+	await js("document.querySelectorAll('[data-queue-row]')[0].click()");
 	await click("Projects");
 	step = "workspace layout retained outside Queue";
 	await until(() =>

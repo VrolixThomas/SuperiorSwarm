@@ -135,7 +135,9 @@ async function currentWorkspaceItems(daemon?: Inventory) {
 		items.push(
 			describeWorkspaceItem(item, source, {
 				...context,
-				...(target.type === "terminal" ? { provider: target.provider } : {}),
+				...(target.type === "terminal"
+					? { provider: target.provider, terminalTitle: terminals.get(target.terminalId)?.title }
+					: {}),
 			})
 		);
 	}

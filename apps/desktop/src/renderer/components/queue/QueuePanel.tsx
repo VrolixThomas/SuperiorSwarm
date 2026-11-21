@@ -49,12 +49,29 @@ export function QueuePanel({
 					{item.why}
 				</p>
 				<p className="mt-1 text-[11px] text-[var(--text-quaternary)]">
-					{queueAge(item.occurredAt)}
-					{item.context.provider
-						? ` · ${item.context.provider === "codex" ? "Codex" : item.context.provider === "claude" ? "Claude" : item.context.provider}`
-						: ""}
+					{item.sourceLabel} · {queueAge(item.occurredAt)}
 				</p>
+				<div className="mb-4 mt-6">
+					<h3 className="text-[11px] font-medium text-[var(--text-tertiary)]">Next step</h3>
+					<p className="mt-2 text-[13px] leading-6 text-[var(--text)]">{item.nextAction}</p>
+				</div>
+				<button
+					type="button"
+					disabled={busy}
+					onClick={open}
+					className={`${queueButton} w-full border border-[var(--border)] bg-[var(--bg-elevated)] text-left text-[var(--text)]`}
+				>
+					{item.openLabel} <kbd className="float-right text-[var(--text-tertiary)]">↵</kbd>
+				</button>
 				<div className="my-7 space-y-3 border-y border-[var(--border-subtle)] py-5">
+					<h3 className="text-[11px] font-medium text-[var(--text-tertiary)]">
+						{item.detailLabel}
+					</h3>
+					{item.missingContext && (
+						<p className="text-[12px] leading-5 text-[var(--text-secondary)]">
+							{item.missingContext}
+						</p>
+					)}
 					{item.evidence.slice(0, 4).map((line, i) => (
 						<p
 							key={`${i}-${line}`}
@@ -63,16 +80,8 @@ export function QueuePanel({
 							{line}
 						</p>
 					))}
-					<p className="text-[11px] leading-5 text-[var(--text-quaternary)]">{item.clearsWhen}</p>
 				</div>
-				<button
-					type="button"
-					disabled={busy}
-					onClick={open}
-					className={`${queueButton} w-full border border-[var(--border)] bg-[var(--bg-elevated)] text-left text-[var(--text)]`}
-				>
-					Open workspace <kbd className="float-right text-[var(--text-tertiary)]">↵</kbd>
-				</button>
+
 				<div className="mt-3 flex items-center gap-1 text-[var(--text-tertiary)]">
 					{later ? (
 						<button
@@ -104,6 +113,9 @@ export function QueuePanel({
 						</>
 					)}
 				</div>
+				<p className="mt-2 text-[11px] leading-5 text-[var(--text-quaternary)]">
+					{item.clearsWhen}
+				</p>
 			</div>
 		</aside>
 	);

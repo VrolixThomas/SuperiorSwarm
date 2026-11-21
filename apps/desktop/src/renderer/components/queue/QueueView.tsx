@@ -332,7 +332,7 @@ export function QueueScreen({
 								}}
 								className={`border-b-2 text-[12px] ${queueFocus} ${view === "pending" && filter === t ? "border-[var(--text)] text-[var(--text)]" : "border-transparent text-[var(--text-tertiary)]"}`}
 							>
-								{t === "all" ? "All" : t === "input" ? "Needs input" : "Ready"}
+								{t === "all" ? "All" : t === "input" ? "Needs input" : "To review"}
 								<span className="ml-2 text-[10px] tabular-nums text-[var(--text-quaternary)]">
 									{t === "all" ? (data?.totalPending ?? "…") : counts[t]}
 								</span>
@@ -452,7 +452,7 @@ export function QueueScreen({
 								disabled={busy}
 								onClick={() => void runOpen()}
 							>
-								Open ↵
+								{selected.openLabel} ↵
 							</button>
 							{view === "later" ? (
 								<button
