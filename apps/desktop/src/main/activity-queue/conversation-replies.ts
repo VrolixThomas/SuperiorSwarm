@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
+import { QUEUE_REPLY_MAX_CHARACTERS } from "../../shared/activity-queue";
 import type {
 	WorkspaceQueueItem,
 	WorkspaceQueueReplyCapability,
@@ -103,7 +104,8 @@ function receipt(row: typeof activityQueueDeliveries.$inferSelect): WorkspaceQue
 export async function workspaceReply(
 	input: WorkspaceQueueReplyInput
 ): Promise<WorkspaceQueueReplyResult> {
-	if (/^[!/]/.test(input.content.trimStart()))
+	const content = input.content.trim();
+	if (/^[!/]/.test(content.trimStart()))
 		return {
 			status: "rejected",
 			reason: "Open the chat to run provider commands. Queue replies accept ordinary messages.",
@@ -111,16 +113,17 @@ export async function workspaceReply(
 	if (
 		!input.requestId ||
 		input.requestId.length > 128 ||
-		!input.content.trim() ||
-		Buffer.byteLength(input.content) > 16000 ||
-		hasUnsafeTerminalText(input.content.replaceAll("\n", ""))
+		!content ||
+		content.length > QUEUE_REPLY_MAX_CHARACTERS ||
+		Buffer.byteLength(content) > 16000 ||
+		hasUnsafeTerminalText(content.replaceAll("\n", ""))
 	)
 		return {
 			status: "rejected",
-			reason: "Enter up to 16000 bytes without terminal control characters.",
+			reason: "Enter up to 4,000 characters without terminal control characters.",
 		};
 	const db = getDb();
-	const fingerprint = hash(input.content);
+	const fingerprint = hash(content);
 	const wanted = members(input);
 	const occurrenceKey = hash(JSON.stringify(wanted));
 	const previous = db
@@ -205,7 +208,7 @@ export async function workspaceReply(
 			target.terminalId,
 			lease.generation,
 			input.requestId,
-			input.content
+			content
 		);
 	} catch {}
 	// The daemon is authoritative when it committed a receipt before a response was lost.

@@ -1,3 +1,5 @@
+export const QUEUE_REPLY_MAX_CHARACTERS = 4_000;
+
 /** All activity queue timestamps are Unix milliseconds, including across tRPC. */
 export const ACTIVITY_QUEUE_KINDS = [
 	"agent-input",

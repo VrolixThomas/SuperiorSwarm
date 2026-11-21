@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACTIVITY_QUEUE_KINDS } from "../../../shared/activity-queue";
+import { ACTIVITY_QUEUE_KINDS, QUEUE_REPLY_MAX_CHARACTERS } from "../../../shared/activity-queue";
 import { reconcileAgentSources } from "../../activity-queue/agent-source";
 import {
 	workspaceReply,
@@ -66,7 +66,7 @@ export const activityQueueRouter = router({
 		.input(
 			workspaceRevision.extend({
 				requestId: z.string().min(1).max(128),
-				content: z.string().min(1).max(16000),
+				content: z.string().trim().min(1).max(QUEUE_REPLY_MAX_CHARACTERS),
 			})
 		)
 		.mutation(({ input }) => workspaceReply(input)),

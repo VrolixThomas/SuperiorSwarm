@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
+import { QUEUE_REPLY_MAX_CHARACTERS } from "../shared/activity-queue";
 import {
 	FILE_PASTE_MAX_BYTES,
 	type FileDelivery,
@@ -204,6 +205,7 @@ export class FileInputSessions {
 			typeof text !== "string" ||
 			!text.trim() ||
 			/^[!/]/.test(text.trimStart()) ||
+			text.length > QUEUE_REPLY_MAX_CHARACTERS ||
 			Buffer.byteLength(text) > 16000 ||
 			hasUnsafeTerminalText(text.replaceAll("\n", ""))
 		)

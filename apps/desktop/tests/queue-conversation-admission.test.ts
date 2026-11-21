@@ -200,3 +200,13 @@ test("provider slash commands and shell shortcuts are not ordinary Queue replies
 		expect(f.writes).toHaveLength(0);
 	}
 });
+
+test("daemon also rejects overlong replies before any terminal write", () => {
+	const f = fixture();
+	const lease = f.sessions.conversationTarget("t", "c", "claude", "chat");
+	if (!lease) throw Error("Missing fixture lease");
+	expect(f.sessions.insertConversation("t", "c", lease.generation, "x".repeat(4001))).toBe(
+		"rejected"
+	);
+	expect(f.writes).toEqual([]);
+});

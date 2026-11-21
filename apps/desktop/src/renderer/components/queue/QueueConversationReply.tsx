@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { QUEUE_REPLY_MAX_CHARACTERS } from "../../../shared/activity-queue";
 import type {
 	WorkspaceQueueItem,
 	WorkspaceQueueReplyCapability,
@@ -176,6 +177,7 @@ export function QueueConversationReply({
 				Reply to {item.context.terminalTitle ?? item.context.workspaceName}
 			</label>
 			<textarea
+				maxLength={QUEUE_REPLY_MAX_CHARACTERS}
 				id={`queue-reply-${inputId}`}
 				value={draft.content}
 				disabled={busy || locked}

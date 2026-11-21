@@ -536,3 +536,21 @@ test("a different explicit prompt digest never inherits an uncertain queued clea
 	expect(row?.continuationTurnId).toBeNull();
 	expect(row?.cleanupProtectedTurnId).toBeNull();
 });
+
+test("reply cap rejects 4,001 characters and submits the trimmed 4,000-character boundary", async () => {
+	expect((await workspaceReply({ ...input("too-long"), content: "x".repeat(4001) })).status).toBe(
+		"rejected"
+	);
+	expect(writes).toBe(0);
+	let sent = "";
+	const submit = daemon.submitQueueReply;
+	daemon.submitQueueReply = async (id, generation, requestId, content) => {
+		sent = content;
+		return submit(id, generation, requestId, content);
+	};
+	expect(
+		(await workspaceReply({ ...input("boundary"), content: `  ${"x".repeat(4000)}  ` })).status
+	).toBe("admitted");
+	expect(sent).toBe("x".repeat(4000));
+	expect(writes).toBe(1);
+});
