@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, inArray, isNull, max, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, max, ne, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { AgentProvider } from "../../shared/agent-session";
 import type {
@@ -1127,72 +1127,68 @@ export async function readMessages(
 		ctx.queueIdentityVerified === false
 			? null
 			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
-	function visible(rows: (typeof agentMessages.$inferSelect)[]) {
-		return rows.filter((row) => {
-			const recipient = row.recipient;
-			if (!recipient) return true;
-			if (
-				recipient.type !== "terminal" ||
-				!caller ||
-				recipient.workspaceId !== caller.workspaceId ||
-				recipient.terminalId !== caller.terminalId ||
-				recipient.provider !== caller.provider ||
-				recipient.providerSessionId !== caller.providerSessionId
+	// Admission happens in SQLite before LIMIT; a sibling's inbox cannot consume this page.
+	// Guard malformed legacy JSON without widening its visibility to an ownerless message.
+	const recipient = sql`CASE WHEN json_valid(${agentMessages.recipient}) THEN ${agentMessages.recipient} ELSE NULL END`;
+	const exactRecipient = caller
+		? and(
+				eq(agentMessages.toWorkspaceId, caller.workspaceId),
+				sql`json_extract(${recipient}, '$.type') = 'terminal'`,
+				sql`json_extract(${recipient}, '$.workspaceId') = ${caller.workspaceId}`,
+				sql`json_extract(${recipient}, '$.terminalId') = ${caller.terminalId}`,
+				sql`json_extract(${recipient}, '$.provider') = ${caller.provider}`,
+				sql`json_extract(${recipient}, '$.providerSessionId') = ${caller.providerSessionId}`,
+				sql`coalesce(json_extract(${recipient}, '$.entity.kind'), 'workspace') = ${caller.entity?.kind ?? "workspace"}`,
+				sql`coalesce(json_extract(${recipient}, '$.entity.id'), json_extract(${recipient}, '$.workspaceId')) = ${caller.entity?.id ?? caller.workspaceId}`
 			)
-				return false;
-			if (!row.retrievedAt && !ctx.deferQueueRetrieval)
-				db.update(agentMessages)
-					.set({ retrievedAt: new Date() })
-					.where(eq(agentMessages.id, row.id))
-					.run();
-			return true;
-		});
-	}
-	const includeBroadcasts = input.includeBroadcasts ?? true;
+		: sql`0`;
+	const unreadAnswer = and(
+		exactRecipient,
+		eq(agentMessages.kind, "answer"),
+		isNull(agentMessages.retrievedAt)
+	);
+	const ownerId = ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId;
+	const targetFilter =
+		input.includeBroadcasts !== false
+			? or(eq(agentMessages.toWorkspaceId, ownerId), isNull(agentMessages.toWorkspaceId))
+			: eq(agentMessages.toWorkspaceId, ownerId);
+	const scope =
+		ctx.kind === "xro"
+			? inArray(agentMessages.projectId, ctx.linkedProjectIds)
+			: eq(agentMessages.projectId, ctx.projectId);
 	const sinceDate = input.since ? new Date(input.since) : new Date(0);
-
-	if (ctx.kind === "xro") {
-		// Read messages across all linked projects addressed to this xro or broadcast.
-		const targetFilter = includeBroadcasts
-			? or(eq(agentMessages.toWorkspaceId, ctx.xroId), isNull(agentMessages.toWorkspaceId))
-			: eq(agentMessages.toWorkspaceId, ctx.xroId);
-
-		const rows = db
-			.select()
-			.from(agentMessages)
-			.where(
-				and(
-					inArray(agentMessages.projectId, ctx.linkedProjectIds),
-					gt(agentMessages.createdAt, sinceDate),
-					targetFilter
-				)
-			)
-			.orderBy(desc(agentMessages.createdAt))
-			.limit(200)
-			.all();
-
-		return { messages: visible(rows).map(messageRowToDto) };
-	}
-
-	const targetFilter = includeBroadcasts
-		? or(eq(agentMessages.toWorkspaceId, ctx.workspaceId), isNull(agentMessages.toWorkspaceId))
-		: eq(agentMessages.toWorkspaceId, ctx.workspaceId);
-
 	const rows = db
 		.select()
 		.from(agentMessages)
 		.where(
 			and(
-				eq(agentMessages.projectId, ctx.projectId),
-				gt(agentMessages.createdAt, sinceDate),
-				targetFilter
+				scope,
+				targetFilter,
+				or(isNull(agentMessages.recipient), exactRecipient),
+				// Since filters history, but must not skip an older undelivered answer after a poll advances.
+				or(unreadAnswer, gt(agentMessages.createdAt, sinceDate))
 			)
 		)
-		.orderBy(desc(agentMessages.createdAt))
+		.orderBy(
+			sql`CASE WHEN ${unreadAnswer} THEN 0 ELSE 1 END`,
+			sql`CASE WHEN ${unreadAnswer} THEN ${agentMessages.createdAt} END`,
+			desc(agentMessages.createdAt),
+			asc(agentMessages.id)
+		)
 		.limit(200)
 		.all();
-
-	return { messages: visible(rows).map(messageRowToDto) };
+	// Oldest unread answers progress once returned rows are acknowledged; deferred HTTP reads
+	// repeat the same deterministic page until transport confirms it. Never mark unreturned rows.
+	if (!ctx.deferQueueRetrieval) {
+		for (const row of rows) {
+			if (row.recipient && !row.retrievedAt)
+				db.update(agentMessages)
+					.set({ retrievedAt: new Date() })
+					.where(eq(agentMessages.id, row.id))
+					.run();
+		}
+	}
+	return { messages: rows.map(messageRowToDto) };
 }
 
 /** HTTP callers confirm only after receiving the inbox payload; an aborted read is not delivery. */

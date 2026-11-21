@@ -31,7 +31,6 @@ import {
 import { workspaceReporter } from "../activity-queue/agent-source";
 import { getDb } from "../db";
 import {
-	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
 	hermesConnections,
 	hermesSessionAdmissions,
@@ -56,6 +55,10 @@ import {
 	updateHermesTagDefinition,
 	upsertHermesTagDefinition,
 } from "../hermes/hermes-session-metadata";
+import {
+	type CrossRepoAccessScope,
+	crossRepoProjectIds,
+} from "../services/cross-repo-project-scope";
 import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-policy";
 import {
 	type CallerContext,
@@ -76,24 +79,6 @@ import { hashToken, isValidBearer, tokenMatchesHash } from "./auth";
 import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
-
-type CrossRepoAccessScope = "selected" | "all";
-
-function crossRepoProjectIds(orchestratorId: string, accessScope: CrossRepoAccessScope): string[] {
-	if (accessScope === "all") {
-		return getDb()
-			.select({ projectId: projects.id })
-			.from(projects)
-			.all()
-			.map((row) => row.projectId);
-	}
-	return getDb()
-		.select({ projectId: crossRepoOrchestratorProjects.projectId })
-		.from(crossRepoOrchestratorProjects)
-		.where(eq(crossRepoOrchestratorProjects.orchestratorId, orchestratorId))
-		.all()
-		.map((row) => row.projectId);
-}
 
 function workspaceAgentContext(row: {
 	projectId: string;

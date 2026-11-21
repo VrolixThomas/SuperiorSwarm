@@ -1,12 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { QueueEntity, WorkspaceQueueItem } from "../../shared/activity-queue";
 import { getDb } from "../db";
-import {
-	crossRepoOrchestratorProjects,
-	crossRepoOrchestrators,
-	projects,
-	workspaces,
-} from "../db/schema";
+import { crossRepoOrchestrators, projects, workspaces } from "../db/schema";
+import { crossRepoProjects } from "../services/cross-repo-project-scope";
 import { projectTint } from "./describe-workspace-item";
 
 /** One authoritative entity lookup; coordinators are never surrogate workspaces. */
@@ -64,17 +60,7 @@ export function queueEntities() {
 				workspaceId: row.id,
 				workspaceName: row.name,
 				projectName: "Cross-repository coordinator",
-				linkedProjects: db
-					.select({
-						id: projects.id,
-						name: projects.name,
-						kind: projects.kind,
-						path: projects.repoPath,
-					})
-					.from(crossRepoOrchestratorProjects)
-					.innerJoin(projects, eq(crossRepoOrchestratorProjects.projectId, projects.id))
-					.where(eq(crossRepoOrchestratorProjects.orchestratorId, row.id))
-					.all(),
+				linkedProjects: crossRepoProjects(row.id, row.accessScope),
 				projectPath: row.workDir,
 				projectTint: projectTint(row.id),
 				role: "coordinator",
