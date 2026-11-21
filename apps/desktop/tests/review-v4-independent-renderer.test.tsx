@@ -23,6 +23,9 @@ if (inIsolatedFileBrowserTest(import.meta.path, "V4 independent renderer boundar
 	const { ReviewWorkspaceTopBar } = await import(
 		"../src/renderer/components/review-mode/ReviewWorkspaceTopBar"
 	);
+	const { AllPRsDrawer } = await import(
+		"../src/renderer/components/review-mode/queue/AllPRsDrawer"
+	);
 	const { useReviewData } = await import("../src/renderer/components/review-mode/useReviewData");
 	const { stepThreadLayout } = await import(
 		"../src/renderer/components/review-mode/step/step-diff-model"
@@ -206,6 +209,59 @@ if (inIsolatedFileBrowserTest(import.meta.path, "V4 independent renderer boundar
 			);
 			expect(mapping).toBeDefined();
 			expect(mapping?.disabled).toBe(false);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("V4: All PRs can show a known mapped non-current review instead of losing its live identity", async () => {
+		const workspaceId = "v4-queue-state";
+		reset(workspaceId);
+		const h = await renderBrowserTest(
+			<ReviewWorkspace active={{ workspaceId, prCtx: pr }} />,
+			[],
+			false,
+			{
+				request: (path, input) => {
+					if (path !== "reviewPath.get") return request(path, input);
+					return {
+						identity: (input as { identity: unknown }).identity,
+						path: {
+							id: "known-path",
+							prKey: "v4/renderer#4",
+							headSha: head,
+							agent: { id: "codex", label: "Codex" },
+							status: "ready",
+							entries: [],
+							otherFiles: ["a.ts"],
+							updatedAt: new Date().toISOString(),
+						},
+						pathVersion: 1,
+						conversationId: "queue-conversation",
+						runs: [],
+						questions: [],
+						messages: [],
+					};
+				},
+			}
+		);
+		try {
+			await h.settle();
+			expect(h.container.textContent).toContain("entry points");
+			await h.rerender(
+				<AllPRsDrawer
+					queue={{
+						needsReview: [
+							{ ...pr, key: "github:v4/renderer#4", projectId: "v4-project", headCommitSha: head },
+						],
+						waitingOnAuthor: [],
+					}}
+					currentKey="github:v4/renderer#99"
+					onClose={() => {}}
+					onSelect={() => {}}
+				/>
+			);
+			expect(h.container.textContent).toContain("Path ready");
 		} finally {
 			await h.cleanup();
 		}
