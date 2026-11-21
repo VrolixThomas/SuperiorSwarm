@@ -43,3 +43,11 @@ All supplied independent assertions remain intact. Each agent reproduces assigne
 Testing uses disposable profiles, Git repositories, databases, credentials and dedicated test processes. No live app DB writes, real provider review/comment mutations, existing-user-session prompts or unrelated-agent cancellation. No global MCP/config/package/native-dependency changes. Baseline TS diagnostics and missing graphify remain explicit; hooks run normally.
 
 Prompts and dispatch evidence: `/tmp/pr-review-fix-prompts.py`, `/tmp/pr-review-fix-dispatch-*.json`, `/tmp/pr-review-fix-started-*.jsonl`, `/tmp/pr-review-fix-assignments.json`. Parent mutations/inbox continue through verified `/tmp/pr-review-mcp.mjs` because the conversation's default MCP connection is bound to sibling activity-queue. Project events can be polled with saved stream epoch/cursor and filtered by these workspace IDs.
+
+## Startup verification and early decisions
+
+Initial MCP dispatches returned started while the running development app displayed its Queue route. No Codex process or working status appeared. Source inspection showed dispatch relies on a renderer-mounted terminal and a delayed script write. Native UI confirmed the new assigned panes were bare shells. Parent switched to Projects and executed each original app-generated launch script once in its exact existing terminal (no redispatch or duplicate session). All four then showed Agent working; process cwd checks and MCP kickoff/status events confirmed the correct worktrees. This is a launch workaround; no unrelated app production code was changed.
+
+F1 proposed durable per-scope metadata generation/CAS in existing JSON, reserving before async resolution and fencing direct head transitions/new runs. Parent approved, including fail-closed403 for any supplied invalid task token and updating the old insecure replay expectation. Independent validators stay intact.
+
+F4 proposed max2 active snapshot readers with finite cancellable/deadline-bound queue and transient-only retry. Parent approved default-queue tests plus maxQueued:0 for explicit legacy overload testing, retaining all independent native assertions.
