@@ -1,0 +1,10 @@
+{
+  "testsBaseline": 204,
+  "testsIntegration": 216,
+  "addedDiagnosticsAlreadyInRendererBaseline": 12,
+  "newDiagnostics": [],
+  "mainBaseline": 61,
+  "mainIntegration": 61,
+  "rendererBaseline": 81,
+  "rendererIntegration": 81
+}

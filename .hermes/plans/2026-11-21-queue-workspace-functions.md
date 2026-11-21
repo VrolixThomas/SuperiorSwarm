@@ -36,3 +36,7 @@ Base: activity-queue at 89894806. Integrate and verify in integration/queue-work
 - Independently rerun meaningful delivery, permission, context and navigation regressions.
 - Native window tests run exclusively; actual-provider evidence is recorded separately from stand-ins.
 - Hibernated reply/resume requires a proven safe provider/launch channel; old raw shell wake and destroy-all respawn are forbidden fallbacks. Record unsupported capabilities honestly if proof cannot be established.
+
+## Integration outcome
+
+Supported live-chat replies, jump/peek/header context and supported permission decisions are implemented and verified. See `.hermes/verification/queue-workspace-functions-2026-11-21/README.md` for independent results, actual-provider evidence and exact limitations. Safe hibernated resume and automatic continuation after saved structured answers remain open; do not mark that whole capability complete.
