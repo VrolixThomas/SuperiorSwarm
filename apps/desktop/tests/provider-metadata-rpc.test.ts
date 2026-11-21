@@ -106,7 +106,12 @@ if (
 							reviews: { nodes: [] },
 							reviewRequests: { nodes: [] },
 							comments: { nodes: [] },
-							files: { nodes: [] },
+							changedFiles: 0,
+							files: {
+								nodes: [],
+								totalCount: 0,
+								pageInfo: { hasNextPage: false, endCursor: null },
+							},
 							headRefName: "feature",
 							baseRefName: "main",
 							headRefOid: "a".repeat(40),
@@ -152,7 +157,7 @@ if (
 		});
 	});
 
-	test("Bitbucket adapter takes both exact revisions from one metadata read", async () => {
+	test("Bitbucket adapter verifies both exact revisions after reading files", async () => {
 		let metadataReads = 0;
 		handler = async (url, options) => {
 			expect(options?.method ?? "GET").toBe("GET");
@@ -180,7 +185,7 @@ if (
 			throw new Error("Unexpected endpoint");
 		};
 		const details = await new BitbucketAdapter().getPRDetails("org", "repo", 1);
-		expect(metadataReads).toBe(1);
+		expect(metadataReads).toBe(2);
 		expect(details).toMatchObject({
 			headCommitOid: "a".repeat(40),
 			baseCommitOid: "b".repeat(40),

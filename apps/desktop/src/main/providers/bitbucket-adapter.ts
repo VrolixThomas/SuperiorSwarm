@@ -290,41 +290,82 @@ export class BitbucketAdapter implements GitProvider {
 
 	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
 		const files: NormalizedPRFile[] = [];
-		let url: string | null =
-			`${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${prNumber}/diffstat?pagelen=500`;
-
+		const repoUrl = `${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/`;
+		let url: string | null = `${repoUrl}pullrequests/${prNumber}/diffstat?pagelen=500`;
+		const pages = new Set<string>();
+		const paths = new Set<string>();
+		let expectedSize: number | undefined;
 		while (url) {
+			const parsed = new URL(url);
+			if (
+				parsed.origin !== new URL(BITBUCKET_API_BASE).origin ||
+				!parsed.pathname.startsWith(new URL(repoUrl).pathname) ||
+				parsed.username ||
+				parsed.password ||
+				pages.has(parsed.href)
+			) {
+				throw new Error("Bitbucket file pagination left the repository or repeated a page");
+			}
+			pages.add(parsed.href);
 			const res = await atlassianFetch("bitbucket", url);
-			if (!res.ok) return files;
+			if (!res.ok) throw new Error(`Bitbucket file page failed: ${res.status}`);
 			const data = (await res.json()) as {
 				values?: Array<{
-					new?: { path: string };
-					old?: { path: string };
+					new?: { path?: string } | null;
+					old?: { path?: string } | null;
 					status: string;
 					lines_added?: number;
 					lines_removed?: number;
 				}>;
-				next?: string;
+				next?: string | null;
+				size?: number;
 			};
-			for (const f of data.values ?? []) {
+			if (
+				!data ||
+				!Array.isArray(data.values) ||
+				(data.next != null && (typeof data.next !== "string" || !data.next)) ||
+				(data.next && data.values.length === 0)
+			)
+				throw new Error("Bitbucket file page is incomplete");
+			if (data.size !== undefined) {
+				if (
+					!Number.isSafeInteger(data.size) ||
+					data.size < 0 ||
+					(expectedSize !== undefined && data.size !== expectedSize)
+				)
+					throw new Error("Bitbucket file count changed");
+				expectedSize = data.size;
+			}
+			for (const file of data.values) {
+				const path = file?.new?.path ?? file?.old?.path;
+				if (
+					typeof path !== "string" ||
+					!path ||
+					paths.has(path) ||
+					typeof file.status !== "string"
+				) {
+					throw new Error("Bitbucket file manifest contains an invalid or duplicate file");
+				}
+				paths.add(path);
 				files.push({
-					path: f.new?.path ?? f.old?.path ?? "",
+					path,
 					status:
-						f.status === "added"
-							? ("added" as const)
-							: f.status === "removed"
-								? ("removed" as const)
-								: f.status === "renamed"
-									? ("renamed" as const)
-									: ("modified" as const),
-					previousPath: f.status === "renamed" ? f.old?.path : undefined,
-					additions: f.lines_added ?? 0,
-					deletions: f.lines_removed ?? 0,
+						file.status === "added"
+							? "added"
+							: file.status === "removed"
+								? "removed"
+								: file.status === "renamed"
+									? "renamed"
+									: "modified",
+					previousPath: file.status === "renamed" ? file.old?.path : undefined,
+					additions: file.lines_added ?? 0,
+					deletions: file.lines_removed ?? 0,
 				});
 			}
 			url = data.next ?? null;
 		}
-
+		if (expectedSize !== undefined && files.length !== expectedSize)
+			throw new Error("Bitbucket file manifest is truncated");
 		return files;
 	}
 
@@ -336,12 +377,23 @@ export class BitbucketAdapter implements GitProvider {
 	// ── Bitbucket-specific extras ─────────────────────────────────────────────
 
 	async getPRDetails(owner: string, repo: string, prNumber: number): Promise<GitHubPRDetails> {
-		const [prData, statuses, comments, files] = await Promise.all([
-			getBitbucketPRDetails(owner, repo, prNumber),
+		const prData = await getBitbucketPRDetails(owner, repo, prNumber);
+		const [statuses, comments, files] = await Promise.all([
 			getBitbucketPRStatuses(owner, repo, prNumber),
 			getBitbucketPRComments(owner, repo, prNumber),
 			this.getPRFiles(owner, repo, prNumber),
 		]);
+
+		// PR diffstat pages are mutable; do not certify files under a different revision.
+		const current = await getBitbucketPRDetails(owner, repo, prNumber);
+		if (
+			!prData.headCommitOid ||
+			!prData.baseCommitOid ||
+			current.headCommitOid !== prData.headCommitOid ||
+			current.baseCommitOid !== prData.baseCommitOid
+		) {
+			throw new Error("Bitbucket PR revision unavailable or changed while listing files");
+		}
 
 		const reviewerParticipants = prData.participants.filter((p) => p.role === "REVIEWER");
 		const reviewers = reviewerParticipants.map(mapParticipantToReviewer);
@@ -403,6 +455,7 @@ export class BitbucketAdapter implements GitProvider {
 			reviewers,
 			reviewThreads,
 			conversationComments,
+			filesComplete: true,
 			files: files.map((f) => ({
 				path: f.path,
 				additions: f.additions ?? 0,

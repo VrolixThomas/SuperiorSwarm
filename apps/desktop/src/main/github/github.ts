@@ -122,6 +122,19 @@ interface RawGQLThread {
 	};
 }
 
+interface RawGQLFile {
+	path: string;
+	additions: number;
+	deletions: number;
+	changeType: string;
+}
+
+interface RawGQLFiles {
+	nodes: RawGQLFile[];
+	totalCount?: number;
+	pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+}
+
 interface RawGQLPR {
 	title: string;
 	body: string;
@@ -151,7 +164,8 @@ interface RawGQLPR {
 			createdAt: string;
 		}[];
 	};
-	files: { nodes: { path: string; additions: number; deletions: number; changeType: string }[] };
+	files: RawGQLFiles;
+	changedFiles?: number;
 	headRefName: string;
 	baseRefName: string;
 	headRefOid?: string;
@@ -431,7 +445,7 @@ const PR_DETAILS_QUERY = `
         title body state isDraft
         author { login avatarUrl }
         reviewDecision
-        headRefName baseRefName headRefOid baseRefOid
+        headRefName baseRefName headRefOid baseRefOid changedFiles
         commits(last: 1) {
           nodes {
             commit {
@@ -467,6 +481,8 @@ const PR_DETAILS_QUERY = `
           nodes { id body author { login avatarUrl } createdAt }
         }
         files(first: 100) {
+          totalCount
+          pageInfo { hasNextPage endCursor }
           nodes { path additions deletions changeType }
         }
       }
@@ -484,7 +500,105 @@ export async function getPRDetails(
 		repo,
 		number,
 	});
-	return mapPRDetails(data.repository.pullRequest);
+	const raw = data.repository?.pullRequest;
+	if (!raw) throw new Error("GitHub PR details unavailable");
+	const files = await getCompletePRFiles(owner, repo, number, raw);
+	return { ...mapPRDetails({ ...raw, files: { nodes: files } }), filesComplete: true };
+}
+
+const PR_FILES_PAGE_QUERY = `
+  query GetPRFilesPage($owner: String!, $repo: String!, $number: Int!, $cursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        headRefOid baseRefOid changedFiles
+        files(first: 100, after: $cursor) {
+          totalCount
+          pageInfo { hasNextPage endCursor }
+          nodes { path additions deletions changeType }
+        }
+      }
+    }
+  }
+`;
+
+type RawFilesPage = Pick<RawGQLPR, "headRefOid" | "baseRefOid" | "changedFiles" | "files">;
+
+async function getCompletePRFiles(
+	owner: string,
+	repo: string,
+	number: number,
+	initial: RawFilesPage
+): Promise<RawGQLFile[]> {
+	const expected = initial.changedFiles;
+	if (
+		!Number.isSafeInteger(expected) ||
+		(expected ?? -1) < 0 ||
+		!initial.headRefOid ||
+		!initial.baseRefOid
+	) {
+		throw new Error("GitHub file manifest count or revision unavailable");
+	}
+	const files: RawGQLFile[] = [];
+	const paths = new Set<string>();
+	const cursors = new Set<string>();
+	let page = initial;
+	while (true) {
+		if (
+			!page ||
+			page.headRefOid !== initial.headRefOid ||
+			page.baseRefOid !== initial.baseRefOid ||
+			page.changedFiles !== expected
+		)
+			throw new Error("GitHub PR changed while listing files");
+		const connection = page.files;
+		if (
+			!connection ||
+			!Array.isArray(connection.nodes) ||
+			connection.totalCount !== expected ||
+			typeof connection.pageInfo?.hasNextPage !== "boolean"
+		) {
+			throw new Error("GitHub file manifest page is incomplete");
+		}
+		for (const file of connection.nodes) {
+			if (
+				!file ||
+				typeof file.path !== "string" ||
+				!file.path ||
+				paths.has(file.path) ||
+				!Number.isSafeInteger(file.additions) ||
+				file.additions < 0 ||
+				!Number.isSafeInteger(file.deletions) ||
+				file.deletions < 0 ||
+				!["ADDED", "MODIFIED", "DELETED", "RENAMED", "COPIED", "CHANGED", "UNCHANGED"].includes(
+					file.changeType
+				)
+			) {
+				throw new Error("GitHub file manifest contains an invalid or duplicate file");
+			}
+			paths.add(file.path);
+			files.push(file);
+		}
+		if (!connection.pageInfo.hasNextPage) {
+			if (files.length !== expected) throw new Error("GitHub file manifest is truncated");
+			return files;
+		}
+		const cursor = connection.pageInfo.endCursor;
+		if (
+			typeof cursor !== "string" ||
+			!cursor ||
+			cursors.has(cursor) ||
+			connection.nodes.length === 0 ||
+			files.length >= (expected ?? 0)
+		) {
+			throw new Error("GitHub file pagination did not advance");
+		}
+		cursors.add(cursor);
+		const data = await githubGraphQL<{ repository: { pullRequest: RawFilesPage } }>(
+			PR_FILES_PAGE_QUERY,
+			{ owner, repo, number, cursor }
+		);
+		page = data.repository?.pullRequest;
+	}
 }
 
 export async function getPRListEnrichment(

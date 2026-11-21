@@ -72,6 +72,7 @@ describe("mapPRDetails", () => {
 		const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
 
 		expect(result.title).toBe("Fix auth bug");
+		expect(result.filesComplete).toBeUndefined();
 		expect(result.reviewDecision).toBe("REVIEW_REQUIRED");
 		expect(result.ciState).toBe("SUCCESS");
 		expect(result.checks).toHaveLength(1);

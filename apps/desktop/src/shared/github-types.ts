@@ -94,6 +94,8 @@ export interface GitHubPRDetails {
 	reviewThreads: GitHubReviewThread[];
 	conversationComments: GitHubConversationComment[];
 	files: GitHubPRFile[];
+	/** True only after every provider file page was fetched and validated successfully. */
+	filesComplete?: boolean;
 	sourceBranch: string;
 	targetBranch: string;
 	headCommitOid: string;
