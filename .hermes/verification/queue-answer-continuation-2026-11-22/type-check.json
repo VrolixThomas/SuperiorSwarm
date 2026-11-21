@@ -1,0 +1,14 @@
+{
+  "main": {
+    "diagnostics": 61,
+    "ownedDiagnostics": []
+  },
+  "renderer": {
+    "diagnostics": 81,
+    "ownedDiagnostics": []
+  },
+  "test": {
+    "diagnostics": 216,
+    "ownedDiagnostics": []
+  }
+}

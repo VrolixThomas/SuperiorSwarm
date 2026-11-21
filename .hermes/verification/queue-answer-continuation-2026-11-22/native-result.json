@@ -1,0 +1,14 @@
+{
+  "native": true,
+  "productionRouter": true,
+  "connectedQuestionActions": true,
+  "realProviders": false,
+  "realPty": false,
+  "realSqlAdmission": true,
+  "liveAndResumeModes": true,
+  "exactDigestRetrieval": true,
+  "siblingIsolation": true,
+  "saveSurvivesDefiniteFailure": true,
+  "explicitRetryNoDuplicateAnswer": true,
+  "remainingQuestions": 2
+}
