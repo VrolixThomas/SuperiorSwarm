@@ -1,0 +1,34 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/coordinator-resume.test.ts:
+1357 | 	let fromId: string;
+1358 | 	let auditProjectId: string;
+1359 | 	if (ctx.kind === "xro") {
+1360 | 		// Cross-repo orchestrators are always authorized to resume agents in any
+1361 | 		// of their linked projects — no per-workspace isOrchestrator check.
+1362 | 		if (!target) throw new NotFoundError(input.workspaceId);
+                            ^
+NotFoundError: not_found: xro-REYV-qr4
+      at resumeAgent (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/src/main/services/workspace-service.ts:1362:22)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/tests/coordinator-resume.test.ts:40:23)
+(fail) claude: coordinator resume uses its exact managed conversation and own audit log [4.65ms]
+(pass) claude: missing/ambiguous/replaced coordinator session never falls back or writes to a sibling [2.47ms]
+(pass) claude: coordinator resume denies project-only and revoked authority [1.88ms]
+1357 | 	let fromId: string;
+1358 | 	let auditProjectId: string;
+1359 | 	if (ctx.kind === "xro") {
+1360 | 		// Cross-repo orchestrators are always authorized to resume agents in any
+1361 | 		// of their linked projects — no per-workspace isOrchestrator check.
+1362 | 		if (!target) throw new NotFoundError(input.workspaceId);
+                            ^
+NotFoundError: not_found: xro-CbXfbVff
+      at resumeAgent (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/src/main/services/workspace-service.ts:1362:22)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/tests/coordinator-resume.test.ts:40:23)
+(fail) codex: coordinator resume uses its exact managed conversation and own audit log [1.93ms]
+(pass) codex: missing/ambiguous/replaced coordinator session never falls back or writes to a sibling [1.99ms]
+(pass) codex: coordinator resume denies project-only and revoked authority [1.27ms]
+
+ 4 pass
+ 2 fail
+ 16 expect() calls
+Ran 6 tests across 1 file. [108.00ms]

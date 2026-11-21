@@ -1,0 +1,43 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-postpatch-independent.test.ts:
+(pass) independent claude/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [62.96ms]
+(pass) independent claude/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [64.44ms]
+(pass) independent claude/folder/manual: exact owner, grouped completion, sibling isolation and continuation [64.06ms]
+(pass) independent claude/folder/managed: exact owner, grouped completion, sibling isolation and continuation [73.09ms]
+(pass) independent claude/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [71.29ms]
+(pass) independent claude/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [81.49ms]
+(pass) independent claude/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [96.06ms]
+(pass) independent claude/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [136.89ms]
+(pass) independent codex/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [137.26ms]
+(pass) independent codex/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [142.51ms]
+(pass) independent codex/folder/manual: exact owner, grouped completion, sibling isolation and continuation [153.86ms]
+(pass) independent codex/folder/managed: exact owner, grouped completion, sibling isolation and continuation [159.67ms]
+(pass) independent codex/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [164.62ms]
+(pass) independent codex/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [195.00ms]
+(pass) independent codex/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [231.10ms]
+(pass) independent codex/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [227.60ms]
+(pass) all-projects coordinator context includes dynamically authorized repo and folder [2.28ms]
+(pass) recipient inbox pagination cannot starve an older unread answer behind sibling-only answers [118.00ms]
+(pass) cross-repo coordinator accepts the production dispatch service with an isolated launch target [1.58ms]
+
+tests/coordinator-dispatch.test.ts:
+(pass) claude: production coordinator dispatch persists exact managed ownership without a surrogate workspace [3.55ms]
+(pass) codex: production coordinator dispatch persists exact managed ownership without a surrogate workspace [1.83ms]
+(pass) coordinator service rejects project-scoped or external-manager targets before spawn [1.30ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=512d0443-c4ca-426c-9d9b-f5e5ea598ae0 latency=4ms
+[control-plane] POST /workspaces.dispatch 403 request_id=2cc80d6a-efeb-4b37-8f81-90def7b9feb6 latency=0ms
+[control-plane] POST /workspaces.dispatch 401 request_id=c4524a75-9e90-4e94-855c-1d28cf73700c latency=0ms
+[control-plane] POST /workspaces.dispatch 403 request_id=9ff703e7-3937-45d3-8a4b-caa304e19ad8 latency=1ms
+[control-plane] POST /workspaces.dispatch 200 request_id=4bf1baad-0261-49da-873b-c73fb986ba03 latency=1ms
+[control-plane] POST /workspaces.dispatch 403 request_id=54da934f-e21b-4c8c-9c8d-5846b09b9ac9 latency=0ms
+[control-plane] POST /workspaces.dispatch 499 request_id=c78ca038-a845-495b-b5d0-05c39ec57dac latency=0ms
+[control-plane] POST /workspaces.dispatch 200 request_id=8adac08e-f46a-40b2-9fc8-7d2b7100e1d2 latency=1ms
+(pass) HTTP coordinator dispatch preserves token, linked scope, all-scope and confirmation policy [13.78ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=e70103e5-2ba2-41b9-a600-9808cdca6581 latency=1ms
+(pass) coordinator authority is rechecked after confirmation and spawn failure preserves status [4.58ms]
+
+ 24 pass
+ 0 fail
+ 235 expect() calls
+Ran 24 tests across 2 files. [2.34s]

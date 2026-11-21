@@ -1,0 +1,313 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-ownership.test.ts:
+(pass) claude/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [44.91ms]
+(pass) claude/workspace: closed/replaced question owner cannot receive or mutate [14.72ms]
+(pass) claude/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [54.91ms]
+(pass) claude/coordinator: closed/replaced question owner cannot receive or mutate [22.99ms]
+(pass) codex/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [70.92ms]
+(pass) codex/workspace: closed/replaced question owner cannot receive or mutate [30.01ms]
+(pass) codex/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [95.72ms]
+(pass) codex/coordinator: closed/replaced question owner cannot receive or mutate [39.89ms]
+(pass) report and turn receipt group atomically; stale member rejects all actions and Undo retains exact revisions [226.38ms]
+(pass) legacy question/report remains explicitly unavailable for safe reply and never binds to sibling [56.58ms]
+(pass) polymorphic session constraints reject nonexistent owners and cascade both real entity kinds [2.15ms]
+(pass) wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution [81.06ms]
+(pass) ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval [68.72ms]
+(pass) grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically [198.03ms]
+
+tests/folder-mcp-context.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-iDFJho%2FWerk 200 request_id=26372d0e-45f9-4cc6-b581-f10f6639db83 latency=4ms
+(pass) folder MCP context > discovers a folder orchestrator and its event stream by project path [8.93ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-GTWVKd%2Falias 200 request_id=69c616a3-0ccc-4f47-b422-e811489ac47e latency=0ms
+(pass) folder MCP context > discovers a custom folder path through a symlink without inheriting the root role [4.41ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-BQO82h%2FWerk 409 request_id=24c483e6-d4e7-4fff-b2ff-3167eee37e75 latency=1ms
+(pass) folder MCP context > refuses to guess an orchestrator when folder tabs share a cwd [4.84ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-nBbjcI%2FWerk%2Felsewhere 200 request_id=4b94f7b5-b789-416b-ab37-8380c4dd9817 latency=0ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-nBbjcI%2FWerk 200 request_id=b6b20701-234f-4cef-80d6-de405a73e8f1 latency=0ms
+(pass) folder MCP context > terminal identity distinguishes folder tabs and survives cwd changes [4.93ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-zFMhcJ%2FWerk 401 request_id=1625fdd0-aef4-45a3-a2a0-25ab1ee26541 latency=0ms
+(pass) folder MCP context > a stale terminal identity cannot fall back to a folder orchestrator [4.17ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-Jy0HKu%2FWerk 200 request_id=c5e16e1d-0b2e-4d13-8cbd-a1268f38b0d3 latency=0ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-Jy0HKu%2FWerk 200 request_id=227bfa72-f399-4f7a-b882-039b722d224c latency=0ms
+(pass) folder MCP context > explicit folder identity wins over an overlapping registered worktree [5.03ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-UcyCS5%2FWerk 200 request_id=781a5772-baf0-4e24-b066-5660920df8a0 latency=1ms
+(pass) folder MCP context > coordinator terminal IDs still resolve as cross-repo orchestrators [6.48ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-Yz9KX0%2FWerk 401 request_id=0a537e00-5cfe-438f-8199-3aa01f19fe51 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-Yz9KX0%2FWerk 200 request_id=ae12ab5c-72ce-46b8-b9a3-6640716769ca latency=0ms
+(pass) folder MCP context > an external manager ID cannot authenticate as a terminal workspace [6.69ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-4DIhK2%2FWerk&taskToken=folder-review 200 request_id=fa6cc2e9-9be1-42b1-8b6b-7adb7657e72a latency=0ms
+(pass) folder MCP context > task identity takes precedence over inherited terminal and manager environments [4.15ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-q2mqZn%2FWerk 200 request_id=728c23ea-58ee-4604-8c0b-9759c291751d latency=0ms
+[control-plane] POST /workspaces.dispatch 200 request_id=49d45b42-8961-40f6-a584-2a4843131965 latency=5ms
+(pass) folder MCP context > folder dispatch respects auto=true and orchestrator=true [9.93ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-MpHS3h%2FWerk 200 request_id=877d5d92-561b-46e3-9728-2b402f39c53b latency=0ms
+[control-plane] POST /workspaces.dispatch 499 request_id=8594c743-3341-40a5-aa73-840cb20eacab latency=0ms
+(pass) folder MCP context > folder dispatch respects auto=false and orchestrator=true [4.58ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-4A5O69%2FWerk 200 request_id=66b0415b-215f-43c5-ab26-4ef1e2f15f30 latency=1ms
+[control-plane] POST /workspaces.dispatch 499 request_id=e5ac49c4-140c-4435-9a25-ab868e4039a9 latency=0ms
+(pass) folder MCP context > folder dispatch respects auto=true and orchestrator=false [5.04ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-vc21QK%2FWerk 200 request_id=c765028e-09c1-40c5-bba5-9d0b9d6c1f59 latency=0ms
+[control-plane] GET /workspaces.list?projectId=CvtnjLLdMibx4OUOTiIGU 200 request_id=c0b28734-9c68-43c3-b5e7-ccf4266c899c latency=1ms
+[control-plane] GET /workspaces.get?workspaceId=cZ_JLk18qZ0nSiMy3_lu2 200 request_id=f1736197-1b9b-43c9-8f77-82a3a1c5ea86 latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=474d68b9-1aa2-4697-9869-8d1a2cfa2c65 latency=6ms
+[control-plane] POST /workspaces.send_message 200 request_id=b290068c-2547-46f0-8a01-8f0bc51fe009 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-vc21QK%2FWerk 200 request_id=0f71a418-3566-49f4-b4ae-72dcdb1d199f latency=1ms
+[control-plane] GET /workspaces.read_messages?projectId=CvtnjLLdMibx4OUOTiIGU 200 request_id=7a7e471f-825b-451c-ac28-433bc172c6cc latency=1ms
+(pass) folder MCP context > folder agents can list, inspect, publish status, and message within their project [18.64ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-UtYflw%2FWerk 200 request_id=d97bbd27-fd59-40a0-9d8e-76e1e1a97d03 latency=1ms
+[control-plane] GET /workspaces.list?projectId=another-project 401 request_id=3d1beafa-f08e-4bd0-a148-b6722446ea06 latency=0ms
+(pass) folder MCP context > folder identity does not grant access to another project [7.67ms]
+
+tests/external-managers.test.ts:
+(pass) manager token hashing > hashToken is deterministic 64-char hex [0.62ms]
+(pass) manager token hashing > tokenMatchesHash accepts correct token, rejects wrong/null [0.05ms]
+[control-plane] GET /context.resolve?cwd=/nowhere 200 request_id=f0ea811e-74e9-45f1-819c-9925ab9519d2 latency=0ms
+(pass) external manager control-plane access > context.resolve with valid managerToken returns external-manager mode [4.41ms]
+[control-plane] GET /context.resolve?cwd=/nowhere 401 request_id=a95181b7-517e-4738-9182-a2325160d680 latency=0ms
+(pass) external manager control-plane access > context.resolve with unknown managerToken returns 401 [4.73ms]
+[control-plane] GET /context.resolve?cwd=/nowhere&taskToken=8100899aa6037d19618e2572dac5719c1876c1de0a66453f87bfff763cf33353 200 request_id=58996061-0bbb-49ab-90b6-574c65e93386 latency=1ms
+(pass) external manager control-plane access > context.resolve prefers a task token over a manager token [6.25ms]
+[control-plane] GET /context.resolve?cwd=%2Ftmp%2Fmgr-mgr-16fchLoH 200 request_id=083eb302-ddcd-48d2-9b35-897f007418db latency=2ms
+(pass) external manager control-plane access > context.resolve by cwd never matches an external manager workDir [7.64ms]
+[control-plane] GET /projects.list 401 request_id=21e68626-039a-4afa-ac08-be42a145caa1 latency=0ms
+(pass) external manager control-plane access > external caller without X-Manager-Token is rejected [5.20ms]
+[control-plane] GET /projects.list 401 request_id=838553cc-8323-4943-b0fd-7a30e4ea3914 latency=0ms
+(pass) external manager control-plane access > external caller with wrong X-Manager-Token is rejected [5.22ms]
+[control-plane] POST /hermes.sessions.admit 200 request_id=77ac1757-269d-4270-95f0-8f19d5374c33 latency=1ms
+[control-plane] POST /hermes.sessions.admit 200 request_id=d5fd0d58-ca12-4c10-9a35-a9310963dd03 latency=0ms
+(pass) external manager control-plane access > Hermes admission binds only to the authenticated manager identity [6.36ms]
+[control-plane] POST /hermes.sessions.admit 400 request_id=de6b12ce-5cf9-4b7e-908b-7ca41ab05cb3 latency=1ms
+[control-plane] POST /hermes.sessions.admit 400 request_id=7ebec0ed-c36f-42a4-9c87-2be5ad9fa493 latency=1ms
+[control-plane] POST /hermes.sessions.admit 200 request_id=fef3b11c-d3b1-4998-8210-0b6af827dd97 latency=0ms
+[control-plane] POST /hermes.sessions.admit 403 request_id=367625c4-e592-47f3-b113-b5d62fc941f7 latency=0ms
+(pass) external manager control-plane access > Hermes admission rejects forged identity, invalid metadata, cron, and non-external callers [7.54ms]
+[control-plane] GET /projects.list 200 request_id=b5ac6137-96a9-42e0-a699-5b95ced7ef3e latency=0ms
+(pass) external manager control-plane access > projects.list returns only linked projects [6.01ms]
+[control-plane] GET /projects.list 200 request_id=25d3b07c-1d2c-4531-ab6c-f2af3575cda7 latency=0ms
+[control-plane] GET /projects.list 200 request_id=a9854873-f8c0-4229-9ccc-271f4daecff3 latency=1ms
+[control-plane] GET /workspaces.get?workspaceId=ws-Z55bcfmp 200 request_id=8f9d2e50-ffa3-4219-8a3b-2bbd1ce0579c latency=1ms
+[control-plane] POST /workspaces.dispatch 200 request_id=27898aac-5719-4701-a93f-c5410baa3561 latency=2ms
+(pass) external manager control-plane access > all-scope manager lists current and future projects and can operate on both [10.30ms]
+[control-plane] GET /events.poll?afterSeq=0&waitMs=0 200 request_id=b0948bdb-e983-40dc-bba6-20840ff2f385 latency=1ms
+[control-plane] GET /events.poll?afterSeq=2&waitMs=0 200 request_id=745903e2-98e0-43dc-a26b-289115d7d779 latency=1ms
+(pass) external manager control-plane access > events.poll returns events after cursor and advances nextSeq [8.96ms]
+[control-plane] GET /events.poll?afterSeq=10&waitMs=0 200 request_id=cc000cb6-6932-4d79-bc52-781d3955a1bf latency=0ms
+(pass) external manager control-plane access > events.poll resets cursor when the file shrank [4.98ms]
+[control-plane] GET /events.poll?afterSeq=1&streamEpoch=epoch-a&waitMs=0 200 request_id=c01822c8-034c-4d37-96b0-20130c76ea67 latency=0ms
+[control-plane] GET /events.poll?afterSeq=2&streamEpoch=epoch-a&waitMs=0 200 request_id=eb3c2057-67cf-412b-9e0f-4c1140f181a8 latency=1ms
+(pass) external manager control-plane access > events.poll detects a versioned journal replacement without trusting the old cursor [3.95ms]
+[control-plane] GET /events.poll?afterSeq=1&waitMs=3000 200 request_id=646ae4b5-b5c4-481a-93a6-2f07d4432034 latency=1003ms
+(pass) external manager control-plane access > events.poll delivers events appended while the poll is waiting [1006.91ms]
+[control-plane] GET /workspaces.agent_output?workspaceId=ws-yJWe5FVv&lines=2 200 request_id=285eadec-1b7e-4f01-bd78-01aa6426d200 latency=1ms
+(pass) external manager control-plane access > workspaces.agent_output returns ANSI-stripped scrollback tail [4.37ms]
+[control-plane] GET /workspaces.agent_output?workspaceId=ws-DjWhYWje 200 request_id=0e5077a7-3485-4b59-9302-81ee59530743 latency=0ms
+(pass) external manager control-plane access > workspaces.agent_output returns null when no scrollback exists [3.73ms]
+[control-plane] POST /workspaces.dispatch 200 request_id=b0258a56-0288-4321-b941-20778d921b15 latency=2ms
+(pass) external manager control-plane access > dispatch with policy=auto skips the confirm modal [5.93ms]
+[control-plane] POST /workspaces.dispatch 499 request_id=05936f3e-8664-4de8-b8b5-3d0eff3f5a16 latency=1ms
+(pass) external manager control-plane access > dispatch with policy=confirm still consults the modal [4.55ms]
+[control-plane] POST /workspaces.remove 499 request_id=e1e44019-f592-4385-a2b0-f378659dc0d5 latency=1ms
+(pass) external manager control-plane access > remove_worktree is never auto-approved [4.95ms]
+(pass) external manager service CRUD > mutations refuse workspace-kind orchestrator ids [0.69ms]
+(pass) external manager service CRUD > create → token authenticates, list hides hash, regenerate rotates, delete removes [2.14ms]
+(pass) external manager service CRUD > all-project access is explicit while selected remains the safe default [0.77ms]
+(pass) yaml merge + hermes config install > mergeYamlKey creates file and nests keys; removeYamlKey deletes [7.44ms]
+(pass) yaml merge + hermes config install > mergeYamlKey preserves unrelated keys [0.86ms]
+(pass) yaml merge + hermes config install > mergeYamlKey preserves comments and anchors in a hand-written config [1.89ms]
+(pass) yaml merge + hermes config install > mergeYamlKey treats a comments-only file as an empty mapping [1.09ms]
+(pass) yaml merge + hermes config install > installIntoHermesConfig writes and securely resolves the manager identity [2.42ms]
+
+tests/cross-repo-coordinator-launch.test.ts:
+(pass) coordinator launch > getCoordinatorLaunch builds the CLI command for the agent kind [1.05ms]
+(pass) coordinator launch > getCoordinatorLaunch uses gemini preset flags [0.37ms]
+(pass) coordinator launch > coordinator launch omits permission flag when skipPermissions is off
+(pass) coordinator launch > coordinator launch includes permission flag when skipPermissions is on [0.57ms]
+(pass) coordinator launch > markAgentStarted flips status to working [0.39ms]
+
+tests/control-plane.test.ts:
+[control-plane] unauthorized request request_id=5da6d39d-bc3b-40d0-a08b-3e61e29386de
+[control-plane] GET /workspaces.list?projectId=proj-MRkEJT0P 401 request_id=5da6d39d-bc3b-40d0-a08b-3e61e29386de latency=0ms
+(pass) control-plane HTTP > rejects missing token with 401 [56.33ms]
+[control-plane] unauthorized request request_id=2eebb564-d235-4e64-9d70-b04345414d3d
+[control-plane] GET /workspaces.list?projectId=proj-22SqE4Hp 401 request_id=2eebb564-d235-4e64-9d70-b04345414d3d latency=0ms
+(pass) control-plane HTTP > rejects bad token with 401 [61.65ms]
+[control-plane] GET /nope 404 request_id=87edcee3-5b37-42b7-9223-720b9abcd54a latency=0ms
+(pass) control-plane HTTP > returns 404 for unknown route [36.31ms]
+[control-plane] POST /workspaces.create 200 request_id=dddfe6d7-382a-4495-8c0f-3a0d6bea5db2 latency=78ms
+[control-plane] GET /workspaces.list?projectId=proj-XXhFy0OK 200 request_id=721f6e56-8a23-4458-84bc-91d2f90d9066 latency=1ms
+[control-plane] GET /workspaces.get?projectId=proj-XXhFy0OK&workspaceId=jhDHpPjDqOBUIC_4s9Fgp 200 request_id=c9c4980c-dd32-4016-8ce0-87774f6a4999 latency=63ms
+[control-plane] POST /workspaces.remove 200 request_id=b0245d17-7d0e-442f-aa0b-eda705edbed0 latency=131ms
+(pass) control-plane HTTP > create + list + get + remove round-trip [313.11ms]
+[control-plane] POST /workspaces.create 200 request_id=7d3e8804-47ee-40b4-a16a-e8dbdebc7275 latency=82ms
+[control-plane] GET /workspaces.get?projectId=other&workspaceId=mczgHXbnuPosH9cwuGraE 401 request_id=7a24d8dd-02be-43cf-95cc-6db624e061b5 latency=0ms
+(pass) control-plane HTTP > 401 on cross-project access (caller scoping rejects before service layer) [121.90ms]
+[control-plane] POST /workspaces.create 400 request_id=9cea60c0-d35f-4959-922b-306ce38e33d5 latency=0ms
+(pass) control-plane HTTP > 400 on invalid body [42.27ms]
+[control-plane] POST /workspaces.create 200 request_id=a632dedb-6990-4002-8b90-73632bacba80 latency=80ms
+[control-plane] POST /workspaces.dispatch 200 request_id=457df686-9c3c-49c2-882f-996a9014c224 latency=64ms
+(pass) control-plane HTTP > dispatch route returns started status [180.72ms]
+[control-plane] POST /workspaces.create 200 request_id=78549ce0-aab6-4ae1-b4a5-96dd53f9ac3d latency=110ms
+[control-plane] POST /workspaces.dispatch 499 request_id=51912a84-6212-4a3d-a3ec-ae12ca497395 latency=73ms
+(pass) control-plane HTTP > 499 when confirm denies dispatch [226.68ms]
+[control-plane] POST /workspaces.create 200 request_id=0bf66738-6ee0-4c45-98d7-9abc12c4f48c latency=87ms
+[control-plane] GET /workspaces.get?projectId=proj-eGeD47Q-&workspaceId=does-not-exist 404 request_id=aa996230-1344-4d59-9517-ffc3a2312b5f latency=1ms
+(pass) control-plane HTTP > 404 when workspaceId not found [129.58ms]
+[control-plane] POST /workspaces.create 200 request_id=23ae6a10-9e29-4c83-99e4-00916a1ba5e5 latency=77ms
+[control-plane] GET /workspaces.get?projectId=proj-vaOu-w6I&workspaceId=does-not-exist 404 request_id=7d09f4cb-a2e7-4a3c-976d-6c31b0a778a6 latency=1ms
+(pass) control-plane HTTP > unknown workspace returns 404 via typed NotFoundError [114.97ms]
+[control-plane] POST /workspaces.remove 401 request_id=d0b4e75c-853a-4f6c-a1ed-af164836264b latency=0ms
+(pass) control-plane HTTP > workspaces.remove rejects xro caller for non-linked project [74.11ms]
+[control-plane] POST /workspaces.dispatch 401 request_id=c54fbeca-b441-4480-ba3d-21dc48c6ddef latency=0ms
+(pass) control-plane HTTP > workspaces.dispatch rejects xro caller for non-linked project [42.58ms]
+[control-plane] POST /workspaces.create 401 request_id=76655952-88aa-4d51-912d-aa00a3315f52 latency=1ms
+(pass) control-plane HTTP > workspaces.create rejects xro caller for non-linked project [37.45ms]
+[control-plane] POST /workspaces.create 401 request_id=bb49541a-1b65-4a7e-bc72-a91b8db46336 latency=0ms
+(pass) control-plane HTTP > workspaces.create rejects caller with no header [36.42ms]
+[control-plane] GET /workspaces.list?projectId=proj-bWfcHYQP 401 request_id=cffdccce-fe0f-4c4f-9b4f-ee2330580fca latency=0ms
+(pass) control-plane HTTP > workspaces.list rejects caller with no workspace/xro header [34.04ms]
+[control-plane] GET /workspaces.list?projectId=proj-27TgaRKy 401 request_id=9f83533f-fb3b-40b3-9478-826e1b94eab4 latency=0ms
+(pass) control-plane HTTP > workspaces.list rejects workspace caller requesting a different project [34.59ms]
+[control-plane] GET /workspaces.list?projectIds=proj-wbcDahtt,proj-_Aa-5df6 401 request_id=c1463a5e-a8ce-4cc5-8839-6358666f2d35 latency=1ms
+(pass) control-plane HTTP > workspaces.list rejects xro caller when any projectId is not linked [47.36ms]
+[control-plane] GET /workspaces.list?projectIds=proj-ry0i6_7W 200 request_id=377acc7e-28a0-4fd6-aa13-0855a22f5198 latency=1ms
+(pass) control-plane HTTP > workspaces.list allows xro caller when all projectIds are linked [60.06ms]
+[control-plane] POST /workspaces.create 200 request_id=97cb5ee0-c5d3-488e-bad1-1d9066e440f9 latency=76ms
+[control-plane] POST /workspaces.set_status 200 request_id=4e755f24-c841-41ae-a1f5-855becfdd102 latency=7ms
+[control-plane] GET /workspaces.get?projectId=proj-qOiRfUbm&workspaceId=nZ93i6cr_f8z085prxVac 200 request_id=95c46255-fe76-4132-ba6f-ccd04342e504 latency=65ms
+(pass) control-plane coordination routes > set_status updates the row [201.51ms]
+[control-plane] POST /workspaces.set_status 200 request_id=5a926233-2479-4b54-8cbd-0c9c70d60fe9 latency=10ms
+(pass) control-plane coordination routes > status HTTP binds the reporting terminal and clears only its completed turn [53.87ms]
+[control-plane] POST /workspaces.set_status 401 request_id=22ea7fcf-d7e1-4b4c-b4d6-1f9a054ed792 latency=0ms
+(pass) control-plane coordination routes > set_status without X-Workspace-Id returns 401 [41.82ms]
+[control-plane] POST /workspaces.create 200 request_id=bedc34c7-4628-48ba-8c8d-e833a8d6aeff latency=87ms
+[control-plane] POST /workspaces.create 200 request_id=8f3fc366-76ab-4c28-8a6f-8ac55b81545c latency=97ms
+[control-plane] POST /workspaces.send_message 200 request_id=e6d5fd47-77bf-4e12-9715-39df22a36655 latency=1ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-1qLIYHvu 200 request_id=d2e6c8f8-4830-4cea-b6d1-f1267db3a5ad latency=2ms
+(pass) control-plane coordination routes > send_message + read_messages round-trip [231.92ms]
+[control-plane] POST /workspaces.create 200 request_id=b9db5d25-f651-41a2-9f05-ca3545088ffd latency=94ms
+[control-plane] POST /workspaces.create 200 request_id=2e0ac9f3-8106-47ca-ab2a-d76e997c5f43 latency=83ms
+[control-plane] POST /workspaces.resume_agent 403 request_id=5cb825db-cbad-43c4-a869-29a5b1aa85f2 latency=1ms
+(pass) control-plane coordination routes > resume_agent returns 403 for non-orchestrator caller [222.97ms]
+[control-plane] GET /context.resolve?cwd=%2Fnowhere 200 request_id=f45b9598-8624-4975-983c-4e6e95f493b5 latency=0ms
+(pass) /context.resolve > returns mode:none when cwd unknown and no token [45.51ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fcp-x6Rnez%2Frepo 200 request_id=2fa11984-01b6-468a-a9eb-22b356f2d3be latency=1ms
+(pass) /context.resolve > returns workspace-agent for registered worktree [50.30ms]
+[control-plane] GET /context.resolve?cwd=/x&taskToken=tok-1 200 request_id=db9ea172-16a4-4741-861f-d3381d5e393f latency=0ms
+(pass) /context.resolve > resolves taskToken to review mode [40.32ms]
+[control-plane] GET /context.resolve?cwd=/x&taskToken=tok-2 200 request_id=1c589745-19b2-4d6e-b691-d9deedd49713 latency=0ms
+[control-plane] GET /context.resolve?cwd=/x&taskToken=tok-2 200 request_id=e1c9a52c-ed02-47b2-9ade-c6647c0dd06c latency=0ms
+(pass) /context.resolve > taskToken is single-use [39.05ms]
+[control-plane] unauthorized request request_id=dd0c6294-7a76-400c-aaa4-636d81217d11
+[control-plane] GET /context.resolve?cwd=/x 401 request_id=dd0c6294-7a76-400c-aaa4-636d81217d11 latency=0ms
+(pass) /context.resolve > requires auth [40.43ms]
+
+tests/queue-inbox-scope.test.ts:
+(pass) workspace: sibling-only rows are filtered before the bounded inbox limit [14.36ms]
+(pass) workspace: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [88.18ms]
+(pass) workspace: wrong generation/provider/entity/project is never visible or retrieved [8.89ms]
+(pass) coordinator: sibling-only rows are filtered before the bounded inbox limit [16.17ms]
+(pass) coordinator: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [90.53ms]
+(pass) coordinator: wrong generation/provider/entity/project is never visible or retrieved [13.05ms]
+(pass) all-project coordinator scope follows current inventory and keeps its own directory [5.28ms]
+(pass) selected coordinator scope stays limited to current explicit links [8.62ms]
+
+tests/queue-postpatch-independent.test.ts:
+(pass) independent claude/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [610.76ms]
+(pass) independent claude/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [495.01ms]
+(pass) independent claude/folder/manual: exact owner, grouped completion, sibling isolation and continuation [678.17ms]
+(pass) independent claude/folder/managed: exact owner, grouped completion, sibling isolation and continuation [514.77ms]
+(pass) independent claude/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [411.15ms]
+(pass) independent claude/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [440.02ms]
+(pass) independent claude/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [487.78ms]
+(pass) independent claude/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [525.50ms]
+(pass) independent codex/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [524.28ms]
+(pass) independent codex/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [570.71ms]
+(pass) independent codex/folder/manual: exact owner, grouped completion, sibling isolation and continuation [750.10ms]
+(pass) independent codex/folder/managed: exact owner, grouped completion, sibling isolation and continuation [579.92ms]
+(pass) independent codex/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [604.92ms]
+(pass) independent codex/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [753.19ms]
+(pass) independent codex/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [738.23ms]
+(pass) independent codex/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [693.68ms]
+(pass) all-projects coordinator context includes dynamically authorized repo and folder [3.37ms]
+(pass) recipient inbox pagination cannot starve an older unread answer behind sibling-only answers [261.46ms]
+(pass) cross-repo coordinator accepts the production dispatch service with an isolated launch target [1.44ms]
+
+tests/coordinator-dispatch.test.ts:
+(pass) claude: production coordinator dispatch persists exact managed ownership without a surrogate workspace [7.62ms]
+(pass) codex: production coordinator dispatch persists exact managed ownership without a surrogate workspace [2.49ms]
+(pass) coordinator service rejects project-scoped or external-manager targets before spawn [1.43ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=73ae378b-c9eb-4087-a212-b9d6207176ab latency=1ms
+[control-plane] POST /workspaces.dispatch 403 request_id=00309ed1-42a8-479e-b400-3c44809c0348 latency=0ms
+[control-plane] POST /workspaces.dispatch 401 request_id=6be3171e-7b33-4bc7-ac2e-e8085007273f latency=0ms
+[control-plane] POST /workspaces.dispatch 403 request_id=3a56f2cf-1676-4c7e-bde1-ec589e1f2794 latency=1ms
+[control-plane] POST /workspaces.dispatch 200 request_id=c9e1b1d4-3e59-472b-9744-347ecb9f3898 latency=1ms
+[control-plane] POST /workspaces.dispatch 403 request_id=878670ee-a514-4ef3-a182-0704ee6938a9 latency=0ms
+[control-plane] POST /workspaces.dispatch 499 request_id=33c4e559-c4e7-4eb9-91b5-7894de2a9267 latency=1ms
+[control-plane] POST /workspaces.dispatch 200 request_id=713f521d-b579-4413-8f6e-6211dfb1bc5e latency=0ms
+(pass) HTTP coordinator dispatch preserves token, linked scope, all-scope and confirmation policy [9.05ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=a8c35719-f3f6-4965-be3b-041225d81046 latency=1ms
+(pass) coordinator authority is rechecked after confirmation and spawn failure preserves status [4.88ms]
+
+tests/queue-investigation-mcp.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-H9XtjE%2Fcurrent-claude 200 request_id=7f1c67c8-2fa7-41b6-aa12-9785489ca943 latency=7ms
+[control-plane] POST /workspaces.set_status 200 request_id=c12859f3-b9f9-4726-a641-bdfc9cf9d530 latency=22ms
+[control-plane] POST /workspaces.set_status 200 request_id=9e1d65f9-5404-421e-b1d8-6c9414c8970a latency=22ms
+[control-plane] POST /workspaces.send_message 200 request_id=cb6e86d6-a48f-4638-9b73-6e0458b21292 latency=12ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=bdb1cae9-69f2-44cc-aaea-64b77a3a471f latency=0ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=b8e1e6cd-8a51-403d-8f74-aee2e75beecc latency=9ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-v6isGeMe&includeBroadcasts=false 200 request_id=38cac28d-3978-477d-80f8-e4a98c4bc292 latency=9ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=3f91b434-d295-4807-8160-2cebc82267a9 latency=10ms
+[control-plane] POST /workspaces.set_status 401 request_id=69e23a3f-690f-44d4-9cd0-e2fb85b09ecd latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-H9XtjE%2Fcurrent-codex 200 request_id=ddeab60a-8ac5-4d79-a45c-eb46c2348c8a latency=6ms
+[control-plane] POST /workspaces.set_status 200 request_id=3b9375f7-1166-4ab9-bc0b-cec047571678 latency=25ms
+[control-plane] POST /workspaces.set_status 200 request_id=c9362778-2b31-4ff9-aff7-7cbb2b77a37e latency=24ms
+[control-plane] POST /workspaces.send_message 200 request_id=006af08d-d089-4375-949c-cb4ba4163d79 latency=9ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=e58bea6e-8e9f-45ea-9e7c-f582425c9e45 latency=2ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=b3156995-ce2b-4984-81a7-8b0362e8b956 latency=10ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-lW6KCggS&includeBroadcasts=false 200 request_id=1cfeec90-e3a0-4a25-bc37-6847783c49b0 latency=12ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=f726506a-f24f-466b-b17f-0abc3ec380d6 latency=9ms
+[control-plane] POST /workspaces.set_status 401 request_id=ae11b41c-9fbf-4e8e-9120-0c066c4b0d9b latency=5ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-H9XtjE%2Fmissing-identity-claude 200 request_id=247dc8a5-1015-4185-bfed-cc20cc3a6c63 latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=fa30546b-acd4-4f0c-87a7-bc6139d86931 latency=20ms
+[control-plane] POST /workspaces.set_status 200 request_id=98b009b9-c8b6-4424-a509-5b04d1a75289 latency=26ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-H9XtjE%2Fmissing-identity-codex 200 request_id=5366764c-7e76-4e90-8d1a-58fae3005c5b latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=85e49efa-1879-42b3-8aea-9691fcf5e369 latency=20ms
+[control-plane] POST /workspaces.set_status 200 request_id=38e695c2-7698-4532-9691-cec24e34b0c2 latency=19ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-H9XtjE 200 request_id=c00adc0b-6f9f-4077-8c8b-803ca60f4345 latency=11ms
+[control-plane] POST /workspaces.set_status 200 request_id=c4035423-1dd2-4a5f-a21a-04b19a71cc88 latency=36ms
+(pass) MCP current/legacy/missing identity and cross-repo linked folder reports [2033.42ms]
+
+tests/workspace-service.test.ts:
+(pass) createWorkspace > creates worktree, workspace, and worktree DB rows [121.09ms]
+(pass) createWorkspace > uses project default branch when baseBranch omitted [109.10ms]
+(pass) createWorkspace > throws when project does not exist [33.56ms]
+(pass) createWorkspace > rolls back on-disk worktree if DB insert fails [117.49ms]
+[workspace-service] createWorkspace rollback failed: warn: simulated wedged git removal
+      at _removeWorktree (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/tests/workspace-service.test.ts:155:18)
+      at createWorkspace (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/src/main/services/workspace-service.ts:169:35)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-entity-ownership/apps/desktop/tests/workspace-service.test.ts:159:14)
+
+(pass) createWorkspace > durably queues cleanup if on-disk rollback removal fails [111.86ms]
+(pass) listWorkspaces > returns workspaces for the given project only [179.84ms]
+(pass) listWorkspaces > returns empty list for project with no workspaces [33.36ms]
+(pass) getWorkspace > returns workspace + dirty flag [166.56ms]
+(pass) getWorkspace > throws not_found for unknown id [35.36ms]
+(pass) getWorkspace > throws forbidden when projectId mismatches [108.56ms]
+(pass) removeWorkspace > removes worktree and DB rows [171.12ms]
+(pass) removeWorkspace > blocks on uncommitted changes without force [118.25ms]
+(pass) removeWorkspace > force=true bypasses dirty guard [106.27ms]
+(pass) removeWorkspace > forbidden across projects [110.58ms]
+(pass) removeWorkspace > removes orphan workspace (worktreeId set but worktrees row missing) [34.33ms]
+(pass) dispatchAgent > calls spawnFn with workspace cwd + cli command [107.85ms]
+(pass) dispatchAgent > dispatch prompt is passed through unchanged for non-orchestrator workspaces [106.25ms]
+(pass) dispatchAgent > orchestrator dispatch does NOT prepend a preamble — coordination rules are delivered via MCP [107.86ms]
+(pass) dispatchAgent > forbidden across projects [104.42ms]
+(pass) dispatchAgent > includes correct permission flag per preset [115.31ms]
+(pass) dispatchAgent > does not persist cliSessionId if spawn throws [110.63ms]
+(pass) readMessages > readMessages with no since returns messages older than 1 hour [106.89ms]
+
+ 145 pass
+ 0 fail
+ 1095 expect() calls
+Ran 145 tests across 10 files. [19.33s]

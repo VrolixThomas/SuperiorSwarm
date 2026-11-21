@@ -1,4 +1,4 @@
-/** Initialization never waits on provider hooks. A bounded asynchronous exchange can run
+/** This fallback never blocks transport startup. A bounded asynchronous exchange can run
  * after transport startup and is also awaited by the first tool. Existing pins never change. */
 export function createReporterAdmission(context, baseUrl, authorization) {
 	let pending;
