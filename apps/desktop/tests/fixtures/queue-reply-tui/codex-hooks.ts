@@ -6,7 +6,7 @@ import TOML from "@iarna/toml";
 export async function codexHookTrust(
 	binary: string,
 	cwd: string,
-	events: Record<string, unknown>,
+	events: Record<string, Parameters<typeof TOML.stringify.value>[0]>,
 	env: NodeJS.ProcessEnv,
 	bridge: string
 ) {
@@ -59,14 +59,15 @@ export async function codexHookTrust(
 		};
 		const hooks = result.data.flatMap((row) => row.hooks);
 		assert(hooks.some((hook) => hook.command?.includes(bridge)));
-		return Object.fromEntries(
-			hooks.map((hook) => [
-				hook.key,
-				hook.command?.includes(bridge)
-					? { enabled: true, trusted_hash: hook.currentHash }
-					: { enabled: false },
-			])
-		);
+		const state: Record<string, Record<string, boolean | string>> = {};
+		for (const hook of hooks) {
+			if (hook.command?.includes(bridge)) {
+				state[hook.key] = { enabled: true, trusted_hash: hook.currentHash };
+			} else {
+				state[hook.key] = { enabled: false };
+			}
+		}
+		return state;
 	} finally {
 		clearTimeout(timer);
 		lines.close();
