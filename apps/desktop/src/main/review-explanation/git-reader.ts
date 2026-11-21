@@ -31,6 +31,7 @@ export function readGit(root: string, args: string[], signal: AbortSignal): Prom
 				encoding: "buffer",
 				maxBuffer: 8 * 1024 * 1024,
 				timeout: 10_000,
+				killSignal: "SIGKILL",
 				signal,
 				env: {
 					PATH: process.env["PATH"],
@@ -62,4 +63,22 @@ export function readGit(root: string, args: string[], signal: AbortSignal): Prom
 			}
 		);
 	});
+}
+
+/** Validate only a full, local commit object; never resolve a mutable ref or fetch it. */
+export async function requireLocalCommit(
+	root: string,
+	sha: string,
+	signal: AbortSignal
+): Promise<void> {
+	if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha))
+		throw new Error("Reading-path revision must be a full commit ID");
+	try {
+		await readGit(root, ["cat-file", "-e", `${sha}^{commit}`], signal);
+	} catch (error) {
+		if (error instanceof GitReadError && error.reason === "cancelled") throw error;
+		throw new Error(
+			"Reading-path commit is unavailable locally; acquire the exact revision before retrying"
+		);
+	}
 }

@@ -1,9 +1,10 @@
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { safeStorage } from "electron";
 import { getDb } from "../db";
 import { atlassianAuth } from "../db/schema";
 import { markProviderConnected } from "../telemetry/state";
-import { TokenEndpointError, createAuthCore } from "./auth-core";
+import { type AuthSnapshot, TokenEndpointError, createAuthCore } from "./auth-core";
 import {
 	BITBUCKET_CLIENT_ID,
 	BITBUCKET_CLIENT_SECRET,
@@ -15,18 +16,28 @@ import {
 
 type Service = "jira" | "bitbucket";
 
+// A fresh envelope is also a durable generation: reconnecting with identical tokens
+// still invalidates an in-flight refresh. Older unwrapped credentials remain readable.
+const TOKEN_ENVELOPE = "superiorswarm-oauth-v1:";
 function encrypt(value: string): string {
+	const envelope = TOKEN_ENVELOPE + JSON.stringify({ generation: randomUUID(), value });
 	if (safeStorage.isEncryptionAvailable()) {
-		return safeStorage.encryptString(value).toString("base64");
+		return safeStorage.encryptString(envelope).toString("base64");
 	}
-	return value;
+	return envelope;
 }
 
 function decrypt(value: string): string {
-	if (safeStorage.isEncryptionAvailable()) {
-		return safeStorage.decryptString(Buffer.from(value, "base64"));
-	}
-	return value;
+	const decrypted = safeStorage.isEncryptionAvailable()
+		? safeStorage.decryptString(Buffer.from(value, "base64"))
+		: value;
+	return decrypted.startsWith(TOKEN_ENVELOPE)
+		? (JSON.parse(decrypted.slice(TOKEN_ENVELOPE.length)) as { value: string }).value
+		: decrypted;
+}
+
+function credentialVersion(row: typeof atlassianAuth.$inferSelect): string {
+	return createHash("sha256").update(JSON.stringify(row)).digest("hex");
 }
 
 export function getAuth(service: Service) {
@@ -35,6 +46,7 @@ export function getAuth(service: Service) {
 	if (!row) return null;
 	return {
 		...row,
+		credentialVersion: credentialVersion(row),
 		accessToken: decrypt(row.accessToken),
 		refreshToken: decrypt(row.refreshToken),
 	};
@@ -96,9 +108,13 @@ function createTokenEndpointError(service: Service, status: number, body: string
 		const parsed = JSON.parse(body) as { error?: unknown };
 		if (typeof parsed.error === "string") oauthError = parsed.error;
 	} catch {
-		// Preserve the response text for diagnostics when the endpoint did not return JSON.
+		// A non-JSON error is still classified by HTTP status.
 	}
-	return new TokenEndpointError(status, `${service} token refresh failed: ${body}`, oauthError);
+	return new TokenEndpointError(
+		status,
+		`${service} token refresh failed (HTTP ${status})`,
+		oauthError
+	);
 }
 
 /**
@@ -106,11 +122,11 @@ function createTokenEndpointError(service: Service, status: number, body: string
  * still has the previous token in flight. Never let a late invalid_grant erase
  * credentials that another process has already replaced.
  */
-function deleteAuthIfRefreshTokenMatches(service: Service, refreshToken: string) {
+function deleteAuthIfMatches(service: Service, expected: AuthSnapshot) {
 	const db = getDb();
 	db.transaction((tx) => {
 		const row = tx.select().from(atlassianAuth).where(eq(atlassianAuth.service, service)).get();
-		if (row && decrypt(row.refreshToken) === refreshToken) {
+		if (row && credentialVersion(row) === expected.credentialVersion) {
 			tx.delete(atlassianAuth).where(eq(atlassianAuth.service, service)).run();
 		}
 	});
@@ -175,22 +191,24 @@ async function refreshBitbucketToken(refreshToken: string): Promise<{
 // Electron or the database.
 const core = createAuthCore<Service>({
 	getAuth,
-	saveTokens(service, tokens) {
-		const auth = getAuth(service);
-		if (!auth) return;
-		saveAuth({
-			service,
-			accessToken: tokens.accessToken,
-			refreshToken: tokens.refreshToken,
-			expiresIn: tokens.expiresIn,
-			cloudId: auth.cloudId ?? undefined,
-			siteUrl: auth.siteUrl ?? undefined,
-			accountId: auth.accountId,
-			displayName: auth.displayName ?? undefined,
-			email: auth.email ?? undefined,
+	saveTokens(service, tokens, expected) {
+		const db = getDb();
+		return db.transaction((tx) => {
+			const row = tx.select().from(atlassianAuth).where(eq(atlassianAuth.service, service)).get();
+			if (!row || credentialVersion(row) !== expected.credentialVersion) return false;
+			// The transaction compares and updates the same row; account metadata is untouched.
+			tx.update(atlassianAuth)
+				.set({
+					accessToken: encrypt(tokens.accessToken),
+					refreshToken: encrypt(tokens.refreshToken),
+					expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+				})
+				.where(eq(atlassianAuth.service, service))
+				.run();
+			return true;
 		});
 	},
-	deleteAuthIfRefreshTokenMatches,
+	deleteAuthIfMatches,
 	refreshToken(service, refreshToken) {
 		return service === "jira"
 			? refreshJiraToken(refreshToken)

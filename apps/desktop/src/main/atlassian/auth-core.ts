@@ -25,19 +25,23 @@ export interface TokenRefreshResult {
 	expires_in: number;
 }
 
+export interface AuthSnapshot {
+	accessToken: string;
+	refreshToken: string;
+	expiresAt: Date;
+	/** Opaque persisted credential generation, including the account metadata. */
+	credentialVersion: string;
+}
+
 export interface AuthCoreDeps<S extends string> {
-	getAuth(service: S): { accessToken: string; refreshToken: string; expiresAt: Date } | null;
-	/** Persist rotated tokens, preserving all other stored fields for the service. */
+	getAuth(service: S): AuthSnapshot | null;
+	/** Atomically update only the exact originating credential generation. */
 	saveTokens(
 		service: S,
-		tokens: { accessToken: string; refreshToken: string; expiresIn: number }
-	): void;
-	/**
-	 * Delete credentials only when they still contain the refresh token used by
-	 * this request. Another app process may have rotated and stored a replacement
-	 * while this refresh was in flight.
-	 */
-	deleteAuthIfRefreshTokenMatches(service: S, refreshToken: string): void;
+		tokens: { accessToken: string; refreshToken: string; expiresIn: number },
+		expected: AuthSnapshot
+	): boolean;
+	deleteAuthIfMatches(service: S, expected: AuthSnapshot): void;
 	refreshToken(service: S, refreshToken: string): Promise<TokenRefreshResult>;
 	fetchFn?: typeof fetch;
 }
@@ -46,28 +50,42 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 	const fetchFn = deps.fetchFn ?? fetch;
 
 	// Guard against concurrent refresh requests for the same service
-	const refreshPromises = new Map<S, Promise<string | null>>();
+	const refreshPromises = new Map<S, { version: string; promise: Promise<string | null> }>();
 
-	async function doRefresh(service: S): Promise<string | null> {
-		const auth = deps.getAuth(service);
-		if (!auth) return null;
-
+	async function doRefresh(service: S, auth: AuthSnapshot): Promise<string | null> {
 		try {
 			const result = await deps.refreshToken(service, auth.refreshToken);
-			deps.saveTokens(service, {
-				accessToken: result.access_token,
-				// Some token endpoints omit refresh_token on refresh — keep the old one.
-				refreshToken: result.refresh_token ?? auth.refreshToken,
-				expiresIn: result.expires_in,
-			});
-			return result.access_token;
+			if (
+				!result ||
+				typeof result.access_token !== "string" ||
+				!result.access_token ||
+				(result.refresh_token !== undefined &&
+					(typeof result.refresh_token !== "string" || !result.refresh_token)) ||
+				!Number.isFinite(result.expires_in) ||
+				result.expires_in <= 0
+			)
+				throw new Error("Invalid token refresh response");
+			const saved = deps.saveTokens(
+				service,
+				{
+					accessToken: result.access_token,
+					// Some token endpoints omit refresh_token on refresh — keep the old one.
+					refreshToken: result.refresh_token ?? auth.refreshToken,
+					expiresIn: result.expires_in,
+				},
+				auth
+			);
+			return saved ? result.access_token : null;
 		} catch (err) {
-			console.error(`Token refresh failed for ${service}:`, err);
+			console.error(
+				`Token refresh failed for ${service}`,
+				err instanceof TokenEndpointError ? err.status : "request failed"
+			);
 			// `invalid_grant` specifically means the refresh token is no longer
 			// usable. Other 4xx responses can be an app configuration, scope, or
 			// provider problem and must not silently disconnect the user.
 			if (err instanceof TokenEndpointError && err.oauthError === "invalid_grant") {
-				deps.deleteAuthIfRefreshTokenMatches(service, auth.refreshToken);
+				deps.deleteAuthIfMatches(service, auth);
 			}
 			return null;
 		}
@@ -75,13 +93,15 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 
 	/** Refresh now (deduplicated per service), regardless of local expiry. */
 	function forceRefresh(service: S): Promise<string | null> {
+		const auth = deps.getAuth(service);
+		if (!auth) return Promise.resolve(null);
 		const existing = refreshPromises.get(service);
-		if (existing) return existing;
+		if (existing?.version === auth.credentialVersion) return existing.promise;
 
-		const promise = doRefresh(service).finally(() => {
-			refreshPromises.delete(service);
+		const promise = doRefresh(service, auth).finally(() => {
+			if (refreshPromises.get(service)?.promise === promise) refreshPromises.delete(service);
 		});
-		refreshPromises.set(service, promise);
+		refreshPromises.set(service, { version: auth.credentialVersion, promise });
 		return promise;
 	}
 
@@ -117,8 +137,12 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 			throw new Error(`Not connected to ${service}`);
 		}
 
-		const doFetch = (accessToken: string) =>
-			fetchFn(url, {
+		let requestVersion = deps.getAuth(service)?.credentialVersion;
+		const doFetch = (accessToken: string) => {
+			const current = deps.getAuth(service);
+			if (current?.accessToken !== accessToken || current?.credentialVersion !== requestVersion)
+				throw new Error(`${service} connection changed during request`);
+			return fetchFn(url, {
 				...init,
 				headers: {
 					...init?.headers,
@@ -126,16 +150,20 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 					Accept: "application/json",
 				},
 			});
+		};
 
 		let res = await doFetch(token);
 
 		if (res.status === 401) {
+			if (deps.getAuth(service)?.credentialVersion !== requestVersion)
+				throw new Error(`${service} connection changed during request`);
 			const fresh = await forceRefresh(service);
 			if (!fresh) {
 				// doRefresh already deleted auth if the refresh token is dead;
 				// on transient failure the stored auth survives for the next attempt.
 				throw new Error(`${service} authentication temporarily unavailable`);
 			}
+			requestVersion = deps.getAuth(service)?.credentialVersion;
 			res = await doFetch(fresh);
 			if (res.status === 401) {
 				throw new Error(
