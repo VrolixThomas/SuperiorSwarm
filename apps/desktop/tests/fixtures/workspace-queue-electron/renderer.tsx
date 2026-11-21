@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
+import { registerCoreActions } from "../../../src/renderer/actions/core-actions";
 import { MainLayout } from "../../../src/renderer/components/MainLayout";
 import { NavRail } from "../../../src/renderer/components/NavRail";
 import { QueueView } from "../../../src/renderer/components/queue/QueueView";
 import { WorkspaceQueueSync } from "../../../src/renderer/hooks/useWorkspaceQueue";
 import { useTabStore } from "../../../src/renderer/stores/tab-store";
 import { trpc, trpcVanilla } from "../../../src/renderer/trpc/client";
+registerCoreActions();
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 for (const id of ["w1", "w2", "w3"])
 	useTabStore.getState().addTerminalTab(id, "/tmp", id, `terminal-${id}`);

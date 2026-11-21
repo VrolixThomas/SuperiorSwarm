@@ -280,6 +280,29 @@ async function run() {
 			!fit.panelFits
 		)
 			throw new Error(`Layout mismatch ${width}: ${JSON.stringify(fit)}`);
+		for (const label of ["Queue 3", "Projects", "Tickets", "PRs", "Agents", "Settings"]) {
+			const point = await js<{ x: number; y: number }>(`(() => {
+				const r = document.querySelector('nav button[aria-label="${label}"]').getBoundingClientRect();
+				return {x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2)};
+			})()`);
+			contents.sendInputEvent({ type: "mouseMove", ...point });
+			await until(() =>
+				js<boolean>(
+					`document.querySelector('[role="tooltip"]')?.textContent.startsWith(${JSON.stringify(label.split(" ")[0])}) ?? false`
+				)
+			);
+			const tooltipFits = await js<boolean>(`(() => {
+				const r = document.querySelector('[role="tooltip"]').getBoundingClientRect();
+				return r.left >= 72 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight;
+			})()`);
+			if (!tooltipFits) throw new Error(`Clipped rail tooltip: ${label} at ${width}x${height}`);
+			if (label === "Tickets" && width === 800)
+				await contents
+					.capturePage()
+					.then((c) => writeFileSync(join(root, "rail-hover.png"), c.toPNG()));
+		}
+		contents.sendInputEvent({ type: "mouseMove", x: width - 20, y: height - 20 });
+		await until(() => js<boolean>("!document.querySelector('[role=tooltip]')"));
 		await contents
 			.capturePage()
 			.then((c) => writeFileSync(join(root, `queue-${width}x${height}.png`), c.toPNG()));
@@ -308,6 +331,28 @@ async function run() {
 			"document.querySelector('[data-workspace-diff]')?.getBoundingClientRect().width > 0"
 		)
 	);
+	const ticketsPoint = await js<{ x: number; y: number }>(`(() => {
+		const r = document.querySelector('nav button[aria-label="Tickets"]').getBoundingClientRect();
+		return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
+	})()`);
+	contents.sendInputEvent({ type: "mouseMove", ...ticketsPoint });
+	await until(() =>
+		js<boolean>(
+			"document.querySelector('[role=tooltip]')?.textContent.startsWith('Tickets') ?? false"
+		)
+	);
+	await new Promise((resolve) => setTimeout(resolve, 200));
+	if (
+		!(await js<boolean>(
+			`getComputedStyle(document.querySelector('nav button[aria-label="Tickets"]')).backgroundColor !== getComputedStyle(document.querySelector('nav button[aria-current="page"]')).backgroundColor`
+		))
+	)
+		throw new Error("Hover looks identical to selected navigation");
+	await contents
+		.capturePage({ x: 0, y: 0, width: 280, height: 500 })
+		.then((c) => writeFileSync(join(root, "rail-hover-projects.png"), c.toPNG()));
+	contents.sendInputEvent({ type: "mouseMove", x: 700, y: 600 });
+	await until(() => js<boolean>("!document.querySelector('[role=tooltip]')"));
 	const workspaceLayout = await js<string>(
 		"localStorage.getItem('react-resizable-panels:app-layout')"
 	);

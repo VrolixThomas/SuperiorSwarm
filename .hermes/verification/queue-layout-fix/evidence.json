@@ -8,7 +8,7 @@
   ],
   "accessibility": {
     "status": "pass",
-    "evidence": "Native Chromium asserts visible keyboard focus >=2px and uses arrow selection, Enter Open, E Done, Z Undo, H/1 Later, B Bring back. Semantic buttons with names, aria-current selection, tab/pressed states, live status/error output. No positional animations; existing token contrast visually inspected."
+    "evidence": "Native Chromium asserts visible keyboard focus >=2px and uses arrow selection, Enter Open, E Done, Z Undo, H/1 Later, B Bring back. Semantic buttons with names, aria-current selection, tab/pressed states, live status/error output. No positional animations; existing token contrast visually inspected. Native pointer hover verifies all six tooltips including keyboard badges at four sizes. Tooltip portals have role=tooltip; hover and selected backgrounds differ."
   },
   "responsive": {
     "status": "pass",
@@ -65,6 +65,16 @@
       "viewport": "1200x500",
       "artifact": "queue-short-scrolled.png",
       "observation": "Long question scrolls independently; Open, Later and Done reachable within the window."
+    },
+    {
+      "viewport": "800x600",
+      "artifact": "rail-hover.png",
+      "observation": "Tickets tooltip opens to the right with its complete shortcut badge; all six rail tooltips fit the viewport at all four sizes."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "rail-hover-projects.png",
+      "observation": "Cropped native capture of Projects selected and Tickets hovered. Tooltip stays outside the rail, fully visible; hover background is quieter than selected background."
     }
   ],
   "limitations": [

@@ -48,7 +48,7 @@ export function NavRail() {
 						key={next}
 						className={next === "repos" ? "mt-2 border-t border-[var(--border-subtle)] pt-3" : ""}
 					>
-						<Tooltip label={label} actionId={action} className="w-full">
+						<Tooltip label={label} actionId={action} className="w-full" placement="right">
 							<button
 								type="button"
 								aria-label={
@@ -63,7 +63,7 @@ export function NavRail() {
 								data-queue-trigger={next === "queue" ? "" : undefined}
 								aria-current={!settings && segment === next ? "page" : undefined}
 								onClick={() => navigate(next)}
-								className={`relative flex h-[58px] w-full flex-col items-center justify-center gap-1.5 rounded-lg text-[10px] font-medium outline-offset-2 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${!settings && segment === next ? "bg-[var(--bg-elevated)] text-[var(--text)]" : "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"}`}
+								className={`relative flex h-[58px] w-full flex-col items-center justify-center gap-1.5 rounded-lg text-[10px] font-medium outline-offset-2 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${!settings && segment === next ? "bg-[var(--bg-elevated)] text-[var(--text)]" : "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]/50 hover:text-[var(--text)]"}`}
 							>
 								<QueueIcon name={next} />
 								<span>{label}</span>
@@ -86,13 +86,13 @@ export function NavRail() {
 				))}
 			</div>
 			<div className="border-t border-[var(--border-subtle)] px-2 py-3">
-				<Tooltip label="Settings" actionId="general.settings" className="w-full">
+				<Tooltip label="Settings" actionId="general.settings" className="w-full" placement="right">
 					<button
 						type="button"
 						aria-label="Settings"
 						aria-current={settings ? "page" : undefined}
 						onClick={() => useProjectStore.getState().openSettings()}
-						className={`relative flex h-[58px] w-full flex-col items-center justify-center gap-1.5 rounded-lg text-[10px] outline-offset-2 hover:bg-[var(--bg-elevated)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${settings ? "text-[var(--text)] bg-[var(--bg-elevated)]" : "text-[var(--text-tertiary)]"}`}
+						className={`relative flex h-[58px] w-full flex-col items-center justify-center gap-1.5 rounded-lg text-[10px] outline-offset-2 focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${settings ? "text-[var(--text)] bg-[var(--bg-elevated)]" : "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]/50 hover:text-[var(--text)]"}`}
 					>
 						<QueueIcon name="settings" />
 						<span>Settings</span>
