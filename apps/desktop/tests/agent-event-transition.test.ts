@@ -260,3 +260,34 @@ test("unseen event identity alone cannot order a missing-turn Stop after explici
 	);
 	expect(prompt?.snapshot.continuation).toBe("reported");
 });
+
+test("a distinct permission request replaces stale request text instead of relabeling it", () => {
+	const first = transition(
+		null,
+		event("PermissionRequest", {
+			permission: { outcome: "pending", requestId: "p1" },
+			evidence: admitAgentEvidence(
+				{ permission_prompt: "Old request" },
+				"claude",
+				"PermissionRequest"
+			),
+		})
+	);
+	const second = transition(
+		first?.snapshot,
+		event("PermissionRequest", {
+			permission: { outcome: "pending", requestId: "p2" },
+			evidence: admitAgentEvidence(
+				{ permission_prompt: "New request" },
+				"claude",
+				"PermissionRequest"
+			),
+		})
+	);
+	expect(second?.attention?.evidence.map((entry) => entry.text)).toEqual(["New request"]);
+	const missing = transition(
+		first?.snapshot,
+		event("PermissionRequest", { permission: { outcome: "pending", requestId: "p3" } })
+	);
+	expect(missing?.attention?.evidence).toEqual([]);
+});

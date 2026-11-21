@@ -117,10 +117,13 @@ export function nextAgentEventSnapshot(
 	)
 		alert = "needs-input";
 	const incomingEvidence = validateAgentEvidence(event.evidence, event.agent, event.rawEvent ?? "");
-	const evidence = incomingEvidence.length ? incomingEvidence : (before?.evidence ?? []);
+	const evidence =
+		incomingEvidence.length || event.rawEvent === "PermissionRequest"
+			? incomingEvidence
+			: (before?.evidence ?? []);
 	// Keep request text beside the eventual reply/error. Never overwrite unresolved context.
 	const retained =
-		permission && continuation === "none"
+		permission && continuation === "none" && event.rawEvent !== "PermissionRequest"
 			? (before?.evidence ?? []).filter((e) => e.kind === "permission")
 			: [];
 	return {
