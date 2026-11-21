@@ -64,7 +64,11 @@ function toDraftCommentLike(comment: ReviewDraftComment): DraftCommentLike {
 	};
 }
 
-export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData {
+export function useReviewData(
+	workspaceId: string,
+	prCtx: PRContext,
+	options: { manageFileOrder?: boolean } = {}
+): ReviewData {
 	const setFileOrder = usePRReviewSessionStore((s) => s.setFileOrder);
 	const prIdentifier = formatPrIdentifier(prCtx);
 	const sessionKey = prReviewSessionKey(workspaceId, prIdentifier);
@@ -106,9 +110,9 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 	const fileOrder = useMemo(() => details?.files.map((file) => file.path) ?? [], [details?.files]);
 
 	useEffect(() => {
-		if (fileOrder.length === 0) return;
+		if (options.manageFileOrder === false || fileOrder.length === 0) return;
 		setFileOrder(sessionKey, fileOrder);
-	}, [fileOrder, sessionKey, setFileOrder]);
+	}, [fileOrder, sessionKey, setFileOrder, options.manageFileOrder]);
 
 	const draftThreads = useMemo<AIDraftThread[]>(
 		() =>

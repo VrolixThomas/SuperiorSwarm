@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { PRContext } from "../../shared/github-types";
+import type { AskMessage } from "../../shared/review-path-types";
 import type { SidebarSegment } from "../../shared/types";
 import type { ReviewCommentFilter } from "../lib/pr-review-threads";
 
@@ -18,6 +19,16 @@ export interface ReviewTerminal {
 }
 
 export interface ReviewModeStore {
+	railMode: "path" | "files" | null;
+	panel: "threads" | "ask" | null;
+	queueOpen: boolean;
+	overviewOpen: boolean;
+	askAnchor: AskMessage["anchor"] | null;
+	setRailMode: (mode: "path" | "files" | null) => void;
+	setPanel: (panel: "threads" | "ask" | null) => void;
+	setQueueOpen: (open: boolean) => void;
+	setOverviewOpen: (open: boolean) => void;
+	setAskAnchor: (anchor: AskMessage["anchor"] | null) => void;
 	active: { workspaceId: string; prCtx: PRContext } | null;
 	lastWorkspaceId: string | null;
 	view: ReviewView;
@@ -62,7 +73,16 @@ function createIntent(kind: ReviewIntent["kind"], threadId?: string): ReviewInte
 	return threadId === undefined ? { kind, nonce } : { kind, threadId, nonce };
 }
 
+const readingPathDefaults = {
+	railMode: null,
+	panel: null,
+	queueOpen: false,
+	overviewOpen: false,
+	askAnchor: null,
+};
+
 export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
+	...readingPathDefaults,
 	active: null,
 	lastWorkspaceId: null,
 	view: "overview",
@@ -86,6 +106,7 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 				};
 			}
 			return {
+				...readingPathDefaults,
 				active: { workspaceId, prCtx },
 				lastWorkspaceId: null,
 				view: "overview",
@@ -97,12 +118,18 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 
 	close: () =>
 		set((state) => ({
+			...readingPathDefaults,
 			active: null,
 			lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
 			drawerOpen: false,
 			intent: null,
 		})),
 
+	setRailMode: (railMode) => set({ railMode }),
+	setPanel: (panel) => set({ panel }),
+	setQueueOpen: (queueOpen) => set({ queueOpen }),
+	setOverviewOpen: (overviewOpen) => set({ overviewOpen }),
+	setAskAnchor: (askAnchor) => set({ askAnchor }),
 	setView: (view) => set({ view }),
 	toggleNavigator: () => set((state) => ({ navigatorCollapsed: !state.navigatorCollapsed })),
 	setDrawerOpen: (open) => set({ drawerOpen: open }),

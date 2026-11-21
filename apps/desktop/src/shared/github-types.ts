@@ -20,6 +20,8 @@ export interface GitHubReviewComment {
 }
 
 export interface GitHubReviewThread {
+	isOutdated?: boolean;
+	originalLine?: number | null;
 	id: string;
 	isResolved: boolean;
 	path: string;
@@ -30,6 +32,7 @@ export interface GitHubReviewThread {
 
 /** An AI draft comment transformed into a thread-like structure for unified rendering */
 export interface AIDraftThread {
+	category?: string;
 	id: string;
 	isAIDraft: true;
 	draftCommentId: string;

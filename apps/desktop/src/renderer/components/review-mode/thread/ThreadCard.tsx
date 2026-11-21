@@ -28,6 +28,8 @@ interface ThreadCardProps {
 	active?: boolean;
 	callbacks: ThreadCallbacks;
 	contextSlot?: ReactNode;
+	agentNote?: ReactNode;
+	onAsk?: () => void;
 	defaultCollapsed?: boolean;
 	onCollapsedChange?: (collapsed: boolean) => void;
 }
@@ -192,6 +194,8 @@ export function ThreadCard({
 	active = false,
 	callbacks,
 	contextSlot,
+	agentNote,
+	onAsk,
 	defaultCollapsed = true,
 	onCollapsedChange,
 }: ThreadCardProps) {
@@ -329,6 +333,16 @@ export function ThreadCard({
 				</div>
 			)}
 
+			{agentNote}
+			{onAsk && (
+				<button
+					type="button"
+					onClick={onAsk}
+					className="mx-3 mb-2 text-[12px] text-[var(--accent-hover)]"
+				>
+					Ask agent
+				</button>
+			)}
 			{showActions && (
 				<div className={`border-t border-[var(--border-subtle)] py-1.5 ${paddingClassName}`}>
 					<ThreadActions

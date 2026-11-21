@@ -190,3 +190,20 @@ describe("review-mode-store", () => {
 		expect(useReviewModeStore.getState().publishedCommentsVisible).toBe(true);
 	});
 });
+
+test("reading path overlays and anchors reset when closing or switching PR", () => {
+	const store = useReviewModeStore.getState();
+	store.setRailMode("path");
+	store.setPanel("ask");
+	store.setQueueOpen(true);
+	store.setOverviewOpen(true);
+	store.setAskAnchor({ path: "a.ts", side: "RIGHT", startLine: 1, endLine: 2 });
+	store.close();
+	expect(useReviewModeStore.getState()).toMatchObject({
+		railMode: null,
+		panel: null,
+		queueOpen: false,
+		overviewOpen: false,
+		askAnchor: null,
+	});
+});

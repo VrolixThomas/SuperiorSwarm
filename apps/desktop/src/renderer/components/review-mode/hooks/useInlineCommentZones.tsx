@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor";
-import { Fragment, type ReactNode, useEffect, useRef } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import type {
 	AIDraftThread,
@@ -76,10 +76,12 @@ function disposeZones(
 
 function NewThreadWidget({
 	line,
+	initialBody = "",
 	onSave,
 	onCancel,
 }: {
 	line: number;
+	initialBody?: string;
 	onSave: (body: string) => void;
 	onCancel: () => void;
 }) {
@@ -87,6 +89,7 @@ function NewThreadWidget({
 		<div className="mx-2 my-1 rounded-[6px] border border-[var(--accent)] bg-[var(--bg-surface)] p-2 text-[11px] shadow-lg">
 			<div className="mb-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">Line {line}</div>
 			<ReplyComposer
+				initialValue={initialBody}
 				placeholder="Write a comment..."
 				ariaLabel="New comment"
 				submitLabel="Add comment"
@@ -114,21 +117,40 @@ export function useInlineCommentZones(
 	pendingLine: number | null,
 	renderThread: (thread: UnifiedThread) => ReactNode,
 	onSaveNew: (body: string) => void,
-	onCancelNew: () => void
+	onCancelNew: () => void,
+	initialBody = "",
+	modelKey?: string
 ): void {
+	const [modelVersion, setModelVersion] = useState(0);
+	const lastModelRef = useRef<monaco.editor.ITextModel | null>(null);
+	const lastModelKeyRef = useRef<string | undefined>(undefined);
+	useEffect(() => {
+		if (!editor) return;
+		const subscription = editorForSide(editor, side).onDidChangeModel(() =>
+			setModelVersion((v) => v + 1)
+		);
+		return () => subscription.dispose();
+	}, [editor, side]);
 	const zonesRef = useRef<Map<number, ZoneEntry>>(new Map());
 	const pendingZoneRef = useRef<(ZoneEntry & { line: number }) | null>(null);
 	const lastEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 	const renderThreadRef = useRef(renderThread);
 	const renderVersionRef = useRef(0);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modelVersion rebuilds zones after Monaco resets them during a model swap
 	useEffect(() => {
 		if (renderThreadRef.current !== renderThread) {
 			renderThreadRef.current = renderThread;
 			renderVersionRef.current += 1;
 		}
 		const previousEditor = lastEditorRef.current;
-		if (previousEditor && previousEditor !== editor) {
+		const model = editor ? editorForSide(editor, side).getModel() : null;
+		if (
+			previousEditor &&
+			(previousEditor !== editor ||
+				lastModelRef.current !== model ||
+				lastModelKeyRef.current !== modelKey)
+		) {
 			const entries = [...zonesRef.current.values()];
 			if (pendingZoneRef.current) entries.push(pendingZoneRef.current);
 			disposeZones(previousEditor, side, entries);
@@ -139,13 +161,15 @@ export function useInlineCommentZones(
 		if (!editor) return;
 
 		lastEditorRef.current = editor;
+		lastModelRef.current = model;
+		lastModelKeyRef.current = modelKey;
 
 		const codeEditor = editorForSide(editor, side);
 		const lineHeight = codeEditor.getOption(monaco.editor.EditorOption.lineHeight);
 
 		const byLine = new Map<number, UnifiedThread[]>();
 		for (const t of threads) {
-			if (t.line == null) continue;
+			if (t.line == null || (!t.isAIDraft && t.isOutdated)) continue;
 			const arr = byLine.get(t.line) ?? [];
 			arr.push(t);
 			byLine.set(t.line, arr);
@@ -254,7 +278,12 @@ export function useInlineCommentZones(
 				const zoneId = acc.addZone({ afterLineNumber: pendingLine, heightInLines, domNode });
 				const root = createRoot(inner);
 				root.render(
-					<NewThreadWidget line={pendingLine} onSave={onSaveNew} onCancel={onCancelNew} />
+					<NewThreadWidget
+						line={pendingLine}
+						initialBody={initialBody}
+						onSave={onSaveNew}
+						onCancel={onCancelNew}
+					/>
 				);
 				const ro = new ResizeObserver(() => resizePendingZone());
 				ro.observe(inner);
@@ -271,11 +300,27 @@ export function useInlineCommentZones(
 			} else {
 				// Same pending line — refresh callbacks via re-render (cheap, in-place).
 				pending.root.render(
-					<NewThreadWidget line={pendingLine} onSave={onSaveNew} onCancel={onCancelNew} />
+					<NewThreadWidget
+						line={pendingLine}
+						initialBody={initialBody}
+						onSave={onSaveNew}
+						onCancel={onCancelNew}
+					/>
 				);
 			}
 		});
-	}, [editor, side, threads, pendingLine, renderThread, onSaveNew, onCancelNew]);
+	}, [
+		editor,
+		side,
+		threads,
+		pendingLine,
+		renderThread,
+		onSaveNew,
+		onCancelNew,
+		initialBody,
+		modelKey,
+		modelVersion,
+	]);
 
 	useEffect(() => {
 		// Final teardown when the component unmounts. The captured editor is the

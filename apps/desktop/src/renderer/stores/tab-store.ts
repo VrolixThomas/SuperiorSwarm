@@ -590,7 +590,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	workspaceBackStack: [],
 	workspaceForwardStack: [],
 	pendingWorkspaceHistoryEntry: null,
-	diffMode: "split",
+	diffMode: "inline",
 	markdownPreviewMode: "off",
 	rightPanel: defaultPanelForCwd(""),
 	baseBranchByWorkspace: {},

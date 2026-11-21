@@ -42,6 +42,7 @@ import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
+import { shouldShowReviewMode, useReviewModeStore } from "./stores/review-mode-store";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, shouldHydrateTabStore, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
@@ -450,6 +451,8 @@ function AuthenticatedApp() {
 	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
+	const activeReview = useReviewModeStore((s) => s.active);
+	const showReviewWorkspace = shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -534,6 +537,10 @@ function AuthenticatedApp() {
 			<TicketRefreshCoordinator />
 			{sidebarView === "settings" ? (
 				<SettingsPage />
+			) : showReviewWorkspace ? (
+				<div className="h-screen min-w-0 overflow-hidden">
+					<MainContentArea savedScrollback={savedScrollback} />
+				</div>
 			) : (
 				<>
 					<Group

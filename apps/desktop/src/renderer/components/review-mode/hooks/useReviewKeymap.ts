@@ -17,6 +17,8 @@ import { trpc } from "../../../trpc/client";
 import type { ThreadCallbacks } from "../thread/ThreadCard";
 
 interface UseReviewKeymapOptions {
+	layout?: "path";
+	onAction?: (action: ReviewKeyAction) => boolean;
 	workspaceId: string;
 	prCtx: PRContext;
 	sessionKey: string;
@@ -36,7 +38,10 @@ interface ThreadRef {
 function isReviewEditableTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) return false;
 
-	if (target.classList.contains("inputarea") && target.closest(".monaco-diff-editor")) {
+	if (
+		target.classList.contains("inputarea") &&
+		target.closest(".monaco-diff-editor, [data-review-context-editor]")
+	) {
 		return false;
 	}
 
@@ -70,6 +75,8 @@ function nextThreadRef(
 }
 
 export function useReviewKeymap({
+	layout,
+	onAction,
 	workspaceId,
 	prCtx,
 	sessionKey,
@@ -151,6 +158,7 @@ export function useReviewKeymap({
 
 	const dispatchAction = useCallback(
 		(action: ReviewKeyAction) => {
+			if (onAction?.(action)) return;
 			switch (action) {
 				case "view-overview":
 					setView("overview");
@@ -249,6 +257,7 @@ export function useReviewKeymap({
 			isGitHubPR,
 			markFileViewed,
 			onClose,
+			onAction,
 			prCtx,
 			readOnly,
 			selectThread,
@@ -269,7 +278,7 @@ export function useReviewKeymap({
 			if (event.defaultPrevented) return;
 			if (isReviewEditableTarget(event.target)) return;
 
-			const action = mapReviewKey(event, view);
+			const action = mapReviewKey(event, view, { layout });
 			if (!action) return;
 
 			event.preventDefault();
@@ -278,5 +287,5 @@ export function useReviewKeymap({
 
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [dispatchAction, view]);
+	}, [dispatchAction, view, layout]);
 }
