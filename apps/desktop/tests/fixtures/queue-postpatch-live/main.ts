@@ -147,7 +147,7 @@ async function run() {
 	// Observe the real MCP's first context response without changing it or its pinned identity.
 	writeFileSync(
 		join(root, "mcp-observer.mjs"),
-		`import fs from 'node:fs'; const original = globalThis.fetch; globalThis.fetch = async (...args) => { if(String(args[0]).includes('/workspaces.set_status')) { const body=JSON.parse(args[1]?.body??'{}'); if(body.phase!=='blocked'||body.needs!=='Choose amber or blue'||Object.keys(body).some(key=>!['phase','needs'].includes(key))) throw new Error('Outside the exactly authorized synthetic status action'); } const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); const record = phase => fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({phase,at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,admissionOffered:!!context.queueAdmission,mode:context.mode})+'\\n'); record('context-response'); await new Promise(resolve=>setTimeout(resolve, ${Number(process.env["SS_QUEUE_CONTEXT_DELAY_MS"] ?? 0)})); record('context-released'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
+		`import fs from 'node:fs'; const originalWrite=process.stdout.write.bind(process.stdout); let wire=''; process.stdout.write=(chunk,...rest)=>{wire+=String(chunk);let end;while((end=wire.indexOf('\\n'))>=0){const line=wire.slice(0,end);wire=wire.slice(end+1);try{const message=JSON.parse(line);if(Array.isArray(message.result?.tools))fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))},JSON.stringify({phase:'tool-catalog-sent',at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,hasSetStatus:message.result.tools.some(tool=>tool.name==='set_status')})+'\\n');}catch{}}return originalWrite(chunk,...rest);}; const original = globalThis.fetch; globalThis.fetch = async (...args) => { if(String(args[0]).includes('/workspaces.set_status')) { const body=JSON.parse(args[1]?.body??'{}'); if(body.phase!=='blocked'||body.needs!=='Choose amber or blue'||Object.keys(body).some(key=>!['phase','needs'].includes(key))) throw new Error('Outside the exactly authorized synthetic status action'); } const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); const record = phase => fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({phase,at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,admissionOffered:!!context.queueAdmission,mode:context.mode})+'\\n'); record('context-response'); await new Promise(resolve=>setTimeout(resolve, ${Number(process.env["SS_QUEUE_CONTEXT_DELAY_MS"] ?? 0)})); record('context-released'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
 	);
 	mergeClaudeHooks(
 		join(root, "settings.json"),
@@ -325,7 +325,7 @@ async function run() {
 								"-c",
 								`hooks=${TOML.stringify.value({ state })}`,
 								"-c",
-								`mcp_servers=${TOML.stringify.value({ superiorswarm: { ...mcp, enabled_tools: ["set_status"], tools: { set_status: { approval_mode: "approve" } } } })}`,
+								`mcp_servers=${TOML.stringify.value({ superiorswarm: { ...mcp, required: process.env["SS_QUEUE_REQUIRE_MCP"] === "1", enabled_tools: ["set_status"], tools: { set_status: { approval_mode: "approve" } } } })}`,
 								"--ignore-rules",
 								"--skip-git-repo-check",
 								"--sandbox",
@@ -380,7 +380,7 @@ async function run() {
 					);
 				}
 				const prompt =
-					"Isolated synthetic verification. Use ONLY superiorswarm set_status with phase blocked and needs 'Choose amber or blue'. Do not use any other tools or send messages. Ask exactly Which color: amber or blue? Then end your turn.";
+					"Isolated synthetic verification. You MUST call the available superiorswarm set_status tool exactly once with phase blocked and needs 'Choose amber or blue' before replying. Do not use any other tools or send messages. After the tool succeeds, ask exactly Which color: amber or blue? If the tool is unavailable, reply TOOL_UNAVAILABLE instead. Do not simulate or skip the tool call.";
 				const launch = async (content: string) => {
 					const script = join(root, `launch-${name}.sh`);
 					writeFileSync(script, content);
@@ -435,6 +435,7 @@ async function run() {
 					first.session,
 					"First actual MCP status action must bind the CLI session"
 				);
+
 				const own = async () =>
 					(await listWorkspaceQueue()).items.filter(
 						(i) => i.target.type === "terminal" && i.target.terminalId === terminal
@@ -575,11 +576,13 @@ async function run() {
 				await until(async () => (await own()).length === 0);
 				assert.equal(manager.getSession(terminal), null);
 				assert.equal((await siblingItems()).length, 1);
+
 				await js(`window.electron.terminal.dispose(${JSON.stringify(sibling)})`);
 				results.push({
 					name,
 					status: "pass",
 					realSiblingPreserved: true,
+
 					mcpStartup: startup,
 					followupRoute: managed ? "queue navigation" : "direct original conversation",
 					launch: managed

@@ -31,10 +31,15 @@ async function run(prompt) {
 		child.once("exit", resolve);
 	});
 	clearTimeout(timer);
+	const diagnostic = [];
 	for (const line of output.split("\n")) {
 		try {
 			const e = JSON.parse(line);
 			session = e.thread_id ?? e.session_id ?? session;
+			if (e.item?.type === "agent_message" || e.item?.type === "error")
+				diagnostic.push({ type: e.item.type, text: e.item.text ?? e.item.message });
+			if (e.item?.type === "mcp_tool_call")
+				diagnostic.push({ type: e.item.type, tool: e.item.tool, status: e.item.status });
 		} catch {}
 	}
 	turn++;
@@ -46,6 +51,7 @@ async function run(prompt) {
 			turn,
 			question: output.includes("Which color: amber or blue?"),
 			followup: output.includes("COLOR_BLUE_DONE"),
+			diagnostic,
 		})
 	);
 	console.log(`NATIVE_LIVE_TURN_${turn}`);

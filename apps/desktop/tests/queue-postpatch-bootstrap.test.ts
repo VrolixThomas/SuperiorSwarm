@@ -16,7 +16,7 @@ import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
 for (const provider of ["claude", "codex"] as const)
-	test(`MCP-before-hook ${provider}: unbound process stays conservative; explicit fresh MCP pins current generation`, async () => {
+	test(`MCP-before-hook ${provider}: same process admits first registered generation and rejects replacements`, async () => {
 		setupTestDb();
 		const root = mkdtempSync(join(tmpdir(), "queue-postpatch-bootstrap-"));
 		const projectId = await seedProject();
@@ -107,21 +107,27 @@ for (const provider of ["claude", "codex"] as const)
 		try {
 			expect(manager.getSession(terminalId)).toBeNull();
 			const cold = await connect();
-			await event("SessionStart", "");
-			expect(manager.getSession(terminalId)?.providerSessionId).toBe(`session-${terminalId}`);
-			const result = await cold.callTool({
+			const waiting = await connect();
+			const reportPromise = cold.callTool({
 				name: "set_status",
 				arguments: { phase: "blocked", needs: "Choose amber or blue" },
 			});
+			await Bun.sleep(30);
+			await event("SessionStart", "");
+			expect(manager.getSession(terminalId)?.providerSessionId).toBe(`session-${terminalId}`);
+			const result = await reportPromise;
 			expect(result.isError).not.toBe(true);
-			expect(JSON.stringify(result)).toContain("missing-owner");
-			expect((report()?.snapshot as { reporter: unknown }).reporter).toBeNull();
+			expect(JSON.stringify(result)).toContain("exact-conversation");
+			expect(
+				(report()?.snapshot as { reporter: { providerSessionId: string } }).reporter
+					.providerSessionId
+			).toBe(`session-${terminalId}`);
 			await event("UserPromptSubmit", "cold-first");
-			expect(report()?.candidate).not.toBeNull();
+			expect(report()?.candidate).toBeNull();
 			trace.push({
 				phase: "existing MCP after first hook",
-				capability: "missing-owner",
-				directPromptClears: false,
+				capability: "exact-conversation",
+				directPromptClears: true,
 			});
 			const fresh = await connect();
 			const bound = await fresh.callTool({
@@ -137,6 +143,9 @@ for (const provider of ["claude", "codex"] as const)
 				directPromptClears: true,
 			});
 			await event("SessionStart", "", "replacement");
+			expect(
+				(await waiting.callTool({ name: "set_status", arguments: { phase: "done" } })).isError
+			).toBe(true);
 			const stale = await fresh.callTool({ name: "set_status", arguments: { phase: "done" } });
 			expect(stale.isError).toBe(true);
 			expect(JSON.stringify(stale)).toContain("restart MCP");
@@ -159,4 +168,4 @@ for (const provider of ["claude", "codex"] as const)
 			manager.dispose();
 			await control.stop();
 		}
-	}, 15000);
+	}, 30000);
