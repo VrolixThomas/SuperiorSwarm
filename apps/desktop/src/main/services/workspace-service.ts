@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { and, asc, desc, eq, gt, inArray, isNull, max, ne, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { AgentProvider } from "../../shared/agent-session";
+import { AGENT_PROVIDERS, type AgentProvider } from "../../shared/agent-session";
 import type {
 	AgentMessageDto,
 	CreateWorkspaceRequest,
@@ -68,6 +68,7 @@ import {
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import { getAgentSessionManager } from "./agent-session-manager-handle";
+import { crossRepoProjectIds } from "./cross-repo-project-scope";
 import type { attachToOrchestrator } from "./orchestrator-membership";
 import { resolveWorkspaceCwd } from "./workspace-cwd";
 import { assertWorktreePathAvailable } from "./worktree-cleanup-job-store";
@@ -518,6 +519,8 @@ export interface SpawnResult {
 export type SpawnFn = (args: SpawnArgs) => Promise<SpawnResult>;
 
 export interface DispatchAgentDeps {
+	/** Authenticated remote caller; omitted only by trusted local app entry points. */
+	caller?: CallerContext;
 	spawnFn?: SpawnFn;
 }
 
@@ -551,15 +554,100 @@ export function buildLaunchScript(opts: {
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
+/** A coordinator can exercise every linked project, including future all-project scope. */
+export function authorizeCoordinatorDispatch(
+	target: typeof crossRepoOrchestrators.$inferSelect,
+	projectId?: string,
+	caller?: CallerContext
+): void {
+	if (target.kind !== "workspace")
+		throw new ForbiddenError("External managers are not terminal dispatch targets");
+	if (projectId !== undefined || caller?.kind === "workspace")
+		throw new ForbiddenError(
+			"Project-scoped callers cannot dispatch cross-repository coordinators"
+		);
+	if (!caller) return; // Trusted local app request.
+	const current = getDb()
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, caller.xroId))
+		.get();
+	if (!current) throw new ForbiddenError("Coordinator caller no longer exists");
+	if (current.accessScope === "all" || current.id === target.id) return;
+	if (target.accessScope === "all")
+		throw new ForbiddenError("All-project coordinator requires all-project authority");
+	const allowed = new Set(crossRepoProjectIds(current.id, current.accessScope));
+	if (crossRepoProjectIds(target.id, target.accessScope).some((id) => !allowed.has(id)))
+		throw new ForbiddenError("Coordinator projects exceed caller scope");
+}
+
+async function dispatchCoordinator(
+	input: DispatchAgentRequest,
+	target: typeof crossRepoOrchestrators.$inferSelect,
+	deps: DispatchAgentDeps
+): Promise<DispatchAgentResponse> {
+	authorizeCoordinatorDispatch(target, input.projectId, deps.caller);
+	if (!existsSync(target.workDir))
+		throw new Error(`Coordinator folder no longer exists: ${target.workDir}`);
+	const configured = AGENT_PROVIDERS.find((provider) => provider === target.agentKind) ?? "claude";
+	const provider = input.cliPreset ?? configured;
+	const providerSessionId = provider === "claude" ? randomUUID() : null;
+	const skipPermissions = input.skipPermissions ?? false;
+	const result = await (deps.spawnFn ?? defaultSpawnFn)({
+		workspaceId: target.id,
+		cwd: target.workDir,
+		launchScriptContent: buildLaunchScript({
+			cwd: target.workDir,
+			cliPreset: provider,
+			prompt: input.prompt,
+			skipPermissions,
+			cliSessionId: providerSessionId,
+		}),
+		agent: { provider, providerSessionId, skipPermissions },
+	});
+	// defaultSpawnFn persists the real terminal/managed session. Dispatch alone does not
+	// clear another conversation's pending report or invent a workspace/session surrogate.
+	return { ...result, status: "started" };
+}
+
 export async function dispatchAgent(
 	input: DispatchAgentRequest,
 	deps: DispatchAgentDeps = {}
 ): Promise<DispatchAgentResponse> {
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
+	const coordinator = db
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, input.workspaceId))
+		.get();
+	if (coordinator) {
+		if (ws) throw new ForbiddenError("Ambiguous dispatch entity");
+		return dispatchCoordinator(input, coordinator, deps);
+	}
 	if (!ws) throw new NotFoundError(input.workspaceId);
 	// When projectId is provided, enforce cross-project guard.
 	if (input.projectId !== undefined && ws.projectId !== input.projectId) throw new ForbiddenError();
+	if (deps.caller) {
+		const caller = deps.caller;
+		if (caller.kind === "workspace") {
+			const current = db
+				.select()
+				.from(workspaces)
+				.where(eq(workspaces.id, caller.workspaceId))
+				.get();
+			if (current?.projectId !== ws.projectId)
+				throw new ForbiddenError("Dispatch target exceeds caller project");
+		} else {
+			const current = db
+				.select()
+				.from(crossRepoOrchestrators)
+				.where(eq(crossRepoOrchestrators.id, caller.xroId))
+				.get();
+			if (!current || !crossRepoProjectIds(current.id, current.accessScope).includes(ws.projectId))
+				throw new ForbiddenError("Dispatch target exceeds caller project scope");
+		}
+	}
 	const wt = ws.worktreeId
 		? db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get()
 		: null;

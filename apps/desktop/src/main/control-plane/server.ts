@@ -64,6 +64,7 @@ import {
 	type CallerContext,
 	type SpawnFn,
 	acknowledgeQuestionAnswers,
+	authorizeCoordinatorDispatch,
 	createWorkspace,
 	dispatchAgent,
 	getWorkspace,
@@ -1184,19 +1185,39 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const dispatchScope = resolveScopedProjectId(
-					req,
-					res,
-					requestId,
-					parsed.data.projectId,
-					parsed.data.workspaceId
-				);
-				if (!dispatchScope) return;
-				const { projectId: dispatchProjectId, caller: dispatchCaller } = dispatchScope;
-				const ws = await getWorkspace({
-					projectId: dispatchProjectId,
-					workspaceId: parsed.data.workspaceId,
-				});
+				const coordinator = getDb()
+					.select()
+					.from(crossRepoOrchestrators)
+					.where(eq(crossRepoOrchestrators.id, parsed.data.workspaceId))
+					.get();
+				let dispatchProjectId: string | undefined;
+				let dispatchCaller: CallerContext;
+				let ws: { name: string; branch: string | null };
+				if (coordinator) {
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					authorizeCoordinatorDispatch(coordinator, parsed.data.projectId, caller);
+					dispatchCaller = caller;
+					ws = { name: coordinator.name, branch: null };
+				} else {
+					const scope = resolveScopedProjectId(
+						req,
+						res,
+						requestId,
+						parsed.data.projectId,
+						parsed.data.workspaceId
+					);
+					if (!scope) return;
+					dispatchProjectId = scope.projectId;
+					dispatchCaller = scope.caller;
+					ws = await getWorkspace({
+						projectId: scope.projectId,
+						workspaceId: parsed.data.workspaceId,
+					});
+				}
 				// Auto-approval, two independent opt-ins (remove_worktree is never
 				// auto-approved):
 				//  - external managers whose per-manager dispatch_policy is "auto"
@@ -1223,11 +1244,21 @@ async function handleRequest(
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
+				if (coordinator) {
+					// Confirmation is asynchronous: credentials and scope may have changed meanwhile.
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					dispatchCaller = caller;
+				}
 				const result = await dispatchAgent(
 					{ ...parsed.data, projectId: dispatchProjectId },
-					{ spawnFn: deps.spawnFn }
+					{ spawnFn: deps.spawnFn, caller: dispatchCaller }
 				);
-				await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
+				if (dispatchProjectId)
+					await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
 				respond(res, 200, requestId, result);
 				return;
 			}
