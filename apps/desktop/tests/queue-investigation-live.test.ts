@@ -33,7 +33,8 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 		const root = mkdtempSync(join(tmpdir(), "ss-queue-live-investigation-"));
 		const evidence = resolve(
 			import.meta.dir,
-			"../../../.hermes/verification/queue-provider-evidence-2026-11-21"
+			process.env["SS_QUEUE_LIVE_EVIDENCE_DIR"] ??
+				"../../../.hermes/verification/queue-provider-evidence-2026-11-21"
 		);
 		mkdirSync(evidence, { recursive: true });
 		const token = randomUUID();
@@ -140,12 +141,17 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 				}
 			);
 		}
-		try {
-			for (const { provider, approveRequest } of [
+		const cases = (
+			[
 				{ provider: "claude", approveRequest: false },
 				{ provider: "codex", approveRequest: false },
 				{ provider: "claude", approveRequest: true },
-			] as const) {
+			] as const
+		).filter(
+			(entry) => !entry.approveRequest || process.env["SS_QUEUE_LIVE_SKIP_APPROVED"] !== "1"
+		);
+		try {
+			for (const { provider, approveRequest } of cases) {
 				const workspaceId = await seedWorkspace(projectId, {
 					name: `Live ${provider} synthetic probe`,
 				});
@@ -457,7 +463,7 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 					readFileSync(join(root, "fields.jsonl"))
 				);
 			} catch {}
-			expect(results).toHaveLength(3);
+			expect(results).toHaveLength(cases.length);
 		} finally {
 			manager.dispose();
 			listener.stop();

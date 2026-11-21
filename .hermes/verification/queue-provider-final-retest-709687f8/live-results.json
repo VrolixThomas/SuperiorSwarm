@@ -1,0 +1,848 @@
+{
+  "root": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-live-investigation-d3sGeK",
+  "results": [
+    {
+      "approvedRequestProbe": false,
+      "permissionResolutionCoverage": "not this probe",
+      "provider": "claude",
+      "bridgeCoverage": "current isolated bridge",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "providerMcpStatus": "delivered",
+      "hooks": [
+        {
+          "provider": "claude",
+          "event": "SessionStart",
+          "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+          "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795280647442,
+          "receivedAt": 1795280647457,
+          "accepted": true,
+          "attention": [],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "claude",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+          "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+          "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+          "source": null,
+          "producedAt": 1795280647648,
+          "receivedAt": 1795280647656,
+          "accepted": true,
+          "attention": [],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "claude",
+          "event": "PreToolUse",
+          "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+          "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+          "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+          "source": null,
+          "producedAt": 1795280649041,
+          "receivedAt": 1795280649050,
+          "accepted": true,
+          "attention": [],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "claude",
+          "event": "PostToolUse",
+          "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+          "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+          "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+          "source": null,
+          "producedAt": 1795280649112,
+          "receivedAt": 1795280649120,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "agent-workspace:ws-fEoJYuLW",
+              "kind": "agent-input",
+              "revision": 1
+            }
+          ],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "claude",
+          "event": "Stop",
+          "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+          "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+          "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+          "source": null,
+          "producedAt": 1795280650524,
+          "receivedAt": 1795280650532,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "agent-workspace:ws-fEoJYuLW",
+              "kind": "agent-input",
+              "revision": 1
+            },
+            {
+              "sourceId": "[\"agent-session\",\"ws-fEoJYuLW\",\"live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733\",\"claude\",\"9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca\"]",
+              "kind": "agent-ready",
+              "revision": 3
+            }
+          ],
+          "evidence": [
+            {
+              "kind": "reply",
+              "text": "Which color: amber or blue?",
+              "sourceField": "last_assistant_message",
+              "provider": "claude",
+              "rawEvent": "Stop",
+              "truncated": false,
+              "redacted": false
+            }
+          ],
+          "transitionAttention": {
+            "kind": "agent-ready",
+            "summary": "Which color: amber or blue?",
+            "reason": {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            },
+            "evidence": [
+              {
+                "kind": "reply",
+                "text": "Which color: amber or blue?",
+                "sourceField": "last_assistant_message",
+                "provider": "claude",
+                "rawEvent": "Stop",
+                "truncated": false,
+                "redacted": false
+              }
+            ],
+            "permission": null,
+            "ordering": "identified",
+            "continuation": "prompt"
+          },
+          "providerTimestamp": null,
+          "providerEventId": null
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-input",
+          "situation": "agent-input",
+          "summary": "Choose amber or blue",
+          "target": {
+            "type": "terminal",
+            "entity": {
+              "kind": "workspace",
+              "id": "ws-fEoJYuLW"
+            },
+            "workspaceId": "ws-fEoJYuLW",
+            "terminalId": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+            "provider": "claude",
+            "providerSessionId": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-fEoJYuLW\",\"live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733\",\"claude\",\"9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca\"]",
+          "situation": "agent-done",
+          "target": {
+            "type": "terminal",
+            "entity": {
+              "kind": "workspace",
+              "id": "ws-fEoJYuLW"
+            },
+            "workspaceId": "ws-fEoJYuLW",
+            "terminalId": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+            "provider": "claude",
+            "providerSessionId": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 1964,
+        "hookMessages": []
+      }
+    },
+    {
+      "approvedRequestProbe": false,
+      "permissionResolutionCoverage": "not this probe",
+      "provider": "codex",
+      "bridgeCoverage": "existing reviewed global bridge; new transport unverified",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "providerMcpStatus": "permission-blocked-unverified",
+      "hooks": [
+        {
+          "provider": "codex",
+          "event": "SessionStart",
+          "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+          "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795280655615,
+          "receivedAt": 1795280655618,
+          "accepted": true,
+          "attention": [],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "codex",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+          "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+          "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+          "source": null,
+          "producedAt": 1795280655691,
+          "receivedAt": 1795280655694,
+          "accepted": true,
+          "attention": [],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "codex",
+          "event": "PreToolUse",
+          "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+          "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+          "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+          "source": null,
+          "producedAt": 1795280660793,
+          "receivedAt": 1795280660798,
+          "accepted": true,
+          "attention": [],
+          "evidence": [],
+          "transitionAttention": null,
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "codex",
+          "event": "PermissionRequest",
+          "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+          "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+          "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+          "source": null,
+          "producedAt": 1795280660870,
+          "receivedAt": 1795280660873,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+              "kind": "agent-input",
+              "revision": 3
+            }
+          ],
+          "evidence": [],
+          "permission": {
+            "outcome": "pending"
+          },
+          "transitionAttention": {
+            "kind": "agent-input",
+            "summary": "Permission requested",
+            "reason": {
+              "code": "permission-unresolved",
+              "label": "Permission requested"
+            },
+            "evidence": [],
+            "permission": {
+              "outcome": "pending"
+            },
+            "ordering": "identified",
+            "continuation": "none"
+          },
+          "providerTimestamp": null,
+          "providerEventId": null
+        },
+        {
+          "provider": "codex",
+          "event": "Stop",
+          "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+          "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+          "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+          "source": null,
+          "producedAt": 1795280663971,
+          "receivedAt": 1795280663974,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+              "kind": "agent-input",
+              "revision": 3
+            }
+          ],
+          "evidence": [],
+          "transitionAttention": {
+            "kind": "agent-input",
+            "summary": "Permission outcome not confirmed; review the conversation",
+            "reason": {
+              "code": "permission-unresolved",
+              "label": "Permission outcome not confirmed; review the conversation"
+            },
+            "evidence": [],
+            "permission": {
+              "outcome": "unconfirmed"
+            },
+            "ordering": "identified",
+            "continuation": "none"
+          },
+          "providerTimestamp": null,
+          "providerEventId": null
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-input",
+          "situation": "agent-permission",
+          "summary": "Permission outcome not confirmed; review the conversation",
+          "target": {
+            "type": "terminal",
+            "entity": {
+              "kind": "workspace",
+              "id": "ws-2ILw9q-w"
+            },
+            "workspaceId": "ws-2ILw9q-w",
+            "terminalId": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+            "provider": "codex",
+            "providerSessionId": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+          "situation": "agent-done",
+          "target": {
+            "type": "terminal",
+            "entity": {
+              "kind": "workspace",
+              "id": "ws-2ILw9q-w"
+            },
+            "workspaceId": "ws-2ILw9q-w",
+            "terminalId": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+            "provider": "codex",
+            "providerSessionId": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 1223,
+        "hookMessages": []
+      }
+    }
+  ],
+  "trace": [
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795280647442,
+      "receivedAt": 1795280647457,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+      "source": null,
+      "producedAt": 1795280647648,
+      "receivedAt": 1795280647656,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "PreToolUse",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+      "source": null,
+      "producedAt": 1795280649041,
+      "receivedAt": 1795280649050,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "PostToolUse",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+      "source": null,
+      "producedAt": 1795280649112,
+      "receivedAt": 1795280649120,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-fEoJYuLW",
+          "kind": "agent-input",
+          "revision": 1
+        }
+      ],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": "aeefe51a-70e9-42c1-8c11-28abffe6f22f",
+      "source": null,
+      "producedAt": 1795280650524,
+      "receivedAt": 1795280650532,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-fEoJYuLW",
+          "kind": "agent-input",
+          "revision": 1
+        },
+        {
+          "sourceId": "[\"agent-session\",\"ws-fEoJYuLW\",\"live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733\",\"claude\",\"9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca\"]",
+          "kind": "agent-ready",
+          "revision": 3
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "reply",
+          "text": "Which color: amber or blue?",
+          "sourceField": "last_assistant_message",
+          "provider": "claude",
+          "rawEvent": "Stop",
+          "truncated": false,
+          "redacted": false
+        }
+      ],
+      "transitionAttention": {
+        "kind": "agent-ready",
+        "summary": "Which color: amber or blue?",
+        "reason": {
+          "code": "turn-ended",
+          "label": "Ready for next input"
+        },
+        "evidence": [
+          {
+            "kind": "reply",
+            "text": "Which color: amber or blue?",
+            "sourceField": "last_assistant_message",
+            "provider": "claude",
+            "rawEvent": "Stop",
+            "truncated": false,
+            "redacted": false
+          }
+        ],
+        "permission": null,
+        "ordering": "identified",
+        "continuation": "prompt"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795280651576,
+      "receivedAt": 1795280651584,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-fEoJYuLW",
+          "kind": "agent-input",
+          "revision": 1
+        },
+        {
+          "sourceId": "[\"agent-session\",\"ws-fEoJYuLW\",\"live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733\",\"claude\",\"9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca\"]",
+          "kind": "agent-ready",
+          "revision": 3
+        }
+      ],
+      "evidence": [],
+      "transitionAttention": {
+        "kind": "agent-ready",
+        "summary": "Which color: amber or blue?",
+        "reason": {
+          "code": "turn-ended",
+          "label": "Ready for next input"
+        },
+        "evidence": [
+          {
+            "kind": "reply",
+            "text": "Which color: amber or blue?",
+            "sourceField": "last_assistant_message",
+            "provider": "claude",
+            "rawEvent": "Stop",
+            "truncated": false,
+            "redacted": false
+          }
+        ],
+        "permission": null,
+        "ordering": "identified",
+        "continuation": "prompt"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": "79d764c6-4f79-4dfe-bced-1f2c51f54748",
+      "source": null,
+      "producedAt": 1795280651746,
+      "receivedAt": 1795280651755,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733",
+      "conversation": "9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca",
+      "turn": "79d764c6-4f79-4dfe-bced-1f2c51f54748",
+      "source": null,
+      "producedAt": 1795280653001,
+      "receivedAt": 1795280653008,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-fEoJYuLW\",\"live-investigation-claude-f6a0ce99-823d-431c-8273-cba2121c7733\",\"claude\",\"9d6a49b3-8d3d-4aff-a031-4a8ca10cdeca\"]",
+          "kind": "agent-ready",
+          "revision": 5
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "reply",
+          "text": "COLOR_BLUE_DONE",
+          "sourceField": "last_assistant_message",
+          "provider": "claude",
+          "rawEvent": "Stop",
+          "truncated": false,
+          "redacted": false
+        }
+      ],
+      "transitionAttention": {
+        "kind": "agent-ready",
+        "summary": "COLOR_BLUE_DONE",
+        "reason": {
+          "code": "turn-ended",
+          "label": "Ready for next input"
+        },
+        "evidence": [
+          {
+            "kind": "reply",
+            "text": "COLOR_BLUE_DONE",
+            "sourceField": "last_assistant_message",
+            "provider": "claude",
+            "rawEvent": "Stop",
+            "truncated": false,
+            "redacted": false
+          }
+        ],
+        "permission": null,
+        "ordering": "identified",
+        "continuation": "prompt"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "SessionStart",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795280655615,
+      "receivedAt": 1795280655618,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+      "source": null,
+      "producedAt": 1795280655691,
+      "receivedAt": 1795280655694,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "PreToolUse",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+      "source": null,
+      "producedAt": 1795280660793,
+      "receivedAt": 1795280660798,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "PermissionRequest",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+      "source": null,
+      "producedAt": 1795280660870,
+      "receivedAt": 1795280660873,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+          "kind": "agent-input",
+          "revision": 3
+        }
+      ],
+      "evidence": [],
+      "permission": {
+        "outcome": "pending"
+      },
+      "transitionAttention": {
+        "kind": "agent-input",
+        "summary": "Permission requested",
+        "reason": {
+          "code": "permission-unresolved",
+          "label": "Permission requested"
+        },
+        "evidence": [],
+        "permission": {
+          "outcome": "pending"
+        },
+        "ordering": "identified",
+        "continuation": "none"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "Stop",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": "01a1ff10-d001-7862-a115-42e60967cd90",
+      "source": null,
+      "producedAt": 1795280663971,
+      "receivedAt": 1795280663974,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+          "kind": "agent-input",
+          "revision": 3
+        }
+      ],
+      "evidence": [],
+      "transitionAttention": {
+        "kind": "agent-input",
+        "summary": "Permission outcome not confirmed; review the conversation",
+        "reason": {
+          "code": "permission-unresolved",
+          "label": "Permission outcome not confirmed; review the conversation"
+        },
+        "evidence": [],
+        "permission": {
+          "outcome": "unconfirmed"
+        },
+        "ordering": "identified",
+        "continuation": "none"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "SessionStart",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795280666779,
+      "receivedAt": 1795280666782,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+          "kind": "agent-input",
+          "revision": 3
+        }
+      ],
+      "evidence": [],
+      "transitionAttention": {
+        "kind": "agent-input",
+        "summary": "Permission outcome not confirmed; review the conversation",
+        "reason": {
+          "code": "permission-unresolved",
+          "label": "Permission outcome not confirmed; review the conversation"
+        },
+        "evidence": [],
+        "permission": {
+          "outcome": "unconfirmed"
+        },
+        "ordering": "identified",
+        "continuation": "none"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": "01a1ff10-fc69-7cc2-a23b-865d90ac7c73",
+      "source": null,
+      "producedAt": 1795280666849,
+      "receivedAt": 1795280666852,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "codex",
+      "event": "Stop",
+      "terminal": "live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa",
+      "conversation": "01a1ff10-ce62-7471-a1ec-3d3dc1705b8a",
+      "turn": "01a1ff10-fc69-7cc2-a23b-865d90ac7c73",
+      "source": null,
+      "producedAt": 1795280668486,
+      "receivedAt": 1795280668489,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-2ILw9q-w\",\"live-investigation-codex-4c52b206-6647-41ab-a149-54415777acaa\",\"codex\",\"01a1ff10-ce62-7471-a1ec-3d3dc1705b8a\"]",
+          "kind": "agent-ready",
+          "revision": 5
+        }
+      ],
+      "evidence": [],
+      "transitionAttention": {
+        "kind": "agent-ready",
+        "summary": "Ready for next input",
+        "reason": {
+          "code": "turn-ended",
+          "label": "Ready for next input"
+        },
+        "evidence": [],
+        "permission": {
+          "outcome": "unconfirmed"
+        },
+        "ordering": "identified",
+        "continuation": "prompt"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    }
+  ]
+}

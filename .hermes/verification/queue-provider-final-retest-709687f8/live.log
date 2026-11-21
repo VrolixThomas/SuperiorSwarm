@@ -1,0 +1,14 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-investigation-live.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-d3sGeK 200 request_id=6e3c6758-6615-4ca4-b2f2-aca031e28d10 latency=4ms
+[control-plane] POST /workspaces.set_status 200 request_id=1c792b42-bd13-4a30-bb9d-4b9023af43b7 latency=5ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-d3sGeK 200 request_id=57df9fcd-d224-4dcc-85c1-79edde4dbdb8 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-d3sGeK 200 request_id=e39ef197-91f5-4d57-a84e-4289bd4e9001 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-d3sGeK 200 request_id=d74f3fd8-2d5b-4924-b024-ff3e0d1ae96b latency=3ms
+(pass) authenticated provider evidence probes (bounded; approval-correlation limits recorded) [22446.32ms]
+
+ 1 pass
+ 0 fail
+ 21 expect() calls
+Ran 1 test across 1 file. [22.60s]
