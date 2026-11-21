@@ -62,6 +62,7 @@ describe("getBitbucketPRComments", () => {
 				id: 1,
 				body: "hello",
 				author: "Alice",
+				authorId: null,
 				filePath: "src/x.ts",
 				lineNumber: 10,
 				createdAt: "2026-04-01T00:00:00Z",
@@ -155,4 +156,56 @@ describe("getBitbucketPRComments", () => {
 		const result = await getBitbucketPRComments("ws", "repo", 42);
 		expect(result.map((c) => c.author)).toEqual(["Alice", "Bob"]);
 	});
+});
+
+test("PR revisions come from the same metadata response and stay missing when unavailable", async () => {
+	const { getBitbucketPRDetails } = await import("../src/main/atlassian/bitbucket");
+	mockAtlassianFetch.mockImplementationOnce(async () =>
+		jsonResponse({
+			source: { branch: { name: "feature" }, commit: { hash: "a".repeat(40) } },
+			destination: { branch: { name: "main" }, commit: { hash: "b".repeat(40) } },
+		})
+	);
+	expect(await getBitbucketPRDetails("ws", "repo", 42)).toMatchObject({
+		headCommitOid: "a".repeat(40),
+		baseCommitOid: "b".repeat(40),
+	});
+	mockAtlassianFetch.mockImplementationOnce(async () =>
+		jsonResponse({
+			source: { branch: { name: "feature" } },
+			destination: { branch: { name: "main" } },
+		})
+	);
+	const missing = await getBitbucketPRDetails("ws", "repo", 42);
+	expect(missing.headCommitOid).toBe("");
+	expect(missing.baseCommitOid).toBeUndefined();
+});
+
+test("preserves stable author UUID independently of duplicate display names", async () => {
+	mockAtlassianFetch.mockImplementationOnce(async () =>
+		jsonResponse({
+			values: [
+				{
+					id: 1,
+					content: { raw: "mine" },
+					user: { uuid: "{alice}", display_name: "Same Name" },
+					created_on: "today",
+				},
+				{
+					id: 2,
+					content: { raw: "other" },
+					user: { uuid: "{bob}", display_name: "Same Name" },
+					created_on: "today",
+				},
+				{
+					id: 3,
+					content: { raw: "unknown" },
+					user: { display_name: "Same Name" },
+					created_on: "today",
+				},
+			],
+		})
+	);
+	const comments = await getBitbucketPRComments("ws", "repo", 42);
+	expect(comments.map((c) => c.authorId)).toEqual(["{alice}", "{bob}", null]);
 });

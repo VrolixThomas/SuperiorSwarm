@@ -12,6 +12,8 @@ export interface PRContext {
 }
 
 export interface GitHubReviewComment {
+	/** GitHub database ID or Bitbucket UUID; never a display name. */
+	authorId?: string | null;
 	id: string;
 	body: string;
 	author: string;

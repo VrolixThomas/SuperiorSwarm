@@ -105,6 +105,8 @@ interface RawGQLCheckContext {
 }
 
 interface RawGQLThread {
+	isOutdated?: boolean;
+	originalLine?: number | null;
 	id: string;
 	isResolved: boolean;
 	path: string;
@@ -114,7 +116,7 @@ interface RawGQLThread {
 		nodes: {
 			id: string;
 			body: string;
-			author: { login: string; avatarUrl: string };
+			author: { login: string; avatarUrl: string; databaseId?: number | null } | null;
 			createdAt: string;
 		}[];
 	};
@@ -145,7 +147,7 @@ interface RawGQLPR {
 		nodes: {
 			id: string;
 			body: string;
-			author: { login: string; avatarUrl: string };
+			author: { login: string; avatarUrl: string; databaseId?: number | null } | null;
 			createdAt: string;
 		}[];
 	};
@@ -207,22 +209,25 @@ export function mapPRDetails(raw: RawGQLPR): import("../../shared/github-types")
 		reviewThreads: raw.reviewThreads.nodes.map((t) => ({
 			id: t.id,
 			isResolved: t.isResolved,
+			isOutdated: t.isOutdated,
+			originalLine: t.originalLine,
 			path: t.path,
 			line: t.line,
 			diffSide: t.diffSide,
 			comments: t.comments.nodes.map((c) => ({
 				id: c.id,
 				body: c.body,
-				author: c.author.login,
-				authorAvatarUrl: c.author.avatarUrl,
+				author: c.author?.login ?? "Unknown",
+				authorId: c.author?.databaseId != null ? String(c.author.databaseId) : null,
+				authorAvatarUrl: c.author?.avatarUrl ?? "",
 				createdAt: c.createdAt,
 			})),
 		})),
 		conversationComments: raw.comments.nodes.map((c) => ({
 			id: c.id,
 			body: c.body,
-			author: c.author.login,
-			authorAvatarUrl: c.author.avatarUrl,
+			author: c.author?.login ?? "Unknown",
+			authorAvatarUrl: c.author?.avatarUrl ?? "",
 			createdAt: c.createdAt,
 		})),
 		files: raw.files.nodes.map((f) => ({
@@ -452,9 +457,9 @@ const PR_DETAILS_QUERY = `
         }
         reviewThreads(first: 100) {
           nodes {
-            id isResolved path line diffSide
+            id isResolved isOutdated path line originalLine diffSide
             comments(first: 30) {
-              nodes { id body author { login avatarUrl } createdAt }
+              nodes { id body author { login avatarUrl ... on User { databaseId } ... on Bot { databaseId } } createdAt }
             }
           }
         }
