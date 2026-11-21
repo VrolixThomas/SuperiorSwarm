@@ -261,6 +261,7 @@ export async function resolvePRComment(
 }
 
 export interface BitbucketComment {
+	authorId?: string | null;
 	id: number;
 	body: string;
 	author: string;
@@ -303,7 +304,7 @@ export async function getBitbucketPRComments(
 			values: Array<{
 				id: number;
 				content: { raw: string };
-				user?: { display_name?: string; nickname?: string } | null;
+				user?: { display_name?: string; nickname?: string; uuid?: string } | null;
 				created_on: string;
 				inline?: { path?: string; to?: number };
 			}>;
@@ -314,6 +315,7 @@ export async function getBitbucketPRComments(
 				id: c.id,
 				body: c.content.raw,
 				author: c.user?.display_name ?? c.user?.nickname ?? "Unknown",
+				authorId: c.user?.uuid || null,
 				filePath: c.inline?.path ?? null,
 				lineNumber: c.inline?.to ?? null,
 				createdAt: c.created_on,
@@ -337,6 +339,8 @@ export async function getBitbucketPRDetails(
 	authorAvatarUrl: string;
 	sourceBranch: string;
 	targetBranch: string;
+	headCommitOid: string;
+	baseCommitOid?: string;
 	participants: Array<{
 		user?: { display_name?: string } | null;
 		role: string;
@@ -353,8 +357,8 @@ export async function getBitbucketPRDetails(
 		description?: string;
 		state?: string;
 		author?: { display_name?: string; links?: { avatar?: { href?: string } } } | null;
-		source?: { branch?: { name?: string } };
-		destination?: { branch?: { name?: string } };
+		source?: { branch?: { name?: string }; commit?: { hash?: string } };
+		destination?: { branch?: { name?: string }; commit?: { hash?: string } };
 		participants?: Array<{
 			user?: { display_name?: string } | null;
 			role: string;
@@ -369,6 +373,8 @@ export async function getBitbucketPRDetails(
 		authorAvatarUrl: data.author?.links?.avatar?.href ?? "",
 		sourceBranch: data.source?.branch?.name ?? "",
 		targetBranch: data.destination?.branch?.name ?? "",
+		headCommitOid: data.source?.commit?.hash ?? "",
+		baseCommitOid: data.destination?.commit?.hash,
 		participants: data.participants ?? [],
 	};
 }

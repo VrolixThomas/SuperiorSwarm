@@ -336,12 +336,11 @@ export class BitbucketAdapter implements GitProvider {
 	// ── Bitbucket-specific extras ─────────────────────────────────────────────
 
 	async getPRDetails(owner: string, repo: string, prNumber: number): Promise<GitHubPRDetails> {
-		const [prData, statuses, comments, files, prState] = await Promise.all([
+		const [prData, statuses, comments, files] = await Promise.all([
 			getBitbucketPRDetails(owner, repo, prNumber),
 			getBitbucketPRStatuses(owner, repo, prNumber),
 			getBitbucketPRComments(owner, repo, prNumber),
 			this.getPRFiles(owner, repo, prNumber),
-			this.getPRState(owner, repo, prNumber),
 		]);
 
 		const reviewerParticipants = prData.participants.filter((p) => p.role === "REVIEWER");
@@ -363,6 +362,7 @@ export class BitbucketAdapter implements GitProvider {
 						{
 							id: String(c.id),
 							author: c.author,
+							authorId: c.authorId ?? null,
 							body: c.body,
 							authorAvatarUrl: "",
 							createdAt: c.createdAt,
@@ -418,7 +418,8 @@ export class BitbucketAdapter implements GitProvider {
 			})),
 			sourceBranch: prData.sourceBranch,
 			targetBranch: prData.targetBranch,
-			headCommitOid: prState.headSha,
+			headCommitOid: prData.headCommitOid,
+			baseCommitOid: prData.baseCommitOid,
 		};
 	}
 

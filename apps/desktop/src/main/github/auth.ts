@@ -89,7 +89,8 @@ export async function githubFetch(path: string, options: RequestInit = {}): Prom
 	});
 
 	if (res.status === 401) {
-		deleteAuth();
+		// A late response from a prior connection must not erase a new account.
+		if (getValidToken() === token) deleteAuth();
 		throw new Error("GitHub session expired. Please reconnect.");
 	}
 
@@ -119,7 +120,8 @@ export async function githubGraphQL<T>(
 	});
 
 	if (res.status === 401) {
-		deleteAuth();
+		// A late response from a prior connection must not erase a new account.
+		if (getValidToken() === token) deleteAuth();
 		throw new Error("GitHub session expired. Please reconnect.");
 	}
 

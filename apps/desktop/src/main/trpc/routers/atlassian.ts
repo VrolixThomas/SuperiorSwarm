@@ -16,9 +16,21 @@ import {
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
 import type { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { getGitProvider } from "../../providers/git-provider";
+import { getBitbucketCurrentReviewer } from "../../providers/reviewer-identity";
 import { clearProviderTicketData } from "../../tickets/cache";
 import { publicProcedure, router } from "../index";
 export const atlassianRouter = router({
+	getCurrentReviewer: publicProcedure
+		.input(
+			z.object({
+				host: z.string(),
+				owner: z.string().min(1),
+				repo: z.string().min(1),
+				accountId: z.string().nullable(),
+			})
+		)
+		.query(({ input }) => getBitbucketCurrentReviewer(input)),
+
 	getStatus: publicProcedure.query(() => {
 		const jira = getAuth("jira");
 		const bitbucket = getAuth("bitbucket");
