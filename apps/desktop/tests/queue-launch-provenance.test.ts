@@ -1,3 +1,5 @@
+import { FileInputSessions } from "../src/daemon/file-input-sessions";
+import { agentScriptInput } from "../src/renderer/lib/agent-script-input";
 import "./preload-electron-mock";
 import { afterEach, beforeAll, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
@@ -168,4 +170,31 @@ test("accepted answer envelopes over 16000 characters retain bounded digest-only
 	} finally {
 		listener.stop();
 	}
+});
+
+test("app dispatch Enter establishes first argv-prompt readiness without treating pasted LF as submit", () => {
+	const identity = { pid: 42, startedAt: "fixture", name: "codex", executable: "/fixture/codex" };
+	const sessions = new FileInputSessions();
+	sessions.create(
+		"t",
+		"client",
+		"/bin/sh",
+		() => "codex",
+		() => {},
+		() => identity
+	);
+	sessions.input("t", agentScriptInput("/tmp/quoted' launch/launch.sh"));
+	const state = { provider: "codex", providerSessionId: "conversation", turnId: "first" };
+	sessions.conversationState("t", { ...state, phase: "prompt" });
+	sessions.conversationState("t", { ...state, phase: "idle" });
+	expect(
+		sessions.conversationTarget("t", "client", "codex", "conversation", false)?.supported
+	).toBe(true);
+	sessions.input("t", "multiline\ndraft");
+	expect(
+		sessions.conversationTarget("t", "client", "codex", "conversation", false)?.supported
+	).toBe(false);
+	expect(agentScriptInput("/tmp/quoted' launch/launch.sh")).toBe(
+		"bash '/tmp/quoted'\\'' launch/launch.sh'\r"
+	);
 });
