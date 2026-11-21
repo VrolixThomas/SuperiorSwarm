@@ -122,6 +122,12 @@ export async function checkJumpInteractions(
 	await js(
 		"document.querySelector('[data-queue-header] summary').click(); document.querySelector('[data-terminal-id=\"terminal-w1\"] .xterm-helper-textarea').focus()"
 	);
+	check(
+		await js<boolean>(
+			"document.querySelector('[aria-label=\"Queue navigation\"]').getBoundingClientRect().height <= 80"
+		),
+		"Collapsed queue bar is not compact"
+	);
 	step = "terminal origin peek";
 	key("j", ["meta", "shift"]);
 	await until(() => js<boolean>("!!document.querySelector('[aria-label=\"Queue peek\"]')"));
@@ -263,7 +269,7 @@ export async function checkJumpInteractions(
 	await until(async () => (await current()).terminal === "terminal-w2");
 	const grouped = (await listWorkspaceQueue()).items.find((i) => i.context.workspaceId === "w2");
 	check((grouped?.members?.length ?? 0) > 1, "Missing grouped receipt fixture");
-	await click("Done E");
+	await click("Done");
 	await until(() =>
 		js<boolean>(
 			"document.querySelector('[aria-label=\"Queue navigation\"]')?.textContent.includes('Cleared')??false"
@@ -276,11 +282,11 @@ export async function checkJumpInteractions(
 	key("j", ["meta"]);
 	await until(() => js<boolean>('document.body.textContent.includes("That\'s everything.")'));
 	check((await current()).terminal === "terminal-w2", "End wrapped");
-	await click("Undo Z");
+	await click("Undo");
 	await until(async () =>
 		(await listWorkspaceQueue()).items.some((i) => i.context.workspaceId === "w2")
 	);
-	await click("Later H");
+	await click("Later");
 	await click("Until it changes");
 	await until(async () => (await listWorkspaceQueue()).laterCount === 1);
 	key("j", ["meta"]);

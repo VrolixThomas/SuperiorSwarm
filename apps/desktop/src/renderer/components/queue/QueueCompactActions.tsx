@@ -86,18 +86,21 @@ export function QueueCompactActions({
 		}
 	};
 	return (
-		<div data-queue-compact-actions className="min-w-0 space-y-2">
+		<div data-queue-compact-actions className={compact ? "contents" : "min-w-0 space-y-2"}>
 			{compact && (
 				<button
 					type="button"
-					className={queueButton}
+					className={compact ? `${queueButton} !px-2 !py-1` : queueButton}
 					aria-expanded={expanded}
 					onClick={() => setExpanded(!expanded)}
 				>
 					Details / reply
 				</button>
 			)}
-			<div hidden={!expanded} className="max-h-[35vh] overflow-y-auto">
+			<div
+				hidden={!expanded}
+				className={`${compact ? "order-2 w-full" : ""} max-h-[35vh] overflow-y-auto`}
+			>
 				{children}
 				<QueueItemActions
 					item={item}
@@ -126,47 +129,58 @@ export function QueueCompactActions({
 					/>
 				)}
 			</div>
-			<div className="flex flex-wrap items-center gap-1">
-				<button type="button" className={queueButton} disabled={disabled || busy} onClick={onOpen}>
-					Open ↵
+			<div className="flex shrink-0 flex-wrap items-center gap-1">
+				<button
+					type="button"
+					className={compact ? `${queueButton} !px-2 !py-1` : queueButton}
+					disabled={disabled || busy}
+					onClick={onOpen}
+					aria-label={compact ? "Open conversation" : "Open ↵"}
+				>
+					{compact ? "Open" : "Open ↵"}
 				</button>
 				<button
 					type="button"
 					data-queue-later
-					className={queueButton}
+					aria-label={compact ? "Later" : "Later H"}
+					className={compact ? `${queueButton} !px-2 !py-1` : queueButton}
 					disabled={disabled || busy}
 					onClick={() => setOptions(options.length ? [] : laterOptions(new Date()))}
 				>
-					Later H
+					{compact ? "Later" : "Later H"}
 				</button>
 				<button
 					type="button"
 					data-queue-done
-					className={queueButton}
+					aria-label={compact ? "Done" : "Done E"}
+					className={compact ? `${queueButton} !px-2 !py-1` : queueButton}
 					disabled={disabled || busy}
 					onClick={() => void run("done")}
 				>
-					Done E
+					{compact ? "Done" : "Done E"}
 				</button>
 				{undo && (
 					<button
 						type="button"
 						data-queue-undo
-						className={queueButton}
+						className={compact ? `${queueButton} !px-2 !py-1` : queueButton}
 						disabled={busy}
 						onClick={() => void run("undo")}
 					>
-						Undo Z
+						{compact ? "Undo" : "Undo Z"}
 					</button>
 				)}
 			</div>
 			{!!options.length && (
-				<div aria-label="Later options" className="flex flex-wrap gap-1">
+				<div
+					aria-label="Later options"
+					className={`${compact ? "order-3 w-full" : ""} flex flex-wrap gap-1`}
+				>
 					{options.map((option, index) => (
 						<button
 							data-queue-later-option={index + 1}
 							type="button"
-							className={queueButton}
+							className={compact ? `${queueButton} !px-2 !py-1` : queueButton}
 							key={option.id}
 							disabled={disabled || busy}
 							onClick={() => void run("later", option)}
@@ -177,7 +191,11 @@ export function QueueCompactActions({
 				</div>
 			)}
 			{message && (
-				<output className="block text-[12px] text-[var(--text-secondary)]">{message}</output>
+				<output
+					className={`${compact ? "order-3 w-full" : ""} block text-[12px] text-[var(--text-secondary)]`}
+				>
+					{message}
+				</output>
 			)}
 		</div>
 	);

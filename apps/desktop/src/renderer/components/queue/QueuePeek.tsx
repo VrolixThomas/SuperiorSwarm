@@ -192,8 +192,12 @@ export function QueuePeek({
 							className="min-w-0 shrink-0 space-y-3 border-t border-[var(--border-subtle)] p-4 min-[1100px]:w-[380px] min-[1100px]:border-l min-[1100px]:border-t-0"
 						>
 							<p className="break-words text-[11px] text-[var(--text-tertiary)]">
-								{selected.context.projectName} › {selected.context.workspaceName} ·{" "}
-								{selected.context.terminalTitle}
+								{selected.context.projectName} › {selected.context.workspaceName}
+								{selected.context.terminalTitle &&
+								selected.context.terminalTitle.trim().toLocaleLowerCase() !==
+									selected.context.workspaceName.trim().toLocaleLowerCase()
+									? ` · ${selected.context.terminalTitle}`
+									: ""}
 							</p>
 							<h3 className="break-words text-[14px] font-medium">{selected.subject}</h3>
 							<p className="break-words text-[12px]">{selected.why}</p>
