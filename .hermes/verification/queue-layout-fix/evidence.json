@@ -13,7 +13,7 @@
   },
   "responsive": {
     "status": "pass",
-    "evidence": "Production MainLayout now included in native Electron fixture with a saved three-panel layout. Asserted main bounds left=72/right=window width/bottom=window height, no repository panels, no document overflow, equal rail button widths and centered icons at all four viewports. Detail panel bottom and overflow checked; short-window scroll brings every action into view. Workspace navigation restores repository panels and Queue does not change persisted panel sizes. Actual Sidebar native wheel regression reaches both ends of folder/repository lists at 1440x900 and 1440x600 without scrolling the sidebar shell."
+    "evidence": "Production MainLayout now included in native Electron fixture with a saved three-panel layout. Asserted main bounds left=72/right=window width/bottom=window height, no repository panels, no document overflow, equal rail button widths and centered icons at all four viewports. Detail panel bottom and overflow checked; short-window scroll brings every action into view. Workspace navigation restores repository panels and Queue does not change persisted panel sizes. Actual Sidebar native wheel regression reaches both ends of folder/repository lists at 1440x900 and 1440x600 without scrolling the sidebar shell. Native dragging of collapsed and expanded bands preserves header size and keeps dropped sections inside the viewport; manual 180px height survives reordering."
   },
   "contentStates": {
     "loading": {
@@ -86,6 +86,21 @@
       "viewport": "1440x600",
       "artifact": "sidebar-scrolled-600.png",
       "observation": "Cropped sidebar capture after native wheel input reaches the final repository in a short window; section headers stay visible."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "sidebar-drag-repositories-over-folders.png",
+      "observation": "Native drag in progress. Section text keeps its original dimensions; dragged surface is opaque. Dropped order, viewport bounds, saved order and resized height are asserted by the same fixture."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "sidebar-drag-folders-over-repositories.png",
+      "observation": "Native drag in progress. Section text keeps its original dimensions; dragged surface is opaque. Dropped order, viewport bounds, saved order and resized height are asserted by the same fixture."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "sidebar-drag-orchestrators-over-repositories.png",
+      "observation": "Native drag in progress. Section text keeps its original dimensions; dragged surface is opaque. Dropped order, viewport bounds, saved order and resized height are asserted by the same fixture."
     }
   ],
   "limitations": [

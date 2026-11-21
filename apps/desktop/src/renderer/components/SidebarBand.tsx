@@ -52,12 +52,13 @@ export function SidebarBand({
 		<div
 			ref={setNodeRef}
 			data-sidebar-band={id}
-			className={`border-b border-[var(--border-subtle)] ${sizingClass(style)}`}
+			className={`border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] ${sizingClass(style)}`}
 			style={{
-				transform: CSS.Transform.toString(transform),
+				// Sections have different expanded heights. Never scale their content
+				// to the drop target's dimensions while reordering.
+				transform: CSS.Translate.toString(transform ? { ...transform, x: 0 } : null),
 				transition,
 				zIndex: isDragging ? 20 : undefined,
-				opacity: isDragging ? 0.85 : 1,
 				...heightStyle,
 			}}
 		>

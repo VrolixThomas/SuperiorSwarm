@@ -23,6 +23,7 @@ import { setupTRPCIPC } from "../../../src/main/trpc/ipc-link";
 import { activityQueueRouter } from "../../../src/main/trpc/routers/activity-queue";
 import { agentSessionsRouter } from "../../../src/main/trpc/routers/agent-sessions";
 import { workspacesRouter } from "../../../src/main/trpc/routers/workspaces";
+import { checkSidebarInteractions } from "./sidebar-interactions";
 function requireEnvironment(name: string): string {
 	const value = process.env[name];
 	if (!value) throw new Error(`Missing isolated setting: ${name}`);
@@ -454,6 +455,8 @@ async function run() {
 		throw new Error("Collapsed sections overflow");
 	await js("document.querySelector('[data-sidebar-band=folders] button[aria-expanded]').click()");
 	win.setContentSize(1440, 900);
+	step = "section dragging";
+	await checkSidebarInteractions(contents, root);
 	const ticketsPoint = await js<{ x: number; y: number }>(`(() => {
 		const r = document.querySelector('nav button[aria-label="Tickets"]').getBoundingClientRect();
 		return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
@@ -589,6 +592,11 @@ async function run() {
 	step = "keyboard clears queue to honest empty state";
 	await js("document.querySelector('main').focus()");
 	for (const n of [2, 1, 0]) {
+		await until(() =>
+			js<boolean>(
+				"document.querySelector('[aria-label=\"Queue item details\"] button')?.disabled===false"
+			)
+		);
 		key("e");
 		await until(() => count(n));
 	}
