@@ -1031,3 +1031,17 @@ export const hermesOriginReports = sqliteTable(
 
 export type HermesOriginReport = typeof hermesOriginReports.$inferSelect;
 export type NewHermesOriginReport = typeof hermesOriginReports.$inferInsert;
+
+/** One transactionally replaced document per provider/repository/PR and workspace. */
+export const reviewPathDocuments = sqliteTable("review_path_documents", {
+	key: text("key").primaryKey(),
+	workspaceId: text("workspace_id")
+		.notNull()
+		.references(() => workspaces.id, { onDelete: "cascade" }),
+	payload: text("payload").notNull(),
+});
+
+export const reviewPathPreferences = sqliteTable("review_path_preferences", {
+	key: text("key").primaryKey(),
+	payload: text("payload").notNull(),
+});

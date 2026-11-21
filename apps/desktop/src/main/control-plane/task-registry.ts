@@ -1,4 +1,10 @@
-export type TaskMode = "workspace-agent" | "review" | "solve" | "quick-action-setup" | "none";
+export type TaskMode =
+	| "workspace-agent"
+	| "review-path"
+	| "review"
+	| "solve"
+	| "quick-action-setup"
+	| "none";
 
 export interface TaskRegistration {
 	mode: TaskMode;
