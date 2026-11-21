@@ -102,7 +102,12 @@ export async function workspaceAnswerContinuationCapability(
 			reason: "This question changed or was handled. Refresh the queue.",
 		};
 	const record = readAnswer(input.questionId);
-	if (!record || record.ambiguous || record.answer?.retrievedAt)
+	if (record?.ambiguous)
+		return {
+			status: "unavailable",
+			reason: "Multiple answers are saved for this question. Open the conversation to review them.",
+		};
+	if (!record || record.answer?.retrievedAt)
 		return {
 			status: "unavailable",
 			reason: "This question or its saved answer changed. Refresh the queue before continuing.",

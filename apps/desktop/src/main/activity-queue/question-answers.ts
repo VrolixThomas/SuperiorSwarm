@@ -36,7 +36,16 @@ export function isAnswerContinuation(
 	answer: AgentMessage,
 	target: import("../../shared/queue-answer-continuation").QueueAnswerTarget
 ): boolean {
-	if (!isQuestionAnswer(question, answer) || !question.reporter || !answer.recipient) return false;
+	if (
+		!isQuestionAnswer(question, answer) ||
+		!question.reporter ||
+		!answer.recipient ||
+		!target.providerSessionId ||
+		!target.entity ||
+		target.entity.id !== target.workspaceId ||
+		question.fromWorkspaceId !== target.workspaceId
+	)
+		return false;
 	const recipient = answer.recipient;
 	return (
 		recipient.type === "terminal" &&

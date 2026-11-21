@@ -1,5 +1,4 @@
 import "./preload-electron-mock";
-import { cleanupAnswerFixtures, ownAnswerFixture } from "./helpers/queue-answer-cleanup";
 import { afterEach, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -11,6 +10,7 @@ import {
 	workspaceAnswerContinuationReceipt,
 } from "../src/main/activity-queue/answer-continuation";
 import { markAnswerPromptReceived } from "../src/main/activity-queue/answer-continuation-receipts";
+import { isAnswerContinuation } from "../src/main/activity-queue/question-answers";
 import { listWorkspaceQueue, workspaceAnswer } from "../src/main/activity-queue/workspace-queue";
 import { getDb } from "../src/main/db";
 import {
@@ -29,6 +29,7 @@ import type {
 } from "../src/shared/activity-queue";
 import { answerContinuationPrompt } from "../src/shared/queue-answer-continuation";
 import { seedCrossRepoOrchestrator, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
+import { cleanupAnswerFixtures, ownAnswerFixture } from "./helpers/queue-answer-cleanup";
 
 beforeAll(setupTestDb);
 afterEach(() => {
@@ -353,4 +354,69 @@ test("a forged or changed displayed member receipt cannot save or continue an an
 	expect(result.answer).toBeNull();
 	expect(f.answers()).toHaveLength(0);
 	expect(f.submissions).toHaveLength(0);
+});
+
+test("a matching old prompt does not retrieve a question after a conflicting answer was saved", async () => {
+	const f = await fixture();
+	const result = await workspaceAnswerAndContinue(f.input, f.transport);
+	const answerId = result.answer?.messageId;
+	if (!answerId) throw Error("Missing answer");
+	const first = f.answers()[0];
+	if (!first) throw Error("Missing answer row");
+	getDb()
+		.insert(agentMessages)
+		.values({
+			...first,
+			id: crypto.randomUUID(),
+			content: "A later different answer",
+			createdAt: new Date(),
+		})
+		.run();
+	const prompt = f.submissions[0]?.content;
+	if (!prompt) throw Error("Missing submitted prompt");
+	expect(
+		markAnswerPromptReceived(
+			{ questionId: f.questionId, answerId },
+			f.owner,
+			Date.now() + 10,
+			digest(prompt)
+		)
+	).toBe(false);
+	expect(f.answers().every((answer) => answer.retrievedAt === null)).toBe(true);
+	expect((await listWorkspaceQueue()).items.some((item) => item.id === f.input.id)).toBe(true);
+});
+
+test("continuation matching refuses missing conversation and inconsistent entity or sender identity", async () => {
+	const f = await fixture();
+	await workspaceAnswerAndContinue(f.input, f.transport);
+	const answer = f.answers()[0];
+	const question = getDb()
+		.select()
+		.from(agentMessages)
+		.where(eq(agentMessages.id, f.questionId))
+		.get();
+	if (!answer || !question) throw Error("Missing messages");
+	const unknown = { ...f.owner, providerSessionId: null };
+	expect(
+		isAnswerContinuation(
+			{ ...question, reporter: unknown },
+			{ ...answer, recipient: unknown },
+			unknown
+		)
+	).toBe(false);
+	const inconsistent = { ...f.owner, entity: { kind: "workspace" as const, id: "another-entity" } };
+	expect(
+		isAnswerContinuation(
+			{ ...question, reporter: inconsistent },
+			{ ...answer, recipient: inconsistent },
+			inconsistent
+		)
+	).toBe(false);
+	expect(
+		isAnswerContinuation(
+			{ ...question, fromWorkspaceId: "another-workspace" },
+			{ ...answer, toWorkspaceId: "another-workspace" },
+			f.owner
+		)
+	).toBe(false);
 });

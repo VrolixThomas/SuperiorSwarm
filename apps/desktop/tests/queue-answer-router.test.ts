@@ -1,5 +1,4 @@
 import "./preload-electron-mock";
-import { cleanupAnswerFixtures, ownAnswerFixture } from "./helpers/queue-answer-cleanup";
 import { afterEach, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -19,6 +18,7 @@ import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../src/main/terminal/daemon-instance";
 import { activityQueueRouter } from "../src/main/trpc/routers/activity-queue";
 import { seedCrossRepoOrchestrator, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
+import { cleanupAnswerFixtures, ownAnswerFixture } from "./helpers/queue-answer-cleanup";
 
 beforeAll(setupTestDb);
 afterEach(() => {
@@ -379,6 +379,76 @@ test("a legacy reply-only daemon exposes save-only fallback without answer conti
 		expect(result.answer?.delivery).toBe("saved");
 		expect(result.continuation.status).toBe("unavailable");
 		expect(f.writes).toHaveLength(0);
+	} finally {
+		f.manager.dispose();
+	}
+});
+
+test("a competing valid answer at the daemon boundary prevents ambiguous continuation", async () => {
+	const f = await fixture("codex", "worktree");
+	try {
+		f.before(() => {
+			const first = getDb()
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.inReplyTo, f.input.questionId))
+				.get();
+			if (!first) throw Error("Missing saved answer");
+			getDb()
+				.insert(agentMessages)
+				.values({
+					...first,
+					id: crypto.randomUUID(),
+					content: "Different outside answer",
+					createdAt: new Date(),
+				})
+				.run();
+		});
+		const result = await caller.workspaceAnswerAndContinue(f.input);
+		expect(result.continuation.status).toBe("rejected");
+		expect(f.writes).toHaveLength(0);
+	} finally {
+		f.manager.dispose();
+	}
+});
+
+test("wrong-recipient and older answer rows cannot poison the selected valid answer", async () => {
+	const f = await fixture("claude", "worktree");
+	try {
+		f.before(() => {
+			const first = getDb()
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.inReplyTo, f.input.questionId))
+				.get();
+			const question = getDb()
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.id, f.input.questionId))
+				.get();
+			if (!first || !question) throw Error("Missing bound messages");
+			getDb()
+				.insert(agentMessages)
+				.values({
+					...first,
+					id: crypto.randomUUID(),
+					recipient: f.sibling,
+					content: "Wrong recipient",
+				})
+				.run();
+			getDb()
+				.insert(agentMessages)
+				.values({
+					...first,
+					id: crypto.randomUUID(),
+					createdAt: new Date(question.createdAt.getTime() - 1000),
+					content: "Older answer",
+				})
+				.run();
+		});
+		const result = await caller.workspaceAnswerAndContinue(f.input);
+		expect(result.continuation.status).toBe("admitted");
+		expect(f.writes).toHaveLength(1);
 	} finally {
 		f.manager.dispose();
 	}

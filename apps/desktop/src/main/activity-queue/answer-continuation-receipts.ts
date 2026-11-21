@@ -7,7 +7,7 @@ import {
 } from "../../shared/queue-answer-continuation";
 import { getDb } from "../db";
 import { agentMessages, agentSessions, terminalSessions } from "../db/schema";
-import { isAnswerContinuation } from "./question-answers";
+import { isAnswerContinuation, isQuestionAnswer } from "./question-answers";
 
 /** Called only for an accepted exact-conversation prompt whose digest matches its delivery intent. */
 export function markAnswerPromptReceived(
@@ -35,6 +35,13 @@ export function markAnswerPromptReceived(
 			!Number.isFinite(eventTime) ||
 			eventTime < answer.createdAt.getTime()
 		)
+			return false;
+		const otherAnswers = db
+			.select()
+			.from(agentMessages)
+			.where(eq(agentMessages.inReplyTo, question.id))
+			.all();
+		if (otherAnswers.some((other) => other.id !== answer.id && isQuestionAnswer(question, other)))
 			return false;
 		const session = db
 			.select()
