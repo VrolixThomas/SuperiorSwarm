@@ -9,7 +9,9 @@ import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionCon
 import { QuickActionPopover } from "./QuickActionPopover";
 import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
+import { QueueBar } from "./queue/QueueBar";
 import { QueueView } from "./queue/QueueView";
+import { QueueWorkspacePending } from "./queue/QueueWorkspacePending";
 import { ReviewModeShell } from "./review-mode/ReviewModeShell";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
@@ -36,6 +38,15 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
 	);
 	const projectId = wsQuery.data?.projectId ?? null;
+	const coordinatorQuery = trpc.crossRepoOrchestrators.get.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: !!activeWorkspaceId && wsQuery.isSuccess && !wsQuery.data, staleTime: 30_000 }
+	);
+	const queueEntity = wsQuery.data
+		? { kind: "workspace" as const, id: wsQuery.data.id }
+		: coordinatorQuery.data
+			? { kind: "coordinator" as const, id: coordinatorQuery.data.id }
+			: null;
 
 	const projectQuery = trpc.projects.getById.useQuery(
 		{ id: projectId ?? "" },
@@ -69,7 +80,19 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	if (sidebarSegment === "prs") {
 		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview)) {
-			return <ReviewModeShell />;
+			return (
+				<div className="flex h-full min-h-0 flex-col">
+					<QueueBar entity={queueEntity} />
+					{queueEntity && (
+						<div className="shrink-0">
+							<QueueWorkspacePending entity={queueEntity} />
+						</div>
+					)}
+					<div className="min-h-0 flex-1">
+						<ReviewModeShell />
+					</div>
+				</div>
+			);
 		}
 
 		return (
@@ -98,6 +121,12 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	return (
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
+			<QueueBar entity={queueEntity} />
+			{queueEntity && (
+				<div className="app-drag flex shrink-0 items-center justify-end border-b border-[var(--border-subtle)] px-3">
+					<QueueWorkspacePending entity={queueEntity} />
+				</div>
+			)}
 			{/* Branch indicator bar */}
 			{projectId && !isFolderProject && (
 				<div className="app-drag flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">
