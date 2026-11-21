@@ -25,8 +25,11 @@ export class ReviewPathApplication {
 		// the authoritative head or invalidate a newer run.
 		const stored = this.deps.storage.peek(identity);
 		if (stored.identity.headSha === identity.headSha) return this.deps.storage.get(identity);
+		const generation = this.deps.storage.reserveMetadata(identity);
 		const resolved = await this.deps.resolve(identity);
-		return this.deps.storage.get(resolved.identity);
+		this.deps.validateWorkspace(identity);
+		this.deps.storage.acceptMetadata(identity, resolved.identity, generation);
+		return this.deps.storage.peek(identity);
 	}
 	async start(input: {
 		identity: ReviewPathIdentity;
@@ -36,9 +39,12 @@ export class ReviewPathApplication {
 	}) {
 		this.deps.validateWorkspace(input.identity);
 		const runtime = this.deps.runtime();
+		const generation = this.deps.storage.reserveMetadata(input.identity);
 		const resolved = await this.deps.resolve(input.identity);
+		this.deps.validateWorkspace(input.identity);
+		if (!this.deps.storage.acceptMetadata(input.identity, resolved.identity, generation))
+			throw new Error("Review path request superseded; refresh before mapping");
 		if (resolved.identity.headSha !== input.identity.headSha) {
-			this.deps.storage.get(resolved.identity);
 			throw new Error("PR head changed; refresh before mapping");
 		}
 		const before = this.deps.storage.get(resolved.identity);
@@ -86,12 +92,15 @@ export class ReviewPathApplication {
 	async ask(identity: ReviewPathIdentity, input: unknown) {
 		this.deps.validateWorkspace(identity);
 		const runtime = this.deps.runtime();
+		const data = questionInputSchema.parse(input);
+		const generation = this.deps.storage.reserveMetadata(identity);
 		const resolved = await this.deps.resolve(identity);
+		this.deps.validateWorkspace(identity);
+		if (!this.deps.storage.acceptMetadata(identity, resolved.identity, generation))
+			throw new Error("Review path request superseded; refresh before asking");
 		if (resolved.identity.headSha !== identity.headSha) {
-			this.deps.storage.get(resolved.identity);
 			throw new Error("PR head changed; refresh before asking");
 		}
-		const data = questionInputSchema.parse(input);
 		const before = this.deps.storage.get(identity);
 		const { run, question } = this.deps.storage.enqueueQuestion(identity, data);
 		if (before.questions.some((q) => q.id === question.id))
