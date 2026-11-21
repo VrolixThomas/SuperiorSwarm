@@ -265,7 +265,7 @@ test.each(["claude", "codex"] as const)(
 		let published = false;
 		setDispatchBroadcaster((payload) => {
 			published = true;
-            if(!payload.terminalId)throw Error("Dispatch omitted terminal identity");
+			if (!payload.terminalId) throw Error("Dispatch omitted terminal identity");
 			expect(permissionTerminalHidden(payload.terminalId)).toBe(true);
 		});
 		try {

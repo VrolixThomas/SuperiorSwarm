@@ -167,7 +167,7 @@ test("definite unavailable permits editing and an explicit new attempt without a
 test("Enter submits an ordinary reply while Shift, modifiers, repeats and IME never submit", async () => {
 	const f = await fixture();
 	await f.type("keyboard reply");
-	const input = document.querySelector("textarea")!;
+	const input = browser.document.querySelector("textarea")!;
 	for (const options of [
 		{ shiftKey: true },
 		{ ctrlKey: true },
