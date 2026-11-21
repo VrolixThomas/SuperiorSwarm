@@ -83,3 +83,59 @@ test("changed permission occurrence never exposes preceding request's controls d
 	});
 	expect(document.body.textContent).toContain("New request unavailable");
 });
+test("stable queue item refreshes cancelled permission capability without a source revision", async () => {
+	const host = document.createElement("div");
+	document.body.append(host);
+	root = createRoot(host);
+	const item = {
+		id: "source",
+		revision: 1,
+		permission: { requestId: "live", outcome: "pending" },
+		target: { type: "terminal", terminalId: "owner" },
+	} as WorkspaceQueueItem;
+	let live = true;
+	const actions = {
+		capability: async () =>
+			live
+				? {
+						capability: "hook-response" as const,
+						requestId: "live",
+						allowOnce: true,
+						state: "waiting" as const,
+						detail: "Waiting",
+					}
+				: {
+						capability: "unavailable" as const,
+						state: "cancelled" as const,
+						detail: "Request cancelled",
+					},
+		decide: async () => ({ status: "sent" as const, detail: "sent" }),
+	};
+	await act(async () => {
+		root.render(
+			<QueuePermissionActions
+				item={item}
+				available
+				actions={actions}
+				onOpen={() => {}}
+				refresh={async () => {}}
+			/>
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	expect(
+		[...document.querySelectorAll("button")].some(
+			(button) => button.textContent?.includes("Allow") && !button.disabled
+		)
+	).toBe(true);
+	live = false;
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 1100));
+	});
+	expect(document.body.textContent).toContain("Request cancelled");
+	expect(
+		[...document.querySelectorAll("button")].some(
+			(button) => button.textContent?.includes("Allow") && !button.disabled
+		)
+	).toBe(false);
+});

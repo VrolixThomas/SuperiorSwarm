@@ -2,8 +2,8 @@ import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { ActivityQueueTarget } from "../../shared/activity-queue";
 import { getDb } from "../db";
 import { activityQueueDeliveries } from "../db/schema-activity-queue";
-/** Bound cleanup, not consumption proof. The next observed prompt may be unrelated;
- * conservatively protect every report newer than a pending Queue intent. */
+/** Content-correlated cleanup and a separate one-turn ambiguity guard.
+ * A missing digest never establishes a delivery receipt. */
 export function queueReplyContinuationTime(
 	target: Extract<ActivityQueueTarget, { type: "terminal" }>,
 	turnId: string,
@@ -36,12 +36,27 @@ export function queueReplyContinuationTime(
 					t.providerSessionId === target.providerSessionId
 				);
 			});
-		for (const row of pending)
-			if (!row.continuationTurnId && promptHash === row.fingerprint)
+		let ceiling = eventTime;
+		for (const row of pending) {
+			if (eventTime < row.createdAt) continue;
+			const matched = promptHash === row.fingerprint;
+			const knownReplay = row.continuationTurnId === turnId;
+			// Explicitly different content is an unrelated manual prompt. Missing digests
+			// get ONE conservative cleanup guard, never a lifetime sticky receipt.
+			const ambiguous =
+				!promptHash && (!row.cleanupProtectedTurnId || row.cleanupProtectedTurnId === turnId);
+			if (matched || knownReplay || ambiguous) ceiling = Math.min(ceiling, row.createdAt);
+			if (matched && !row.continuationTurnId)
 				db.update(activityQueueDeliveries)
 					.set({ continuationTurnId: turnId })
 					.where(eq(activityQueueDeliveries.requestId, row.requestId))
 					.run();
-		return Math.min(eventTime, ...pending.map((row) => row.createdAt));
+			if (ambiguous && !row.cleanupProtectedTurnId)
+				db.update(activityQueueDeliveries)
+					.set({ cleanupProtectedTurnId: turnId })
+					.where(eq(activityQueueDeliveries.requestId, row.requestId))
+					.run();
+		}
+		return ceiling;
 	});
 }

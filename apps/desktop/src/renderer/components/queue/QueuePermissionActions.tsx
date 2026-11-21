@@ -27,6 +27,7 @@ export function QueuePermissionActions({
 	refresh: () => Promise<unknown>;
 }) {
 	const key = JSON.stringify([item.id, item.revision, item.members, item.target, item.permission]);
+	const [refreshVersion, setRefreshVersion] = useState(0);
 	const [result, setResult] = useState<{ key: string; value: QueuePermissionCapability }>();
 	const capability: QueuePermissionCapability =
 		result?.key === key
@@ -34,14 +35,17 @@ export function QueuePermissionActions({
 			: { capability: "unavailable", detail: "Checking this request…" };
 	useEffect(() => {
 		let active = true;
-		if (actions && item.permission)
-			actions
+		let version = refreshVersion;
+		const check = () => {
+			if (!actions || !item.permission) return;
+			const requestVersion = ++version;
+			void actions
 				.capability({ id: item.id, revision: item.revision, members: item.members })
 				.then((value) => {
-					if (active) setResult({ key, value });
+					if (active && requestVersion === version) setResult({ key, value });
 				})
 				.catch(() => {
-					if (active)
+					if (active && requestVersion === version)
 						setResult({
 							key,
 							value: {
@@ -50,10 +54,14 @@ export function QueuePermissionActions({
 							},
 						});
 				});
+		};
+		check();
+		const timer = setInterval(check, 1000);
 		return () => {
 			active = false;
+			clearInterval(timer);
 		};
-	}, [actions, item, key]);
+	}, [actions, item, key, refreshVersion]);
 	if (!item.permission || !actions) return null;
 	return (
 		<QueuePermissionDecision
@@ -69,6 +77,7 @@ export function QueuePermissionActions({
 			onDecide={actions.decide}
 			onOpen={onOpen}
 			onChanged={() => {
+				setRefreshVersion((value) => value + 1);
 				void refresh().catch(() => {});
 			}}
 		/>

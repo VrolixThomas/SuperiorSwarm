@@ -54,7 +54,13 @@ async function fixture() {
 		detail: "Terminal admission only; model receipt unconfirmed.",
 	};
 	const calls: WorkspaceQueueReplyInput[] = [];
+	const receipts: string[] = [];
 	const actions = {
+		receipt: async (requestId: string) => {
+			receipts.push(requestId);
+			if (result instanceof Error) throw result;
+			return result;
+		},
 		capability: async () => ({
 			status: "available" as const,
 			mode: "reply" as const,
@@ -93,6 +99,7 @@ async function fixture() {
 		});
 	return {
 		calls,
+		receipts,
 		type,
 		click,
 		setResult: (value: typeof result) => {
@@ -125,8 +132,8 @@ test("transport error check uses identical request/content and preserves draft",
 	await f.click();
 	expect(document.body.textContent).toContain("Delivery is uncertain");
 	await f.click();
-	expect(f.calls).toHaveLength(2);
-	expect(f.calls[0]).toEqual(f.calls[1]);
+	expect(f.calls).toHaveLength(1);
+	expect(f.receipts.every((id) => id === f.calls[0]?.requestId)).toBe(true);
 	expect(document.querySelector("textarea")?.value).toBe("Keep me");
 });
 test("group member or exact conversation replacement cannot rebase a typed reply", async () => {

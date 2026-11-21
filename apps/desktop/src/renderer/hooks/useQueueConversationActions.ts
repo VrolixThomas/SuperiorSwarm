@@ -6,6 +6,7 @@ export function useQueueConversationActions(): QueueConversationActions {
 	const mutation = trpc.activityQueue.workspaceReply.useMutation();
 	return useMemo(
 		() => ({
+			receipt: (requestId) => utils.activityQueue.workspaceReplyReceipt.fetch({ requestId }),
 			capability: (input) => utils.activityQueue.workspaceReplyCapability.fetch(input),
 			reply: (input) => mutation.mutateAsync(input),
 		}),

@@ -7,6 +7,7 @@ import type {
 	WorkspaceQueueRevisionInput,
 } from "../../../shared/activity-queue";
 export interface QueueConversationActions {
+	receipt?: (requestId: string) => Promise<WorkspaceQueueReplyResult | null>;
 	capability: (input: WorkspaceQueueRevisionInput) => Promise<WorkspaceQueueReplyCapability>;
 	reply: (input: WorkspaceQueueReplyInput) => Promise<WorkspaceQueueReplyResult>;
 }
@@ -67,18 +68,61 @@ export function QueueConversationReply({
 			active = false;
 		};
 	}, [actions, item, capabilityKey]);
-	if (item.question || !["agent-done", "agent-failed"].includes(item.situation) || !actions)
-		return null;
 	const draft = drafts[item.id] ?? {
 		content: "",
 		receipt: receipt(item),
 		target: JSON.stringify(item.target),
 	};
+	useEffect(() => {
+		if (!draft.requestId || !actions?.receipt || draft.result?.status === "received") return;
+		const requestId = draft.requestId;
+		let active = true;
+		const refreshReceipt = () => {
+			void actions
+				.receipt?.(requestId)
+				.then((result) => {
+					if (active && result)
+						setDrafts((all) =>
+							all[item.id]?.requestId === requestId &&
+							!(all[item.id]?.result?.status === "received" && result.status !== "received")
+								? {
+										...all,
+										[item.id]: {
+											...all[item.id]!,
+											result,
+											requestId: result.status === "rejected" ? undefined : requestId,
+										},
+									}
+								: all
+						);
+				})
+				.catch(() => {});
+		};
+		refreshReceipt();
+		const timer = setInterval(refreshReceipt, 1000);
+		return () => {
+			active = false;
+			clearInterval(timer);
+		};
+	}, [actions, draft.requestId, draft.result?.status, item.id]);
+	if (item.question || !["agent-done", "agent-failed"].includes(item.situation) || !actions)
+		return null;
 	const changed =
 		JSON.stringify(draft.receipt) !== JSON.stringify(receipt(item)) ||
 		draft.target !== JSON.stringify(item.target);
 	const update = (patch: Partial<Draft>) =>
-		setDrafts((all) => ({ ...all, [item.id]: { ...draft, ...patch } }));
+		setDrafts((all) => {
+			const previous = all[item.id] ?? draft;
+			const next = { ...previous, ...patch };
+			if (
+				patch.requestId &&
+				previous.requestId === patch.requestId &&
+				previous.result?.status === "received" &&
+				patch.result?.status !== "received"
+			)
+				next.result = previous.result;
+			return { ...all, [item.id]: next };
+		});
 	const locked = !!draft.requestId;
 	const send = async () => {
 		if (
@@ -95,7 +139,14 @@ export function QueueConversationReply({
 		update({ requestId });
 		let result: WorkspaceQueueReplyResult;
 		try {
-			result = await actions.reply({ ...draft.receipt, requestId, content: draft.content });
+			result = locked
+				? ((await actions.receipt?.(requestId)) ?? {
+						status: "uncertain",
+						requestId,
+						detail:
+							"No delivery receipt is available. Open the chat to check before sending again.",
+					})
+				: await actions.reply({ ...draft.receipt, requestId, content: draft.content });
 		} catch {
 			result = {
 				status: "uncertain",
@@ -172,7 +223,7 @@ export function QueueConversationReply({
 					changed ||
 					!draft.content.trim() ||
 					(locked
-						? draft.result?.status !== "uncertain"
+						? draft.result?.status !== "uncertain" || !actions.receipt
 						: !available || capability?.status !== "available")
 				}
 				onClick={() => void send()}

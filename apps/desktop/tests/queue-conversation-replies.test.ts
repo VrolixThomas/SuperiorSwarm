@@ -422,6 +422,10 @@ for (const delivery of ["admitted", "uncertain"] as const)
 				rawEvent: "UserPromptSubmit",
 				timestamp: Date.now(),
 				turnId: "delayed-submission",
+				promptHash:
+					delivery === "admitted"
+						? (await import("../src/daemon/queue-delivery")).replyContentHash(input().content)
+						: undefined,
 				cwd: "/tmp",
 			};
 			expect(manager.handleAgentEvent(event)).not.toBeNull();
@@ -434,7 +438,35 @@ for (const delivery of ["admitted", "uncertain"] as const)
 				.where(eq(activityQueueDeliveries.requestId, "one"))
 				.get();
 			expect(stored?.state).toBe(delivery);
-			expect(stored?.continuationTurnId).toBeNull();
+			expect(stored?.continuationTurnId).toBe(
+				delivery === "admitted" ? "delayed-submission" : null
+			);
+			if (delivery === "uncertain") {
+				manager.handleAgentEvent({
+					...event,
+					rawEvent: "Stop",
+					alert: "task-complete",
+					timestamp: Date.now(),
+				});
+				await setStatus(
+					{ kind: "workspace", workspaceId, projectId, terminalId: "owner" },
+					{ phase: "blocked", needs: "Later explicit manual followup" }
+				);
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				manager.handleAgentEvent({ ...event, turnId: "manual-second", timestamp: Date.now() });
+				expect(
+					getDb().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()?.needs
+				).toBeNull();
+				const after = getDb()
+					.select()
+					.from(activityQueueDeliveries)
+					.where(eq(activityQueueDeliveries.requestId, "one"))
+					.get();
+				expect(after?.state).toBe("uncertain");
+				expect(after?.continuationTurnId).toBeNull();
+				expect(after?.cleanupProtectedTurnId).toBe("delayed-submission");
+			}
+
 			expect(
 				(await listWorkspaceQueue()).items.some(
 					(i) => i.target.type === "terminal" && i.target.terminalId === "sibling"
@@ -473,4 +505,34 @@ test("only the exact prompt digest and conversation can establish provider recei
 	);
 	expect((await workspaceReply(input())).status).toBe("received");
 	expect(writes).toBe(1);
+});
+test("read-only receipt recovery never creates or retries an absent intent", async () => {
+	const { workspaceReplyReceipt } = await import("../src/main/activity-queue/conversation-replies");
+	expect(workspaceReplyReceipt("absent")).toBeNull();
+	expect(writes).toBe(0);
+	expect((await workspaceReply(input())).status).toBe("admitted");
+	expect(workspaceReplyReceipt("one")?.status).toBe("admitted");
+	expect(writes).toBe(1);
+});
+test("a different explicit prompt digest never inherits an uncertain queued cleanup ceiling", async () => {
+	const { queueReplyContinuationTime } = await import(
+		"../src/main/activity-queue/reply-continuation"
+	);
+	daemon.submitQueueReply = async () => {
+		throw Error("lost response");
+	};
+	await workspaceReply(input());
+	if (item.target.type !== "terminal") throw Error("expected terminal");
+	const time = Date.now() + 50;
+	expect(queueReplyContinuationTime(item.target, "different-manual", time, "f".repeat(64))).toBe(
+		time
+	);
+	const row = getDb()
+		.select()
+		.from(activityQueueDeliveries)
+		.where(eq(activityQueueDeliveries.requestId, "one"))
+		.get();
+	expect(row?.state).toBe("uncertain");
+	expect(row?.continuationTurnId).toBeNull();
+	expect(row?.cleanupProtectedTurnId).toBeNull();
 });

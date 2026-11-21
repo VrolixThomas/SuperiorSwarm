@@ -4,6 +4,7 @@ import { reconcileAgentSources } from "../../activity-queue/agent-source";
 import {
 	workspaceReply,
 	workspaceReplyCapability,
+	workspaceReplyReceipt,
 } from "../../activity-queue/conversation-replies";
 import { listCurrentActivityQueue } from "../../activity-queue/current-items";
 import { linkedWorkForEntity } from "../../activity-queue/linked-context";
@@ -33,6 +34,9 @@ const workspaceRevision = z.object({
 });
 
 export const activityQueueRouter = router({
+	workspaceReplyReceipt: publicProcedure
+		.input(z.object({ requestId: z.string().min(1).max(128) }))
+		.query(({ input }) => workspaceReplyReceipt(input.requestId)),
 	workspacePermissionCapability: publicProcedure
 		.input(workspaceRevision)
 		.query(async ({ input }) => {

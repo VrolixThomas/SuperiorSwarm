@@ -169,6 +169,7 @@ export async function workspaceReply(
 	const row = {
 		requestId: input.requestId,
 		continuationTurnId: null,
+		cleanupProtectedTurnId: null,
 		occurrenceKey,
 		fingerprint,
 		target,
@@ -214,4 +215,14 @@ export async function workspaceReply(
 		.where(eq(activityQueueDeliveries.requestId, input.requestId))
 		.run();
 	return receipt({ ...row, state: result });
+}
+
+/** Read-only receipt recovery: unlike workspaceReply, this can never submit an intent. */
+export function workspaceReplyReceipt(requestId: string): WorkspaceQueueReplyResult | null {
+	const row = getDb()
+		.select()
+		.from(activityQueueDeliveries)
+		.where(eq(activityQueueDeliveries.requestId, requestId))
+		.get();
+	return row ? receipt(row) : null;
 }
