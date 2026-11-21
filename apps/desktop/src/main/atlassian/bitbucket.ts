@@ -261,6 +261,12 @@ export async function resolvePRComment(
 }
 
 export interface BitbucketComment {
+	parentId?: number | null;
+	diffSide?: "LEFT" | "RIGHT" | null;
+	isOutdated?: boolean;
+	originalLine?: number | null;
+	/** Absent when the provider did not supply a resolution object or explicit null. */
+	isResolved?: boolean;
 	authorId?: string | null;
 	id: number;
 	body: string;
@@ -294,30 +300,80 @@ export async function getBitbucketPRComments(
 	prId: number
 ): Promise<BitbucketComment[]> {
 	const comments: BitbucketComment[] = [];
+	const pages = new Set<string>();
+	const ids = new Set<number>();
+	const repoUrl = new URL(`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/`);
 	let url: string | null =
 		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`;
 
 	while (url) {
+		const parsed = new URL(url);
+		if (
+			parsed.origin !== repoUrl.origin ||
+			!parsed.pathname.startsWith(repoUrl.pathname) ||
+			parsed.username ||
+			parsed.password ||
+			pages.has(parsed.href)
+		) {
+			throw new Error("Bitbucket comment pagination left the repository or repeated a page");
+		}
+		pages.add(parsed.href);
 		const res = await atlassianFetch("bitbucket", url);
 		if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
 		const data = (await res.json()) as {
 			values: Array<{
 				id: number;
-				content: { raw: string };
+				content?: { raw?: string } | null;
+				deleted?: boolean;
+				parent?: { id: number } | null;
+				resolution?: object | null;
 				user?: { display_name?: string; nickname?: string; uuid?: string } | null;
 				created_on: string;
-				inline?: { path?: string; to?: number };
+				inline?: {
+					path?: string;
+					to?: number | null;
+					from?: number | null;
+					outdated?: boolean;
+				} | null;
 			}>;
 			next?: string;
 		};
+		if (
+			!data ||
+			!Array.isArray(data.values) ||
+			(data.next != null && (typeof data.next !== "string" || !data.next)) ||
+			(data.next && data.values.length === 0)
+		)
+			throw new Error("Bitbucket comment page is incomplete");
 		for (const c of data.values) {
+			if (!c || !Number.isSafeInteger(c.id) || ids.has(c.id)) {
+				throw new Error("Bitbucket comment page contains an invalid or duplicate ID");
+			}
+			ids.add(c.id);
+			const to =
+				Number.isSafeInteger(c.inline?.to) && (c.inline?.to ?? 0) > 0 ? c.inline?.to : null;
+			const from =
+				Number.isSafeInteger(c.inline?.from) && (c.inline?.from ?? 0) > 0 ? c.inline?.from : null;
+			const anchor = to ?? from ?? null;
+			const isOutdated = typeof c.inline?.outdated === "boolean" ? c.inline.outdated : undefined;
+			const isResolved =
+				c.resolution === null
+					? false
+					: c.resolution && typeof c.resolution === "object" && !Array.isArray(c.resolution)
+						? true
+						: undefined;
 			comments.push({
 				id: c.id,
-				body: c.content.raw,
+				body: c.deleted ? "[Deleted comment]" : (c.content?.raw ?? ""),
 				author: c.user?.display_name ?? c.user?.nickname ?? "Unknown",
 				authorId: c.user?.uuid || null,
 				filePath: c.inline?.path ?? null,
-				lineNumber: c.inline?.to ?? null,
+				lineNumber: isOutdated ? null : anchor,
+				diffSide: to != null ? "RIGHT" : from != null ? "LEFT" : null,
+				isOutdated,
+				originalLine: isOutdated ? anchor : undefined,
+				isResolved,
+				parentId: c.parent?.id ?? null,
 				createdAt: c.created_on,
 			});
 		}

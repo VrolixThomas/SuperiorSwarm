@@ -22,6 +22,8 @@ export interface GitHubReviewComment {
 }
 
 export interface GitHubReviewThread {
+	/** False means isResolved is only a legacy placeholder, not a known open state. */
+	resolutionKnown?: boolean;
 	isOutdated?: boolean;
 	originalLine?: number | null;
 	id: string;

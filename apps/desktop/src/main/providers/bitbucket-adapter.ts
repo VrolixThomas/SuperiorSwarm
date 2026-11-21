@@ -1,4 +1,9 @@
-import type { GitHubPRDetails, GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
+import type {
+	GitHubPRDetails,
+	GitHubPREnriched,
+	GitHubReviewThread,
+	GitHubReviewer,
+} from "../../shared/github-types";
 import { atlassianFetch, getAuth } from "../atlassian/auth";
 import {
 	type BitbucketComment,
@@ -67,9 +72,62 @@ export function mapBitbucketComment(comment: BitbucketComment): NormalizedCommen
 		author: comment.author,
 		filePath: comment.filePath,
 		lineNumber: comment.lineNumber,
-		side: null,
+		side: comment.diffSide ?? null,
 		createdAt: comment.createdAt,
 	};
+}
+
+/** A reply inherits only its proved root's location/resolution, never its own stale inline copy. */
+function groupBitbucketComments(comments: BitbucketComment[]) {
+	const byId = new Map(comments.map((comment) => [comment.id, comment]));
+	const groups = new Map<number, BitbucketComment[]>();
+	const conversationComments: GitHubPRDetails["conversationComments"] = [];
+	const asComment = (comment: BitbucketComment) => ({
+		id: String(comment.id),
+		body: comment.body,
+		author: comment.author,
+		authorId: comment.authorId ?? null,
+		authorAvatarUrl: "",
+		createdAt: comment.createdAt,
+	});
+	for (const comment of comments) {
+		let root: BitbucketComment | undefined = comment;
+		const visited = new Set<number>();
+		while (root?.parentId != null) {
+			if (visited.has(root.id)) {
+				root = undefined;
+				break;
+			}
+			visited.add(root.id);
+			root = byId.get(root.parentId);
+		}
+		if (!root?.filePath) {
+			// Orphans/cycles have no proved thread anchor. Keep their text in the conversation.
+			conversationComments.push(asComment(comment));
+			continue;
+		}
+		const members = groups.get(root.id) ?? [];
+		members.push(comment);
+		groups.set(root.id, members);
+	}
+	const reviewThreads: GitHubReviewThread[] = [];
+	for (const [rootId, members] of groups) {
+		const root = byId.get(rootId);
+		if (!root?.filePath) continue;
+		reviewThreads.push({
+			id: String(root.id),
+			path: root.filePath,
+			isResolved: root.isResolved ?? false,
+			resolutionKnown: typeof root.isResolved === "boolean",
+			line: root.isOutdated ? null : root.lineNumber,
+			originalLine: root.originalLine,
+			isOutdated: root.isOutdated,
+			// File-level comments have no side; RIGHT is an inert legacy placeholder with line:null.
+			diffSide: root.diffSide ?? "RIGHT",
+			comments: [root, ...members.filter((comment) => comment.id !== root.id)].map(asComment),
+		});
+	}
+	return { reviewThreads, conversationComments };
 }
 
 // ── Enrichment types ──────────────────────────────────────────────────────────
@@ -370,7 +428,7 @@ export class BitbucketAdapter implements GitProvider {
 	}
 
 	async getReviewThreads(): Promise<NormalizedReviewThread[]> {
-		// Bitbucket comments don't have thread resolution state via API.
+		// Polling reconciliation does not yet consume the optional Bitbucket resolution metadata.
 		return [];
 	}
 
@@ -400,40 +458,7 @@ export class BitbucketAdapter implements GitProvider {
 		const ciState = aggregateCIState(statuses);
 		const reviewDecision = deriveReviewDecision(reviewers);
 
-		// Map comments with file paths to review threads
-		const reviewThreads = comments.flatMap((c) => {
-			if (!c.filePath) return [];
-			return [
-				{
-					id: String(c.id),
-					isResolved: false,
-					path: c.filePath,
-					line: c.lineNumber,
-					diffSide: "RIGHT" as const,
-					comments: [
-						{
-							id: String(c.id),
-							author: c.author,
-							authorId: c.authorId ?? null,
-							body: c.body,
-							authorAvatarUrl: "",
-							createdAt: c.createdAt,
-						},
-					],
-				},
-			];
-		});
-
-		// Map comments without file paths to conversation comments
-		const conversationComments = comments
-			.filter((c) => !c.filePath)
-			.map((c) => ({
-				id: String(c.id),
-				body: c.body,
-				author: c.author,
-				authorAvatarUrl: "",
-				createdAt: c.createdAt,
-			}));
+		const { reviewThreads, conversationComments } = groupBitbucketComments(comments);
 
 		const bbState = normalizeBBState(prData.state);
 
