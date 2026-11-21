@@ -221,7 +221,9 @@ async function run() {
 	setupTerminalIPC(daemon, manager);
 	await win.loadFile(join(root, "index.html"));
 	win.show();
+	app.focus({ steal: true });
 	win.focus();
+	contents.focus();
 	const js = <T = unknown>(source: string): Promise<T> => contents.executeJavaScript(source);
 	const hasCount = (count: number) =>
 		js<boolean>(`!!document.querySelector('button[aria-label="Queue ${count}"]')`);

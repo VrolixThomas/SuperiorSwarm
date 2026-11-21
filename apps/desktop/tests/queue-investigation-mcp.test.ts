@@ -361,11 +361,13 @@ test.skipIf(process.platform !== "darwin")(
 			} finally {
 				await client.close();
 			}
-			const out = resolve(
-				import.meta.dir,
-				process.env["SS_QUEUE_MCP_EVIDENCE_DIR"] ??
-					"../../../.hermes/verification/queue-ownership-2026-11-21"
-			);
+			const out =
+				process.env["SS_QUEUE_EVIDENCE_DIR"] ??
+				resolve(
+					import.meta.dir,
+					process.env["SS_QUEUE_MCP_EVIDENCE_DIR"] ??
+						"../../../.hermes/verification/queue-ownership-2026-11-21"
+				);
 			mkdirSync(out, { recursive: true });
 			writeFileSync(join(out, "mcp-processes.json"), JSON.stringify(evidence, null, 2));
 		} finally {

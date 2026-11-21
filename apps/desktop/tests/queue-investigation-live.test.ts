@@ -31,11 +31,13 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 	async () => {
 		setupTestDb();
 		const root = mkdtempSync(join(tmpdir(), "ss-queue-live-investigation-"));
-		const evidence = resolve(
-			import.meta.dir,
-			process.env["SS_QUEUE_LIVE_EVIDENCE_DIR"] ??
-				"../../../.hermes/verification/queue-provider-evidence-2026-11-21"
-		);
+		const evidence =
+			process.env["SS_QUEUE_EVIDENCE_DIR"] ??
+			resolve(
+				import.meta.dir,
+				process.env["SS_QUEUE_LIVE_EVIDENCE_DIR"] ??
+					"../../../.hermes/verification/queue-provider-evidence-2026-11-21"
+			);
 		mkdirSync(evidence, { recursive: true });
 		const token = randomUUID();
 		const listener = createAlertListener(0, token);

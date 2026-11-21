@@ -322,7 +322,9 @@ async function run() {
 	setupTerminalIPC(daemon, manager);
 	await win.loadFile(join(root, "index.html"));
 	win.show();
+	app.focus({ steal: true });
 	win.focus();
+	contents.focus();
 	const js = <T = unknown>(code: string): Promise<T> => contents.executeJavaScript(code);
 	const count = (n: number) =>
 		js<boolean>(`!!document.querySelector('button[data-queue-trigger][aria-label="Queue ${n}"]')`);
@@ -362,7 +364,9 @@ async function run() {
 	key("ArrowDown");
 	await until(() => js<boolean>("document.activeElement?.hasAttribute('data-queue-row') ?? false"));
 	if (!(await js<boolean>("parseFloat(getComputedStyle(document.activeElement).outlineWidth)>=2")))
-		throw new Error("Queue keyboard focus invisible");
+		throw new Error(
+			`Queue keyboard focus invisible: ${await js<string>("JSON.stringify({hasFocus:document.hasFocus(),tag:document.activeElement?.tagName,visible:document.activeElement?.matches(':focus-visible'),width:getComputedStyle(document.activeElement).outlineWidth})")}; native=${win.isFocused()}`
+		);
 	key("Home");
 	for (const [width, height] of [
 		[800, 600],
