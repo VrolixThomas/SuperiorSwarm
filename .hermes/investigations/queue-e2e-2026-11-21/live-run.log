@@ -1,0 +1,14 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-investigation-live.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Fz16ai 200 request_id=8fa13e0b-c23f-471d-8fbc-3aa3928c0d45 latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=86ba02cd-ba7b-497a-b12b-4e57b4553a45 latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Fz16ai 200 request_id=18734f62-72e9-4927-906e-c17a90e36979 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Fz16ai 200 request_id=7886bdc9-098d-41e1-a0e5-18a8043b0d43 latency=0ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Fz16ai 200 request_id=609aecf9-49d1-4d8c-b8b4-e3c560ed54f3 latency=0ms
+(pass) authenticated provider lifecycle probes (bounded, synthetic content) [24764.39ms]
+
+ 1 pass
+ 0 fail
+ 15 expect() calls
+Ran 1 test across 1 file. [24.88s]

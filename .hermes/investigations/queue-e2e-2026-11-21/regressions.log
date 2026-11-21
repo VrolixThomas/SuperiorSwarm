@@ -1,0 +1,325 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-agent-source.test.ts:
+(pass) idle shell is not ready; explicit blocked and done are durable and working resolves [23.37ms]
+(pass) answers resolve only their exact question; opening and reconciling do not handle [25.62ms]
+(pass) two terminals remain independent; Stop means next input and active clears only that session [25.12ms]
+(pass) codex: direct chat input clears dispatched attention and identical later completion returns [57.14ms]
+(pass) claude: direct chat input clears dispatched attention and identical later completion returns [25.32ms]
+(pass) direct input in a sibling chat and background tool activity leave dispatched reports pending [5.75ms]
+(pass) a prompt produced before a newer workspace report cannot clear it on delayed delivery [12.76ms]
+(pass) typing and waking to read do not resolve session attention before a provider continuation [5.82ms]
+(pass) ordinary chat input does not invent an answer; only a reply delivered to the asker resolves the question [4.80ms]
+(pass) missing/mismatched identities never create or clear attention [2.44ms]
+(pass) unique provider identity is accepted, ambiguous provider identity is rejected [1.43ms]
+(pass) newly persisted generic idle session is not treated as turn completion; deletion resolves [4.88ms]
+(pass) router checks authoritative revision before handling; exact terminal works without workspace hint [5.26ms]
+(pass) restart bootstrap recovers explicit persisted needs-input but not generic idle [4.63ms]
+(pass) repeated turns reappear while duplicate and out-of-order events preserve current state [3.51ms]
+(pass) workspace navigation lookup exposes authoritative path and review identity [0.80ms]
+(pass) codex: 55 turns through listener, manager and durable queue survive approvals, compaction and restart [304.01ms]
+(pass) claude: 55 turns through listener, manager and durable queue survive approvals, compaction and restart [306.43ms]
+(pass) fresh explicit generation start can reuse a terminal; delayed old generation cannot reclaim it [2.17ms]
+(pass) newer timed activity recovers a missed prompt; an unknown Stop cannot invent the next turn [2.30ms]
+(pass) failure supersedes a handled approval request without claiming task success [1.73ms]
+(pass) codex: a direct reply clears the exact manual chat's bound workspace report [10.57ms]
+(pass) claude: a direct reply clears the exact manual chat's bound workspace report [7.90ms]
+(pass) working status clears its chat's old turn, rejects replay, and allows the next completion [9.51ms]
+(pass) working status without a valid reporter cannot clear arbitrary chats [2.79ms]
+
+tests/describe-workspace-item.test.ts:
+(pass) a chat turn ending requests review without claiming task completion [0.55ms]
+(pass) workspace completion shows the actual report and asks for review
+(pass) an input request or question shows the actual question
+(pass) permission and failure notifications admit when their details are absent [0.09ms]
+
+tests/folder-mcp-context.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-C4pIkE%2FWerk 200 request_id=85e6fe6a-82db-417f-bf29-c239a185a365 latency=2ms
+(pass) folder MCP context > discovers a folder orchestrator and its event stream by project path [7.28ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-wwBnv7%2Falias 200 request_id=5935ff40-bcbc-49b1-b398-00f26adaf011 latency=1ms
+(pass) folder MCP context > discovers a custom folder path through a symlink without inheriting the root role [4.01ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-aW59Sa%2FWerk 409 request_id=d67e06ca-5248-4fa7-8efb-b91c8810db2d latency=0ms
+(pass) folder MCP context > refuses to guess an orchestrator when folder tabs share a cwd [4.71ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-x0e9ks%2FWerk%2Felsewhere 200 request_id=8a750ecc-b609-427c-9259-74cca2cd5adc latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-x0e9ks%2FWerk 200 request_id=503a0272-29bd-414d-96b3-bb9d21db9d2c latency=0ms
+(pass) folder MCP context > terminal identity distinguishes folder tabs and survives cwd changes [4.30ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-Bjx4Bj%2FWerk 401 request_id=1f6bf670-7675-4dd6-9e8f-a70fe942b1c6 latency=0ms
+(pass) folder MCP context > a stale terminal identity cannot fall back to a folder orchestrator [3.65ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-DHUhLR%2FWerk 200 request_id=8a307d7e-4c19-4f1a-b27e-9a9cf529a29f latency=0ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-DHUhLR%2FWerk 200 request_id=fe6bbacd-4d4f-4159-8db4-f3499ff060f3 latency=0ms
+(pass) folder MCP context > explicit folder identity wins over an overlapping registered worktree [4.22ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-9on8YI%2FWerk 200 request_id=495bbd4e-43ae-46bd-bb1c-f791f056b50b latency=1ms
+(pass) folder MCP context > coordinator terminal IDs still resolve as cross-repo orchestrators [3.70ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-FQWhYn%2FWerk 401 request_id=227e6504-08b0-4ba6-bcda-e70126f1d34c latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-FQWhYn%2FWerk 200 request_id=b4b7c02e-0d62-424c-9afa-041796a00d88 latency=0ms
+(pass) folder MCP context > an external manager ID cannot authenticate as a terminal workspace [4.42ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-2zyM2q%2FWerk&taskToken=folder-review 200 request_id=c5b49560-ab60-4930-a3fd-3cb7409e9c64 latency=1ms
+(pass) folder MCP context > task identity takes precedence over inherited terminal and manager environments [4.07ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-QyRe41%2FWerk 200 request_id=17576647-c222-49e5-b46e-7c3788875a27 latency=0ms
+[control-plane] POST /workspaces.dispatch 200 request_id=eefca0b1-cb79-4af1-95eb-6cd92245d7d2 latency=4ms
+(pass) folder MCP context > folder dispatch respects auto=true and orchestrator=true [7.73ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-oI82UE%2FWerk 200 request_id=372bdb85-5bfa-4a19-9cdc-9e5cc1f8724b latency=0ms
+[control-plane] POST /workspaces.dispatch 499 request_id=91544c3a-fb50-4783-afe3-92b73bd0d73e latency=0ms
+(pass) folder MCP context > folder dispatch respects auto=false and orchestrator=true [4.69ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-LnO30j%2FWerk 200 request_id=5866e1d6-915b-4bff-9b95-b97fc92cdde4 latency=0ms
+[control-plane] POST /workspaces.dispatch 499 request_id=04b4737e-cc82-426a-94a2-55653b8fd1af latency=0ms
+(pass) folder MCP context > folder dispatch respects auto=true and orchestrator=false [4.14ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-p8Kl1e%2FWerk 200 request_id=7cee15bf-52f9-47b8-8b40-af912052c824 latency=0ms
+[control-plane] GET /workspaces.list?projectId=TaxYpY9qAvejoX4dsAJsE 200 request_id=ffadd6fc-6536-466a-9d57-9716da847de2 latency=1ms
+[control-plane] GET /workspaces.get?workspaceId=o6QE84Pz53OU1FY_kUJJo 200 request_id=43e89af5-c8da-4c1b-a4e4-e1348bdde46e latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=96a27855-7066-43d9-bd96-1e4f112f236d latency=1ms
+[control-plane] POST /workspaces.send_message 200 request_id=516ec798-c16a-41cc-9af8-1a8c341da511 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-p8Kl1e%2FWerk 200 request_id=f744b51b-266a-40d7-8bdd-327adbf990eb latency=0ms
+[control-plane] GET /workspaces.read_messages?projectId=TaxYpY9qAvejoX4dsAJsE 200 request_id=3cab5729-77c5-4394-a3b2-84ba038cbf6f latency=1ms
+(pass) folder MCP context > folder agents can list, inspect, publish status, and message within their project [8.13ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Ffolder-mcp-8bPQsy%2FWerk 200 request_id=a4a721a3-8679-4091-9d9c-eea78c41c645 latency=0ms
+[control-plane] GET /workspaces.list?projectId=another-project 401 request_id=6e5f9a0b-fe32-4feb-866c-5f146110f63e latency=0ms
+(pass) folder MCP context > folder identity does not grant access to another project [5.41ms]
+
+tests/activity-queue-navigation.test.ts:
+(pass) direct Queue navigation > leaves repos directly without an intermediate restoration or shell [0.43ms]
+(pass) direct Queue navigation > leaves tickets directly without an intermediate restoration or shell [0.12ms]
+(pass) direct Queue navigation > leaves prs directly without an intermediate restoration or shell [0.05ms]
+(pass) direct Queue navigation > leaves hermes directly without an intermediate restoration or shell [0.05ms]
+(pass) direct Queue navigation > Back returns to the selected Hermes conversation [0.15ms]
+(pass) direct Queue navigation > PR activation retains direct history from Hermes [0.10ms]
+(pass) Queue source targeting > GAP workspace report Open retains a selected sibling instead of the known reporting chat [0.72ms]
+(pass) Queue source targeting > selects the exact tab and split pane, preserving the other terminal [0.41ms]
+(pass) Queue source targeting > reopens the exact review drawer without creating a pane terminal [0.02ms]
+(pass) Queue source targeting > missing terminal and changed provider session preserve active work [0.22ms]
+(pass) Queue source targeting > PR duplicate clicks reuse one in-flight review operation [0.64ms]
+(pass) Queue source targeting > PR failure leaves current workspace and unlocks retry [0.20ms]
+(pass) Queue source targeting > same repository name on a different provider is not navigated
+(pass) Queue source targeting > unavailable and Hermes recovery targets explain their limits
+(pass) missing PR branches are resolved before creating a review workspace [0.13ms]
+(pass) missing live PTYs cannot be recreated by Queue navigation [0.13ms]
+(pass) terminal service errors retain the current workspace [0.08ms]
+(pass) Queue marks terminals added during preflight before any destination activation [0.17ms]
+
+tests/queue-investigation-matrix.test.ts:
+(pass) claude/worktree/manual: exact direct continuation and sibling isolation [22.87ms]
+(pass) claude/folder/manual: exact direct continuation and sibling isolation [22.72ms]
+(pass) claude/repo-orchestrator/manual: exact direct continuation and sibling isolation [26.41ms]
+(pass) GAP claude/cross-repo/manual: registered coordinator callback is rejected [3.30ms]
+(pass) claude/worktree/managed: exact direct continuation and sibling isolation [25.97ms]
+(pass) claude/folder/managed: exact direct continuation and sibling isolation [27.73ms]
+(pass) claude/repo-orchestrator/managed: exact direct continuation and sibling isolation [32.17ms]
+(pass) GAP claude/cross-repo/managed: registered coordinator callback is rejected [4.28ms]
+(pass) GAP claude: known reporter is discarded from navigation and workspace/chat duplicate [14.43ms]
+(pass) GAP claude: untagged accepted prompt clears chat but leaves owned workspace attention [10.13ms]
+(pass) GAP claude: structured question has no terminal ownership and survives reporter closure [18.78ms]
+(pass) GAP claude: legacy Stop without turn identity resurrects attention after explicit working [63.88ms]
+(pass) codex/worktree/manual: exact direct continuation and sibling isolation [37.55ms]
+(pass) codex/folder/manual: exact direct continuation and sibling isolation [38.89ms]
+(pass) codex/repo-orchestrator/manual: exact direct continuation and sibling isolation [40.50ms]
+(pass) GAP codex/cross-repo/manual: registered coordinator callback is rejected [5.53ms]
+(pass) codex/worktree/managed: exact direct continuation and sibling isolation [42.85ms]
+(pass) codex/folder/managed: exact direct continuation and sibling isolation [45.21ms]
+(pass) codex/repo-orchestrator/managed: exact direct continuation and sibling isolation [47.71ms]
+(pass) GAP codex/cross-repo/managed: registered coordinator callback is rejected [9.56ms]
+(pass) GAP codex: known reporter is discarded from navigation and workspace/chat duplicate [27.25ms]
+(pass) GAP codex: untagged accepted prompt clears chat but leaves owned workspace attention [12.49ms]
+(pass) GAP codex: structured question has no terminal ownership and survives reporter closure [23.20ms]
+(pass) GAP codex: legacy Stop without turn identity resurrects attention after explicit working [71.01ms]
+
+tests/activity-queue-workspace.test.ts:
+(pass) public workspace list excludes external sources from items, counts, errors and update time [10.52ms]
+(pass) workspace/project rename and color enrich context without bumping revisions or fingerprints [3.03ms]
+(pass) classification uses structured permission/failure/question evidence, never summary instructions [5.75ms]
+(pass) workspace mutations reject missing, external and mismatched source targets [26.05ms]
+(pass) Done refuses wrong revision, failed inventory, disconnect and retired work [14.25ms]
+(pass) fresh state is reconciled after inventory wait, so an old click cannot acknowledge new work [4.23ms]
+(pass) terminal identity must match the current workspace and provider generation [10.19ms]
+(pass) unavailable source is visible with its own error but cannot be acknowledged or deferred [6.13ms]
+(pass) Later persists across DB reopen, expires at the boundary and never affects generic counts [13.82ms]
+(pass) new revision returns pending and a stale bringBack cannot delete the newer snooze [15.69ms]
+(pass) Done and Undo require the same current revision and acknowledgement [21.50ms]
+(pass) failed inventory cannot restore handled work or remove its deferral [6.78ms]
+(pass) Later validates future bounded timestamps or untilChange, including invalid numeric values [8.88ms]
+(pass) removed source cascades its snooze and retired terminals do not contribute Later counts [5.12ms]
+(pass) confirmed exact managed terminal can be handled and undone without sending provider input [8.39ms]
+(pass) exact terminal binding is required even when another terminal keeps its old workspace live [6.76ms]
+(pass) global counts combine pending, snoozed and handled work independently of project/view filters [14.35ms]
+(pass) expiry uses the time after waiting for inventory [4.36ms]
+(pass) concurrent Done then Later rejects deferral so Undo returns the item to pending [7.50ms]
+(pass) concurrent restore mutations use persisted receipts rather than their pre-await views [9.71ms]
+(pass) chat titles identify the conversation without changing its source revision [3.25ms]
+(pass) a sibling terminal cannot keep a closed reporting chat's workspace item current [5.60ms]
+
+tests/agent-session-manager.test.ts:
+(pass) buildAgentResumeCommand > builds provider-specific resume commands [0.54ms]
+(pass) AgentSessionManager > sleeps a hidden idle agent and wakes it in the preserved shell [18.57ms]
+(pass) AgentSessionManager > does not auto-sleep a visible terminal, then schedules it when hidden [24.37ms]
+(pass) AgentSessionManager > needs-input cancels a pending automatic sleep [70.56ms]
+(pass) AgentSessionManager > keeps orchestrator workspaces awake by default [13.82ms]
+(pass) AgentSessionManager > wakes a non-Claude workspace when an orchestrator sends follow-up work [1.55ms]
+(pass) AgentSessionManager > waits for a completing managed child before resuming the same provider session [7.96ms]
+(pass) AgentSessionManager > fails closed without writing into a child that remains active [5.88ms]
+(pass) AgentSessionManager > records a failed automatic sleep without retrying in a tight loop [16.73ms]
+(pass) AgentSessionManager > keeps exactly one managed dispatch target and ignores newer unmanaged sessions [1.99ms]
+(pass) AgentSessionManager > fails closed when persisted data has multiple managed targets [0.48ms]
+(pass) AgentSessionManager > treats a cascaded session as a harmless automatic-sleep no-op [23.95ms]
+(pass) AgentSessionManager > clears pre-captured in-memory state after database rows cascade away [1.68ms]
+(pass) AgentSessionManager > recovers an interrupted hibernation from the retained shell and wakes it [0.57ms]
+(pass) AgentSessionManager > does not overwrite a hook event that wins a reconciliation race [1.71ms]
+
+tests/activity-queue-current-items.test.ts:
+(pass) old reports and questions without live terminals are hidden without deleting their data [1.80ms]
+(pass) disconnects retain the last confirmed list; cold unavailable state never advertises historical work [1.48ms]
+(pass) failed refresh is not removal, and returning sessions retain handled receipts [5.08ms]
+
+tests/control-plane.test.ts:
+[control-plane] unauthorized request request_id=3db74995-9f9e-4c60-bfca-d6f40a7ccee5
+[control-plane] GET /workspaces.list?projectId=proj-RZUBJvKg 401 request_id=3db74995-9f9e-4c60-bfca-d6f40a7ccee5 latency=0ms
+(pass) control-plane HTTP > rejects missing token with 401 [41.41ms]
+[control-plane] unauthorized request request_id=ffbc67b2-dd68-411e-893a-f3de54cfe1e3
+[control-plane] GET /workspaces.list?projectId=proj-4oMPGWhX 401 request_id=ffbc67b2-dd68-411e-893a-f3de54cfe1e3 latency=0ms
+(pass) control-plane HTTP > rejects bad token with 401 [39.38ms]
+[control-plane] GET /nope 404 request_id=5fff812d-ff27-4bcd-a190-c4ceb795fb29 latency=0ms
+(pass) control-plane HTTP > returns 404 for unknown route [35.43ms]
+[control-plane] POST /workspaces.create 200 request_id=899ea5a6-8f81-48f6-b78a-ef949ad47974 latency=83ms
+[control-plane] GET /workspaces.list?projectId=proj-88yACTjr 200 request_id=058afbd0-175f-47d0-9be7-185b4fdf4162 latency=1ms
+[control-plane] GET /workspaces.get?projectId=proj-88yACTjr&workspaceId=fOJZtitxGzd5f9mKFpEQl 200 request_id=71325742-9ee7-46c2-a05f-74e191755371 latency=64ms
+[control-plane] POST /workspaces.remove 200 request_id=0296bd9b-4d31-4130-aef5-0e43433e6e68 latency=128ms
+(pass) control-plane HTTP > create + list + get + remove round-trip [317.80ms]
+[control-plane] POST /workspaces.create 200 request_id=7508ea4b-924f-4fff-b47f-6cd134457188 latency=72ms
+[control-plane] GET /workspaces.get?projectId=other&workspaceId=PC0ol22eywA_Koyfpk2SQ 401 request_id=d54b2a84-faba-4105-99be-16e3e2732177 latency=0ms
+(pass) control-plane HTTP > 401 on cross-project access (caller scoping rejects before service layer) [110.11ms]
+[control-plane] POST /workspaces.create 400 request_id=adbe4173-c4a8-467d-9652-0de538df6d01 latency=0ms
+(pass) control-plane HTTP > 400 on invalid body [36.13ms]
+[control-plane] POST /workspaces.create 200 request_id=d9235a4c-95de-4b6b-881d-8777aaab7ad5 latency=68ms
+[control-plane] POST /workspaces.dispatch 200 request_id=aea8bcc8-4cbe-4232-9cb3-bb25da1f5b12 latency=62ms
+(pass) control-plane HTTP > dispatch route returns started status [167.83ms]
+[control-plane] POST /workspaces.create 200 request_id=f6dffd24-983c-483e-b56c-e49d1ac101f2 latency=73ms
+[control-plane] POST /workspaces.dispatch 499 request_id=40727fe5-9c0d-43bd-871d-6ac274bdd3d7 latency=62ms
+(pass) control-plane HTTP > 499 when confirm denies dispatch [172.11ms]
+[control-plane] POST /workspaces.create 200 request_id=b680723f-ece4-4191-bee5-e9667c6c60e2 latency=75ms
+[control-plane] GET /workspaces.get?projectId=proj-gFPPnKAC&workspaceId=does-not-exist 404 request_id=8462e000-845a-4408-af7e-3a35e9bb3ef6 latency=1ms
+(pass) control-plane HTTP > 404 when workspaceId not found [114.05ms]
+[control-plane] POST /workspaces.create 200 request_id=eaa02ef2-d91f-48a4-8471-4a7511a68ffa latency=73ms
+[control-plane] GET /workspaces.get?projectId=proj-6MWO1yuh&workspaceId=does-not-exist 404 request_id=b01ed301-323c-4a6b-9bbe-be93af43d2f5 latency=1ms
+(pass) control-plane HTTP > unknown workspace returns 404 via typed NotFoundError [111.14ms]
+[control-plane] POST /workspaces.remove 401 request_id=bc1c4dea-5adc-4276-be9a-ce86259a43f7 latency=0ms
+(pass) control-plane HTTP > workspaces.remove rejects xro caller for non-linked project [36.56ms]
+[control-plane] POST /workspaces.dispatch 401 request_id=de17a986-3273-4ec5-882b-90b0e89a073e latency=0ms
+(pass) control-plane HTTP > workspaces.dispatch rejects xro caller for non-linked project [47.62ms]
+[control-plane] POST /workspaces.create 401 request_id=ca10a068-14c0-4a5e-99d2-088e3bac65f4 latency=1ms
+(pass) control-plane HTTP > workspaces.create rejects xro caller for non-linked project [38.48ms]
+[control-plane] POST /workspaces.create 401 request_id=b6f95691-4600-4823-a056-32fb89a69246 latency=0ms
+(pass) control-plane HTTP > workspaces.create rejects caller with no header [36.29ms]
+[control-plane] GET /workspaces.list?projectId=proj-OARihk8U 401 request_id=622ef284-965b-43cd-8d30-b6803c2965e0 latency=1ms
+(pass) control-plane HTTP > workspaces.list rejects caller with no workspace/xro header [36.77ms]
+[control-plane] GET /workspaces.list?projectId=proj-FEjM_A8t 401 request_id=f3cb09e6-35cb-4f8f-91e7-382df26af66f latency=0ms
+(pass) control-plane HTTP > workspaces.list rejects workspace caller requesting a different project [35.41ms]
+[control-plane] GET /workspaces.list?projectIds=proj--BFuVJX0,proj-nea9jBWk 401 request_id=cf3cee9d-3107-44fa-80d2-6a38f6b2a5b1 latency=0ms
+(pass) control-plane HTTP > workspaces.list rejects xro caller when any projectId is not linked [37.17ms]
+[control-plane] GET /workspaces.list?projectIds=proj-afgnTswp 200 request_id=76e0c0ae-6e01-4fe4-9627-9ac01e450e13 latency=1ms
+(pass) control-plane HTTP > workspaces.list allows xro caller when all projectIds are linked [36.25ms]
+[control-plane] POST /workspaces.create 200 request_id=96cb7a97-daa4-449a-a33a-00a10601f720 latency=73ms
+[control-plane] POST /workspaces.set_status 200 request_id=556248bd-3e36-4845-b54d-a9d9769df183 latency=2ms
+[control-plane] GET /workspaces.get?projectId=proj-7N1Nof4b&workspaceId=VD_b6F7ks2R9ekuN7o-Mh 200 request_id=c3b9c0bb-d892-46d7-a272-fc59ab1847b9 latency=62ms
+(pass) control-plane coordination routes > set_status updates the row [173.11ms]
+[control-plane] POST /workspaces.set_status 200 request_id=1e2636a0-c8e5-4b65-9859-784436453dbb latency=2ms
+(pass) control-plane coordination routes > status HTTP binds the reporting terminal and clears only its completed turn [37.72ms]
+[control-plane] POST /workspaces.set_status 401 request_id=c525b48a-7031-4ba1-8e46-f3a20ae72ee4 latency=0ms
+(pass) control-plane coordination routes > set_status without X-Workspace-Id returns 401 [37.04ms]
+[control-plane] POST /workspaces.create 200 request_id=ff405fd0-6189-49ba-a733-ab5f2f8a22f0 latency=76ms
+[control-plane] POST /workspaces.create 200 request_id=5271f73b-61cc-4476-845d-1d0a548b7c87 latency=86ms
+[control-plane] POST /workspaces.send_message 200 request_id=309c93a7-be90-4870-84b6-d73d6269f341 latency=0ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-ah1LfFNQ 200 request_id=6b625501-9374-422f-97d4-411e43f8ac06 latency=0ms
+(pass) control-plane coordination routes > send_message + read_messages round-trip [204.90ms]
+[control-plane] POST /workspaces.create 200 request_id=5b8138e8-7818-42a0-a4de-2587133e5684 latency=88ms
+[control-plane] POST /workspaces.create 200 request_id=e49354bd-7c33-431a-b5e2-411e1595d5fa latency=88ms
+[control-plane] POST /workspaces.resume_agent 403 request_id=106e6516-67f1-435f-8d34-829159518534 latency=1ms
+(pass) control-plane coordination routes > resume_agent returns 403 for non-orchestrator caller [239.10ms]
+[control-plane] GET /context.resolve?cwd=%2Fnowhere 200 request_id=264e5c0c-2af5-45e1-b573-e51fa6193fa4 latency=0ms
+(pass) /context.resolve > returns mode:none when cwd unknown and no token [40.09ms]
+[control-plane] GET /context.resolve?cwd=%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fcp-4SpFJM%2Frepo 200 request_id=60a83a76-6f60-4a45-824b-61d2d39a0f95 latency=0ms
+(pass) /context.resolve > returns workspace-agent for registered worktree [44.23ms]
+[control-plane] GET /context.resolve?cwd=/x&taskToken=tok-1 200 request_id=d9f66efa-158d-49b6-b81f-a8ce9321455e latency=0ms
+(pass) /context.resolve > resolves taskToken to review mode [40.46ms]
+[control-plane] GET /context.resolve?cwd=/x&taskToken=tok-2 200 request_id=8038c750-30d2-4f09-814a-f91b62865da1 latency=0ms
+[control-plane] GET /context.resolve?cwd=/x&taskToken=tok-2 200 request_id=232e56e4-d0a3-4c79-8b83-3158b4539e3e latency=1ms
+(pass) /context.resolve > taskToken is single-use [76.29ms]
+[control-plane] unauthorized request request_id=12f3a120-13c6-42ab-8a04-bb2184411494
+[control-plane] GET /context.resolve?cwd=/x 401 request_id=12f3a120-13c6-42ab-8a04-bb2184411494 latency=0ms
+(pass) /context.resolve > requires auth [54.72ms]
+
+tests/queue-investigation-mcp.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp%2Fcurrent-claude 200 request_id=35f08639-4662-4351-b2fc-faa24296ccc2 latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=ecfada15-837e-45a1-9017-4bc24381c003 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=7c80249b-ec12-4cf7-8dcf-48f2a6708eb5 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp%2Fcurrent-codex 200 request_id=60cda34c-a891-46de-bbe3-8079a0d5ef07 latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=acc2b5bd-2aed-4fa8-ae98-015ca8d9f485 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=91793bff-9746-4083-afe8-fb3627520821 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp%2Fmissing-identity-claude 200 request_id=d587bb34-b8f7-4c87-9405-d389533b8fd6 latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=832e2620-cc56-4c1a-a2fd-e6a95902f0ee latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=545e48c5-1a6d-4ae5-ad51-840d9f521787 latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp%2Fmissing-identity-codex 200 request_id=5f8f99bc-9b84-4ee4-98d8-54942d0b3e04 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=775f47ec-6cff-42d5-a21f-771da4db9e66 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=04a5315b-3aff-465e-a6a8-786c30971837 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp%2Finstalled-claude 200 request_id=563bb77a-9d82-45af-9040-462e8759d7be latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=15a02001-52a4-43df-80ec-076156ff33f5 latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=883a8de0-16e7-48ab-92e2-cfa3190434c1 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp%2Finstalled-codex 200 request_id=6e6aaa6d-5e6b-46c1-b1a4-674e6ebc62dd latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=2f084014-f26e-457a-905a-fd4036aaf1e6 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=6b21daad-5ca5-4b0d-9c6d-90996cc35d27 latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-BeJozp 200 request_id=0420404a-b78a-4253-ad87-a75010f160dd latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=ae026a4e-272f-465c-9fe9-3065f892bf7f latency=1ms
+(pass) MCP current/legacy/missing identity and cross-repo linked folder reports [1233.14ms]
+
+tests/agent-hooks/listener.test.ts:
+(pass) AgentAlertListener > returns 200 and maps rawEvent via agent registry [0.51ms]
+(pass) AgentAlertListener > returns 400 for missing rawEvent param [0.18ms]
+(pass) AgentAlertListener > returns 204 for unknown agent (silently ignored) [0.13ms]
+(pass) AgentAlertListener > returns 204 when agent mapper returns null (unrecognised event) [0.10ms]
+(pass) AgentAlertListener > returns 404 for unknown paths [0.11ms]
+(pass) AgentAlertListener > emits AgentEvent on valid request [0.14ms]
+(pass) AgentAlertListener > getPort returns the bound port
+(pass) AgentAlertListener > returns 200 with app identifier on /health [0.11ms]
+(pass) AgentAlertListener > /shutdown requires POST method [2.48ms]
+(pass) AgentAlertListener authentication > rejects missing tokens and accepts the configured bearer token [1.56ms]
+(pass) reclaimPort > reclaims port from a stale SuperiorSwarm listener [207.76ms]
+(pass) reclaimPort > completes without error when port is free (connection refused) [1.25ms]
+(pass) EADDRINUSE fallback > fallback listener binds to a different port [0.06ms]
+(pass) EADDRINUSE fallback > fallback listener still serves requests [0.74ms]
+
+tests/agent-hooks/bridge.test.ts:
+(pass) generated launcher parses top-level identities and sends authenticated turn metadata [265.03ms]
+
+tests/agent-hooks/claude.test.ts:
+(pass) claudeConfig.mapEvent > maps UserPromptSubmit to active
+(pass) claudeConfig.mapEvent > maps PostToolUse to active
+(pass) claudeConfig.mapEvent > maps Stop to task-complete
+(pass) claudeConfig.mapEvent > maps PermissionRequest to needs-input
+(pass) claudeConfig.mapEvent > returns null for unknown events
+(pass) mergeClaudeHooks > creates settings.json if it does not exist [0.55ms]
+(pass) mergeClaudeHooks > preserves existing non-hook settings [0.32ms]
+(pass) mergeClaudeHooks > replaces old agent-notify hooks on re-run [0.24ms]
+
+tests/agent-hooks/opencode.test.ts:
+(pass) OpenCode lifecycle plugin > generates valid JavaScript with authenticated per-session events [0.51ms]
+
+tests/agent-hooks/gemini.test.ts:
+(pass) geminiConfig.mapEvent > maps BeforeAgent to active [0.06ms]
+(pass) geminiConfig.mapEvent > maps AfterAgent to task-complete [0.01ms]
+(pass) geminiConfig.mapEvent > maps AfterTool to active
+(pass) geminiConfig.mapEvent > returns null for unknown events
+(pass) mergeGeminiHooks > creates settings.json if it does not exist [0.30ms]
+(pass) mergeGeminiHooks > preserves existing settings [0.26ms]
+(pass) mergeGeminiHooks > replaces old hooks on re-run [0.19ms]
+
+tests/agent-hooks/codex.test.ts:
+(pass) codexConfig.mapEvent > maps SessionStart to active
+(pass) codexConfig.mapEvent > maps per-turn activity, approvals and compaction without treating subagent stop as parent
+(pass) codexConfig.mapEvent > maps Stop to task-complete
+(pass) codexConfig.mapEvent > returns null for unknown events
+(pass) mergeCodexHooks > creates hooks.json if it does not exist [0.75ms]
+(pass) mergeCodexHooks > preserves malformed settings instead of silently overwriting them [0.23ms]
+(pass) mergeCodexHooks > preserves existing settings [0.22ms]
+(pass) mergeCodexHooks > replaces old hooks on re-run [0.33ms]
+
+ 193 pass
+ 0 fail
+ 2290 expect() calls
+Ran 193 tests across 16 files. [6.44s]

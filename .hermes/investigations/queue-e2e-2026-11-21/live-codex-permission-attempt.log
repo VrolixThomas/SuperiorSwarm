@@ -1,0 +1,26 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-investigation-live.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-JpMphU 200 request_id=eda5af9d-b0cc-4b43-b91f-55487b95c24c latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=5509dc56-bf86-40e3-b2a9-51e66fa6ab44 latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-JpMphU 200 request_id=d17cc401-e93a-4816-b5bc-ccc5bd7d86d4 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-JpMphU 200 request_id=97d157b1-eb6a-46f5-8858-90a705f48914 latency=1ms
+ 96 | 			const probeOutput = first.output.split("\n").flatMap(line => { try { const p = JSON.parse(line); return p.item ? [{ type: p.item.type, tool: p.item.tool, status: p.item.status, text: ["agent_message", "error"].includes(p.item.type) ? p.item.text ?? p.item.message : undefined }] : p.type === "result" ? [{ type: "result", text: p.result }] : []; } catch { return []; } });
+ 97 | 			writeFileSync(join(evidence, `live-${provider}-diagnostic.json`), JSON.stringify({ code: first.code, probeOutput, trace, queue: firstItems.map(i => ({ id: i.id, evidence: i.evidence, missingContext: i.missingContext, target: i.target })) }, null, 2));
+ 98 | 			expect(first.code).toBe(0);
+ 99 | 			expect(/Which color: amber or blue\?/.test(first.output)).toBe(true);
+100 | 			expect(known?.providerSessionId).toBeTruthy();
+101 | 			expect(firstItems.some(i => i.id === `agent-workspace:${workspaceId}`)).toBe(true);
+                                                                                 ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-investigation-live.test.ts:101:76)
+(fail) authenticated provider lifecycle probes (bounded, synthetic content) [18370.95ms]
+
+ 0 pass
+ 1 fail
+ 11 expect() calls
+Ran 1 test across 1 file. [18.49s]

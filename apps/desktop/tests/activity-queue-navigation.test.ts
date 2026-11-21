@@ -159,6 +159,20 @@ const prTarget: ActivityQueueTarget = {
 };
 
 describe("Queue source targeting", () => {
+	test("GAP workspace report Open retains a selected sibling instead of the known reporting chat", async () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("target", "/target");
+		store.addTerminalTab("target", "/target", "Reporting conversation", "terminal-2");
+		store.addTerminalTab("target", "/target", "Unrelated sibling", "terminal-1");
+		store.setActiveTab("terminal-1");
+		store.setActiveWorkspace("previous", "/previous");
+		const { api } = apiFixture();
+		// agent-workspace sources have this shape even with a validated reporter snapshot.
+		const destination = await openQueueTarget({ type: "workspace", workspaceId: "target" }, api);
+		expect(destination).toEqual({ workspaceId: "target" });
+		expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe("terminal-1");
+	});
+
 	test("selects the exact tab and split pane, preserving the other terminal", async () => {
 		const store = useTabStore.getState();
 		store.setActiveWorkspace("target", "/target");

@@ -1,0 +1,177 @@
+{
+  "root": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-live-investigation-vONhEd",
+  "results": [
+    {
+      "provider": "claude",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "hooks": [
+        {
+          "provider": "claude",
+          "event": "SessionStart",
+          "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+          "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795275010078,
+          "receivedAt": 1795275010086,
+          "accepted": true
+        },
+        {
+          "provider": "claude",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+          "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+          "turn": "8bc94558-1fd3-454e-923f-045aefe79ee2",
+          "source": null,
+          "producedAt": 1795275010170,
+          "receivedAt": 1795275010177,
+          "accepted": true
+        },
+        {
+          "provider": "claude",
+          "event": "Stop",
+          "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+          "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+          "turn": "8bc94558-1fd3-454e-923f-045aefe79ee2",
+          "source": null,
+          "producedAt": 1795275011192,
+          "receivedAt": 1795275011200,
+          "accepted": true
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-ready",
+          "summary": "Ready for next input",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-vvokJZC5",
+            "terminalId": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+            "provider": "claude",
+            "providerSessionId": "834d48a1-6a2e-49c5-80dc-bef9b149354b"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-vvokJZC5\",\"live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc\",\"claude\",\"834d48a1-6a2e-49c5-80dc-bef9b149354b\"]",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-vvokJZC5",
+            "terminalId": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+            "provider": "claude",
+            "providerSessionId": "834d48a1-6a2e-49c5-80dc-bef9b149354b"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 1979
+      }
+    },
+    {
+      "provider": "codex",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "hooks": [],
+      "queueAfterQuestion": [],
+      "sessionTracked": false,
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 896
+      }
+    }
+  ],
+  "trace": [
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+      "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795275010078,
+      "receivedAt": 1795275010086,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+      "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+      "turn": "8bc94558-1fd3-454e-923f-045aefe79ee2",
+      "source": null,
+      "producedAt": 1795275010170,
+      "receivedAt": 1795275010177,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+      "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+      "turn": "8bc94558-1fd3-454e-923f-045aefe79ee2",
+      "source": null,
+      "producedAt": 1795275011192,
+      "receivedAt": 1795275011200,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+      "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795275012192,
+      "receivedAt": 1795275012200,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+      "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+      "turn": "9640b6f6-8e37-409c-99d1-14894b330ba7",
+      "source": null,
+      "producedAt": 1795275012270,
+      "receivedAt": 1795275012277,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-842adbb5-70f5-4549-a460-903d73d6b0dc",
+      "conversation": "834d48a1-6a2e-49c5-80dc-bef9b149354b",
+      "turn": "9640b6f6-8e37-409c-99d1-14894b330ba7",
+      "source": null,
+      "producedAt": 1795275013375,
+      "receivedAt": 1795275013382,
+      "accepted": true
+    }
+  ]
+}
