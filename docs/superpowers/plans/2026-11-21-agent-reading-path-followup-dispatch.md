@@ -22,3 +22,10 @@ Tests must use isolated DBs/providers/runners. Authenticated read-only metadata 
 This conversation's directly exposed MCP connection was bound to sibling `activity-queue`. Its mistakenly changed status was restored immediately before any dispatch. Correctly bound MCP operations use `/tmp/pr-review-mcp.mjs`, which starts the installed SuperiorSwarm stdio launcher through the MCP SDK, supplies the validated PR-review workspace identity, and verifies `resolveContext` before any call. It preserves the app's normal dispatch approval path. No global MCP configuration or credentials were changed. The project event stream can be read through the existing MCP, but parent inbox/status/mutations must use the correctly bound client.
 
 Dispatch prompts/results and assignment IDs: `/tmp/pr-review-dispatch-*.json`, `/tmp/pr-review-dispatched-*.jsonl`, `/tmp/pr-review-agent-assignments.json`. Latest coordination cursor is retained by the orchestrator; if resuming, reread inbox and reconcile workspace state before integration.
+
+## Initial contract and parent integration notes
+
+- A published shared contract `963c0b56`: runtime port startMapping/stopMapping/ask/cancelQuestion, fenced run scopes, independent question runs, durable settings. B coordinates optional full terminal launch descriptor.
+- D's ContextFileView gains workspaceId/baseRef; parent must pass exact details.baseCommitOid/headCommitOid through ReviewReadingPane. D updates the StepDiff useStepContent caller itself.
+- C exposes getCurrentReviewer and proved comment.authorId. Parent must wire GitHub login/ID and Bitbucket UUID-based Mine matching; never use display name as identity.
+- All four agents reported working/kickoff. Parent explicitly approved these interfaces over MCP.
