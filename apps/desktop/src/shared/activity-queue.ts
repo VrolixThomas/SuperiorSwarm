@@ -96,6 +96,8 @@ export interface ActivityQueueSource extends ActivityQueueObservation {
 
 /** Read-time workspace projection; display enrichment never changes source identity. */
 export interface WorkspaceQueueItem extends ActivityQueueItem {
+	/** Canonical report plus exact-conversation turn receipt; all mutations carry every revision. */
+	members?: WorkspaceQueueRevisionInput[];
 	category: "agents";
 	situation: "agent-input" | "agent-permission" | "agent-question" | "agent-failed" | "agent-done";
 	subject: string;
@@ -150,6 +152,7 @@ export interface WorkspaceQueueListResult {
 }
 
 export interface WorkspaceQueueRevisionInput {
+	members?: { id: string; revision: number }[];
 	id: string;
 	revision: number;
 }
