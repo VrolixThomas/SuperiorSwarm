@@ -5,11 +5,16 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import TOML from "@iarna/toml";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { BrowserWindow, app } from "electron";
 import { PtyManager } from "../../../src/daemon/pty-manager";
 import { ScrollbackStore } from "../../../src/daemon/scrollback-store";
 import { SocketServer } from "../../../src/daemon/socket-server";
+import {
+	readTerminalProcessEnvironment,
+	readTerminalProcessIdentity,
+} from "../../../src/daemon/terminal-process-identity";
 import {
 	workspaceReply,
 	workspaceReplyCapability,
@@ -22,10 +27,12 @@ import { createAlertListener } from "../../../src/main/agent-hooks/listener";
 import { closeDb, getDb } from "../../../src/main/db";
 import {
 	activityQueueDeliveries,
+	agentMessages,
 	projects,
 	terminalSessions,
 	workspaces,
 } from "../../../src/main/db/schema";
+import { PosixAgentProcessController } from "../../../src/main/services/agent-process-controller";
 import { AgentSessionManager } from "../../../src/main/services/agent-session-manager";
 import { setAgentSessionManager } from "../../../src/main/services/agent-session-manager-handle";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
@@ -61,7 +68,11 @@ const trace: {
 	promptHash?: string;
 	turnId?: string;
 }[] = [];
+const resumeScenario = process.env["SS_QUEUE_RESUME_TUI"] === "1";
+const answerScenario = process.env["SS_QUEUE_ANSWER_TUI"] === "1";
+const emptyScenario = process.env["SS_QUEUE_EMPTY_CHAT_TUI"] === "1";
 let output = "";
+let viewOutput: string | null = null;
 let step = "startup";
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 async function until(fn: () => boolean | Promise<boolean>, ms = 60000) {
@@ -85,10 +96,12 @@ async function run() {
 	setDaemonClient(daemon);
 	manager = new AgentSessionManager({
 		daemonClient: daemon,
-		processController: {
-			inspectForeground: async () => ({ status: "unknown", error: "not used" }),
-			terminateForeground: async () => ({ ok: false, error: "not used" }),
-		},
+		processController: resumeScenario
+			? new PosixAgentProcessController(daemon)
+			: {
+					inspectForeground: async () => ({ status: "unknown", error: "not used" }),
+					terminateForeground: async () => ({ ok: false, error: "not used" }),
+				},
 		getSettings: () => ({ enabled: false, idleMinutes: 5, keepOrchestratorsAwake: true }),
 	});
 	setAgentSessionManager(manager);
@@ -196,12 +209,40 @@ async function run() {
 		cwd,
 		(data) => {
 			output = (output + data).slice(-100000);
+			if (viewOutput !== null) viewOutput = (viewOutput + data).slice(-100000);
 			writeFileSync(join(root, "tui-output.txt"), output);
 			if (data.includes("\x1b[6n")) daemon.write(terminalId, "\x1b[1;1R");
 		},
 		() => {},
 		env
 	);
+	let sleepingRootPid: number | undefined;
+	let siblingPid: number | undefined;
+	if (resumeScenario) {
+		getDb()
+			.insert(terminalSessions)
+			.values({
+				id: "untouched-sibling",
+				workspaceId: "workspace",
+				title: "Unrelated shell",
+				cwd,
+				sortOrder: 1,
+				updatedAt: now,
+			})
+			.run();
+		await daemon.create(
+			"untouched-sibling",
+			cwd,
+			() => {},
+			() => {}
+		);
+		siblingPid = (await daemon.listSessionsStrict()).find(
+			(row) => row.id === "untouched-sibling"
+		)?.pid;
+		assert.ok(siblingPid);
+	}
+	const initialConversationId = randomUUID();
+
 	const prompt = "Reply with exactly QUEUE_TUI_INITIAL. Do not use tools or change files.";
 	let args: string[];
 	if (provider === "claude")
@@ -219,7 +260,7 @@ async function run() {
 			"plan",
 			"--disable-slash-commands",
 			"--session-id",
-			randomUUID(),
+			initialConversationId,
 			prompt,
 		];
 	else {
@@ -261,13 +302,49 @@ async function run() {
 			prompt,
 		];
 	}
+	const policyArgs = provider === "claude" ? args.slice(0, -3) : args.slice(0, -1);
+	const launchId = randomUUID();
+	const environmentProbe = randomUUID();
+	if (resumeScenario || emptyScenario) {
+		const registration: Parameters<AgentSessionManager["registerManagedSession"]>[0] = {
+			terminalId,
+			workspaceId: "workspace",
+			provider,
+			providerSessionId: provider === "claude" ? initialConversationId : null,
+			skipPermissions: false,
+			queueLaunchId: launchId,
+			queueLaunch: { provider, args: policyArgs, initialPrompt: !emptyScenario },
+		};
+		if (emptyScenario) manager.registerOwnedSession(registration);
+		else manager.registerManagedSession(registration);
+	}
+	if (emptyScenario) args = args.slice(0, -1);
 	const bin = process.env[provider === "claude" ? "SS_QUEUE_CLAUDE_BIN" : "SS_QUEUE_CODEX_BIN"]!;
 	writeFileSync(
 		join(root, "launch.sh"),
-		`#!/bin/sh\nexec ${[bin, ...args].map(quote).join(" ")}\n`,
+		`#!/bin/sh\nSS_RESUME_POLICY_PROBE=${quote(environmentProbe)} AGENT_NOTIFY_LAUNCH_ID=${quote(launchId)} exec ${[bin, ...args].map(quote).join(" ")}\n`,
 		{ mode: 0o700 }
 	);
 	daemon.write(terminalId, `/bin/sh ${quote(join(root, "launch.sh"))}\r`);
+	if (emptyScenario) {
+		step = "empty app-owned chat ready for first manual input";
+		await until(async () => {
+			const live = (await daemon.listSessionsStrict()).find((row) => row.id === terminalId);
+			if (!live) return false;
+			const identity = readTerminalProcessIdentity(live.pid);
+			return (
+				!!identity &&
+				(identity.executable.split("/").at(-1) === provider ||
+					(provider === "claude" && identity.executable.includes("/claude/versions/"))) &&
+				(provider === "codex" ? output.includes("Ask Codex") : output.includes("❯"))
+			);
+		});
+		assert.equal(
+			trace.some((event) => event.accepted && event.event === "UserPromptSubmit"),
+			false
+		);
+		daemon.write(terminalId, `\x1b[200~${prompt}\x1b[201~\r`);
+	}
 	step = "actual initial TUI turn";
 	await until(async () =>
 		(await listWorkspaceQueue()).items.some(
@@ -277,16 +354,82 @@ async function run() {
 				i.situation === "agent-done"
 		)
 	);
-	const item = (await listWorkspaceQueue()).items.find(
+	let item = (await listWorkspaceQueue()).items.find(
 		(i) => i.target.type === "terminal" && i.target.terminalId === terminalId
 	)!;
-	const capability = await workspaceReplyCapability(item);
+	if (answerScenario) {
+		// Controlled question seed, bound to the actual provider conversation. Delivery below is real.
+		const questionId = randomUUID();
+		getDb()
+			.insert(agentMessages)
+			.values({
+				id: questionId,
+				projectId: "project",
+				fromWorkspaceId: "workspace",
+				toWorkspaceId: null,
+				kind: "question",
+				content: "What should I reply with next?",
+				reporter: item.target,
+				createdAt: new Date(),
+			})
+			.run();
+		const question = (await listWorkspaceQueue()).items.find(
+			(row) => row.question?.messageId === questionId
+		);
+		assert.ok(question);
+		item = question;
+	}
+	if (resumeScenario) {
+		step = "authentic app launch registered original policy";
+		await until(async () => {
+			const session = manager.getSession(terminalId);
+			return (
+				!!session?.providerSessionId &&
+				!!(await daemon.prepareQueueSleep(terminalId, provider, session.providerSessionId))
+					?.supported
+			);
+		}, 5000);
+		const initialTarget = JSON.stringify(item.target);
+		const originalRevision = item.revision;
+		step = "hibernate real provider";
+		assert.equal((await manager.sleepNow(terminalId)).state, "hibernated");
+		sleepingRootPid = (await daemon.listSessionsStrict()).find((row) => row.id === terminalId)?.pid;
+		assert.ok(sleepingRootPid);
+		const parkedIdentity = readTerminalProcessIdentity(sleepingRootPid);
+		if (parkedIdentity)
+			assert.notEqual(
+				readTerminalProcessEnvironment(parkedIdentity)?.["SS_RESUME_POLICY_PROBE"],
+				environmentProbe,
+				"Provider-only environment must not leak into parked shell"
+			);
+		const sleeping = (await listWorkspaceQueue()).items.find((row) => row.id === item.id);
+		assert.equal(JSON.stringify(sleeping?.target), initialTarget);
+		assert.equal(
+			sleeping?.revision,
+			originalRevision,
+			"Sleeping alone cannot consume or revise attention"
+		);
+	}
+	const caller = activityQueueRouter.createCaller({});
+	const capability = answerScenario
+		? await caller.workspaceAnswerContinuationCapability({
+				...item,
+				questionId: item.question!.messageId,
+			})
+		: await workspaceReplyCapability(item);
 	assert.equal(capability.status, "available", JSON.stringify(capability));
-	await win.webContents.executeJavaScript("window.queueReplyProbe.refresh()");
+	if (resumeScenario) assert.equal(capability.status === "available" && capability.mode, "resume");
+	await win.webContents.executeJavaScript(
+		`window.queueReplyProbe.select(${JSON.stringify(item.id)}); window.queueReplyProbe.refresh()`
+	);
+	const composerSelector = answerScenario
+		? '[aria-label="Reply to this question"] textarea'
+		: '[aria-label="Reply to conversation"] textarea';
+	const sendLabel = answerScenario ? "Send & continue" : "Send reply";
 	step = "rendered reply control";
 	await until(() =>
 		win.webContents.executeJavaScript(
-			"!!document.querySelector('[aria-label=\"Reply to conversation\"] textarea')"
+			`!!document.querySelector(${JSON.stringify(composerSelector)})`
 		)
 	);
 	app.focus({ steal: true });
@@ -301,16 +444,16 @@ async function run() {
 		.then((image) => writeFileSync(join(root, "before.png"), image.toPNG()));
 	const content = "Reply with exactly QUEUE_TUI_FOLLOWUP. Do not use tools or change files.";
 	await win.webContents.executeJavaScript(
-		`(()=>{const el=document.querySelector('[aria-label="Reply to conversation"] textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,${JSON.stringify(content)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`
+		`(()=>{const el=document.querySelector(${JSON.stringify(composerSelector)});Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,${JSON.stringify(content)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`
 	);
 	await until(() =>
 		win.webContents.executeJavaScript(
-			"[...document.querySelectorAll('button')].some(b=>b.textContent==='Send reply'&&!b.disabled)"
+			`[...document.querySelectorAll("button")].some(b=>b.textContent===${JSON.stringify(sendLabel)}&&!b.disabled)`
 		)
 	);
 	step = "Queue reply to actual TUI";
 	await win.webContents.executeJavaScript(
-		"[...document.querySelectorAll('button')].find(b=>b.textContent==='Send reply').click()"
+		`[...document.querySelectorAll("button")].find(b=>b.textContent===${JSON.stringify(sendLabel)}).click()`
 	);
 	await until(() =>
 		getDb()
@@ -320,19 +463,25 @@ async function run() {
 			.some((r) => r.state === "admitted")
 	);
 	const delivery = getDb().select().from(activityQueueDeliveries).all()[0]!;
-	assert(
-		["admitted", "received"].includes(
-			(
-				await workspaceReply({
-					id: item.id,
-					revision: item.revision,
-					members: item.members,
-					requestId: delivery.requestId,
-					content,
-				})
-			).status
-		)
-	);
+	const retryOriginal = async () => {
+		const input = {
+			id: item.id,
+			revision: item.revision,
+			members: item.members,
+			requestId: delivery.requestId,
+			content,
+		};
+		return answerScenario
+			? (
+					await caller.workspaceAnswerAndContinue({
+						...input,
+						questionId: item.question!.messageId,
+						answerId: delivery.answerBinding?.answerId,
+					})
+				).continuation
+			: await workspaceReply(input);
+	};
+	assert(["admitted", "received"].includes((await retryOriginal()).status));
 	step = "real provider followup receipt";
 	await until(() =>
 		trace.some(
@@ -342,18 +491,7 @@ async function run() {
 				event.evidence?.some((value) => value.text === "QUEUE_TUI_FOLLOWUP")
 		)
 	);
-	assert.equal(
-		(
-			await workspaceReply({
-				id: item.id,
-				revision: item.revision,
-				members: item.members,
-				requestId: delivery.requestId,
-				content,
-			})
-		).status,
-		"received"
-	);
+	assert.equal((await retryOriginal()).status, "received");
 	const after = (await listWorkspaceQueue()).items.find(
 		(i) => i.target.type === "terminal" && i.target.terminalId === terminalId
 	);
@@ -367,6 +505,137 @@ async function run() {
 		).size,
 		2
 	);
+	if (answerScenario) {
+		assert.ok(delivery.answerBinding);
+		const answer = getDb()
+			.select()
+			.from(agentMessages)
+			.where(eq(agentMessages.id, delivery.answerBinding.answerId))
+			.get();
+		assert.equal(answer?.content, content);
+		assert.ok(answer?.retrievedAt);
+		assert.equal(
+			(await listWorkspaceQueue()).items.some((row) => row.id === item.id),
+			false,
+			"Accepted answer resolves only its exact question"
+		);
+	}
+	if (resumeScenario && !answerScenario) {
+		const resumedRoot = (await daemon.listSessionsStrict()).find((row) => row.id === terminalId);
+		assert.ok(resumedRoot);
+		const resumedIdentity = readTerminalProcessIdentity(resumedRoot.pid);
+		assert.ok(resumedIdentity);
+		assert.equal(
+			readTerminalProcessEnvironment(resumedIdentity)?.["SS_RESUME_POLICY_PROBE"],
+			environmentProbe,
+			"Resume must preserve original provider exec environment"
+		);
+		assert.notEqual(
+			resumedRoot.pid,
+			sleepingRootPid,
+			"Queue resume must use structured process replacement, not shell text"
+		);
+		assert.equal(
+			(await daemon.listSessionsStrict()).find((row) => row.id === "untouched-sibling")?.pid,
+			siblingPid
+		);
+		step = "second real hibernation";
+		const next = (await listWorkspaceQueue()).items.find(
+			(row) => row.target.type === "terminal" && row.target.terminalId === terminalId
+		);
+		assert.ok(next);
+		assert.equal((await manager.sleepNow(terminalId)).state, "hibernated");
+		step = "second structured resume";
+		const secondCapability = await workspaceReplyCapability(next);
+		assert.equal(
+			secondCapability.status,
+			"available",
+			JSON.stringify({
+				secondCapability,
+				session: manager.getSession(terminalId),
+				items: (await listWorkspaceQueue()).items.map((row) => ({
+					id: row.id,
+					revision: row.revision,
+				})),
+			})
+		);
+		const second = await workspaceReply({
+			...next,
+			requestId: randomUUID(),
+			content: "Reply with exactly QUEUE_TUI_RESUME_AGAIN. Do not use tools or change files.",
+		});
+		assert.ok(second.status === "admitted" || second.status === "received", JSON.stringify(second));
+		await until(() =>
+			trace.some(
+				(event) =>
+					event.accepted &&
+					event.event === "Stop" &&
+					event.evidence?.some((e) => e.text.includes("QUEUE_TUI_RESUME_AGAIN"))
+			)
+		);
+		assert.equal(
+			manager.getSession(terminalId)?.providerSessionId,
+			item.target.type === "terminal" ? item.target.providerSessionId : null
+		);
+		assert.equal(
+			(await daemon.listSessionsStrict()).find((row) => row.id === "untouched-sibling")?.pid,
+			siblingPid
+		);
+		step = "view-only structured wake";
+		const beforeView = (await listWorkspaceQueue()).items.find(
+			(row) => row.target.type === "terminal" && row.target.terminalId === terminalId
+		);
+		assert.ok(beforeView);
+		await manager.sleepNow(terminalId);
+		const eventOffset = trace.length;
+		viewOutput = "";
+		await manager.wake(terminalId);
+		await until(async () => {
+			const live = (await daemon.listSessionsStrict()).find((row) => row.id === terminalId);
+			if (!live) return false;
+			const identity = readTerminalProcessIdentity(live.pid);
+			return (
+				!!identity &&
+				(identity.name === provider ||
+					(provider === "claude" && identity.executable.includes("/claude/versions/"))) &&
+				(provider === "claude"
+					? trace
+							.slice(eventOffset)
+							.some((event) => event.accepted && event.event === "SessionStart")
+					: (viewOutput ?? "").includes("QUEUE_TUI_RESUME_AGAIN"))
+			);
+		});
+		const afterView = (await listWorkspaceQueue()).items.find((row) => row.id === beforeView.id);
+		assert.equal(
+			afterView?.revision,
+			beforeView.revision,
+			"View-only wake must preserve attention"
+		);
+		assert.equal(
+			trace
+				.slice(eventOffset)
+				.some((event) => event.accepted && event.event === "UserPromptSubmit"),
+			false,
+			"View-only wake must not manufacture a new prompt"
+		);
+		step = "manual followup after view-only wake";
+		const manual = "Reply with exactly QUEUE_TUI_VIEW_FOLLOWUP. Do not use tools or change files.";
+		daemon.write(terminalId, `\x1b[200~${manual}\x1b[201~\r`);
+		await until(() =>
+			trace
+				.slice(eventOffset)
+				.some(
+					(event) =>
+						event.accepted &&
+						event.event === "Stop" &&
+						event.evidence?.some((e) => e.text.includes("QUEUE_TUI_VIEW_FOLLOWUP"))
+				)
+		);
+		assert.equal(
+			manager.getSession(terminalId)?.providerSessionId,
+			item.target.type === "terminal" ? item.target.providerSessionId : null
+		);
+	}
 	await win.webContents.executeJavaScript("window.queueReplyProbe.refresh()");
 	await new Promise((r) => setTimeout(r, 400));
 	await win.webContents
@@ -379,6 +648,11 @@ async function run() {
 				passed: true,
 				provider,
 				mode: "actual interactive provider TUI",
+				resumeCycles: resumeScenario ? (answerScenario ? 1 : 2) : 0,
+				savedAnswerContinuation: answerScenario,
+				appLaunchNonceVerified: resumeScenario || emptyScenario,
+				emptyOwnedChat: emptyScenario,
+				questionOrigin: answerScenario ? "controlled seed bound to actual provider" : undefined,
 				target: item.target,
 				delivery: delivery.state,
 				providerReceipt: "received",

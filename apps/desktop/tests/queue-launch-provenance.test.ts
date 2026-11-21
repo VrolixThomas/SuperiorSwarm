@@ -108,7 +108,7 @@ for (const provider of ["claude", "codex"] as const) {
 		for (const call of calls) {
 			const id = call.agent?.queueLaunchId;
 			expect(id).toMatch(/^[a-f0-9-]{36}$/);
-			expect(call.launchScriptContent).toContain(`AGENT_NOTIFY_LAUNCH_ID='${id}' ${provider}`);
+			expect(call.launchScriptContent).toContain(`AGENT_NOTIFY_LAUNCH_ID='${id}' exec ${provider}`);
 			expect(call.launchScriptContent).not.toContain("export AGENT_NOTIFY_LAUNCH_ID");
 		}
 		expect(calls[0]?.agent?.queueLaunchId).not.toBe(calls[1]?.agent?.queueLaunchId);

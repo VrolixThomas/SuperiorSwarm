@@ -1,0 +1,123 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-resume-manager.test.ts:
+(pass) unknown and rejected structured wake never downgrade to shell commands or flush user input [10.84ms]
+(pass) uncertain structured wake blocks buffered input; admitted view wake preserves same terminal [4.81ms]
+(pass) showing ordinary shell or idle live chat is not treated as a failed sleeping resume [2.97ms]
+(pass) legacy fallback requires explicit absence of descriptor, never transport ambiguity [3.61ms]
+(pass) known app launch cannot lose policy through explicit missing or old daemon metadata [7.91ms]
+(pass) own app chat registration does not steal or demote a managed dispatch target [4.23ms]
+(pass) pending app policy binds only after its launchId and is consumed after successful registration [16.98ms]
+(pass) known launch without an exact clean sleep proof never terminates or changes live state [2.74ms]
+(pass) a callback during sleep preparation prevents terminating the newly active chat [4.82ms]
+
+tests/owned-chat-ui.test.tsx:
+(pass) provider selection is explicit and double clicks/rerenders launch only once [14.80ms]
+(pass) Escape closes without starting a chat and restores trigger focus [2.91ms]
+(pass) startup failure is visible and never causes an automatic retry [2.63ms]
+(pass) new folder chat uses authoritative metadata and awaits creation before its one script write [0.16ms]
+(pass) failed create and changed tab identity prevent script delivery [0.09ms]
+(pass) known failed script admission is reported with no retry or replacement [0.07ms]
+
+tests/queue-resume-pty.test.ts:
+(pass) one-PTY resume preserves listeners, dimensions, cwd, callback environment and accepted replay tail [2.09ms]
+(pass) a directly resumed provider parks and resumes again without closing any terminal [0.30ms]
+(pass) a post-spawn publication failure is uncertain and consumes the one-shot lease [0.87ms]
+(pass) promptless typed startup retires only its launcher boundary before the first manual turn [0.45ms]
+(pass) input arriving after preparation prevents daemon-owned sleep signalling [0.49ms]
+
+tests/owned-chat-terminal-create.test.ts:
+(pass) concurrent own-chat mount and explicit create retain one PTY and its callback identity [134.81ms]
+
+tests/owned-chat-launch.test.ts:
+(pass) claude own chat in worktree: exact cwd/policy/nonce without hijacking dispatch [12.81ms]
+(pass) claude own chat in folder: exact cwd/policy/nonce without hijacking dispatch [10.24ms]
+(pass) claude own chat in orchestrator: exact cwd/policy/nonce without hijacking dispatch [12.65ms]
+(pass) claude own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [11.62ms]
+(pass) codex own chat in worktree: exact cwd/policy/nonce without hijacking dispatch [11.37ms]
+(pass) codex own chat in folder: exact cwd/policy/nonce without hijacking dispatch [10.44ms]
+(pass) codex own chat in orchestrator: exact cwd/policy/nonce without hijacking dispatch [11.93ms]
+(pass) codex own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [11.26ms]
+[workspace-cwd] Cannot resolve directory: {
+  path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-xy0KYH",
+  error:  8 |
+ 9 | export function canonicalWorkspaceDirectory(path: string): string {
+10 | 	if (!path || !isAbsolute(path) || path.includes("\0") || Buffer.from(path).toString() !== path)
+11 | 		throw new WorkspaceError("WORKSPACE_PATH_INVALID");
+12 | 	try {
+13 | 		const root = realpathSync(path);
+                    ^
+ENOENT: no such file or directory, lstat '/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-xy0KYH'
+    path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-xy0KYH",
+ syscall: "lstat",
+   errno: -2,
+    code: "ENOENT"
+
+      at canonicalWorkspaceDirectory (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integration/queue-resume-continuation/apps/desktop/src/main/agent-launch/workspace-cwd-lookup.ts:13:16)
+      at startOwnedChat (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integration/queue-resume-continuation/apps/desktop/src/main/services/owned-chat.ts:16:14)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integration/queue-resume-continuation/apps/desktop/tests/owned-chat-launch.test.ts:224:3)
+,
+}
+(pass) deleted workspace and missing folder reject before preparing a launch [4.57ms]
+(pass) the public start API rejects caller-supplied cwd, binary, argv and permission override [3.68ms]
+(pass) failed owned registration removes only the newly prepared terminal [3.79ms]
+
+tests/queue-answer-router.test.ts:
+(pass) claude/worktree/live: production router + SQL admission continues only saved answer [227.03ms]
+(pass) claude/worktree/sleeping: production router + SQL admission continues only saved answer [212.49ms]
+(pass) claude/folder/live: production router + SQL admission continues only saved answer [255.88ms]
+(pass) claude/folder/sleeping: production router + SQL admission continues only saved answer [324.45ms]
+(pass) claude/orchestrator/live: production router + SQL admission continues only saved answer [258.23ms]
+(pass) claude/orchestrator/sleeping: production router + SQL admission continues only saved answer [265.49ms]
+(pass) claude/coordinator/live: production router + SQL admission continues only saved answer [260.60ms]
+(pass) claude/coordinator/sleeping: production router + SQL admission continues only saved answer [248.07ms]
+(pass) codex/worktree/live: production router + SQL admission continues only saved answer [212.67ms]
+(pass) codex/worktree/sleeping: production router + SQL admission continues only saved answer [212.55ms]
+(pass) codex/folder/live: production router + SQL admission continues only saved answer [207.56ms]
+(pass) codex/folder/sleeping: production router + SQL admission continues only saved answer [217.69ms]
+(pass) codex/orchestrator/live: production router + SQL admission continues only saved answer [205.88ms]
+(pass) codex/orchestrator/sleeping: production router + SQL admission continues only saved answer [212.46ms]
+(pass) codex/coordinator/live: production router + SQL admission continues only saved answer [702.38ms]
+(pass) codex/coordinator/sleeping: production router + SQL admission continues only saved answer [216.18ms]
+(pass) real ledger prevents concurrent different-request continuation duplicates [232.92ms]
+(pass) retrieval at daemon boundary sends nothing and returns already handled [136.63ms]
+(pass) lost transport response recovers actual persisted receipt without re-sending [236.73ms]
+(pass) long saved answer envelope beyond16000 characters keeps exact receipt and retrieval [140.26ms]
+(pass) a new unprojected question at daemon boundary blocks continuing the old answer [128.81ms]
+(pass) capability explains another pending question even after its answer was saved [188.43ms]
+(pass) a legacy reply-only daemon exposes save-only fallback without answer continuation [89.28ms]
+(pass) a competing valid answer at the daemon boundary prevents ambiguous continuation [132.46ms]
+(pass) wrong-recipient and older answer rows cannot poison the selected valid answer [139.13ms]
+(pass) outside-queue saved answers retain raw whitespace and may use the bounded larger envelope [368.05ms]
+(pass) larger continuation allowance never expands new-answer save limits [24.63ms]
+
+tests/queue-resume-guard-review.test.ts:
+(pass) claude: a manual same-session process replacement cannot inherit app launch policy [0.78ms]
+(pass) claude: only the exact admitted argv prompt establishes live reply readiness [0.67ms]
+(pass) codex: a manual same-session process replacement cannot inherit app launch policy [0.21ms]
+(pass) codex: only the exact admitted argv prompt establishes live reply readiness [0.30ms]
+(pass) a resume lease cannot authorize ordinary file insertion into the retained shell [0.45ms]
+(pass) typing before completed sleep cannot be erased by the completion notification [4.36ms]
+(pass) typing after a resume lease prevents process handoff, including newline-containing drafts [1.23ms]
+(pass) a stale shell process or different owner cannot consume the resume lease [0.34ms]
+(pass) a matching argv callback cannot erase input typed after admission [0.26ms]
+(pass) wake without a prompt never manufactures prompt readiness [0.20ms]
+(pass) changed executable identity invalidates a prepared resume [0.24ms]
+(pass) Codex dedicated mode must be an actual parsed switch, not an option value [0.06ms]
+(pass) resume argv retains policy and one literal prompt while refusing ambiguous selectors
+
+tests/queue-resume-environment-native.test.ts:
+(pass) native environment snapshot preserves policy markers without exposing environment in ordinary identity probes [1595.42ms]
+
+tests/queue-launch-provenance.test.ts:
+(pass) bridge forwards only a valid per-command environment launch ID; payload cannot forge it [97.42ms]
+(pass) claude: folder and coordinator dispatch bind script to their unique managed launch [1.01ms]
+(pass) codex: folder and coordinator dispatch bind script to their unique managed launch [1.21ms]
+(pass) launch identity cannot become shell syntax [0.03ms]
+(pass) accepted answer envelopes over 16000 characters retain bounded digest-only receipts [75.15ms]
+(pass) app dispatch Enter establishes first argv-prompt readiness without treating pasted LF as submit [0.11ms]
+
+ 79 pass
+ 0 fail
+ 625 expect() calls
+Ran 79 tests across 9 files. [8.50s]

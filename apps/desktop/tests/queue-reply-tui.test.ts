@@ -19,7 +19,11 @@ import { build as viteBuild } from "vite";
 
 // Run after `bun run build`: production preload and CSS are used unchanged.
 test.skipIf(process.platform !== "darwin" || process.env["SS_QUEUE_REPLY_TUI"] !== "1")(
-	"actual provider TUI receives one exact Queue reply through daemon admission",
+	process.env["SS_QUEUE_ANSWER_TUI"] === "1"
+		? "actual provider receives and continues a saved Queue answer"
+		: process.env["SS_QUEUE_RESUME_TUI"] === "1"
+			? "actual provider TUI resumes the same sleeping chat twice through Queue admission"
+			: "actual provider TUI receives one exact Queue reply through daemon admission",
 	async () => {
 		const desktop = resolve(import.meta.dir, "..");
 		const fixture = join(desktop, "tests/fixtures/queue-reply-tui");
