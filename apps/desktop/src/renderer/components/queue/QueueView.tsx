@@ -5,6 +5,7 @@ import type {
 	WorkspaceQueueRevisionInput,
 } from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
+import { useQueueAnswerContinuationActions } from "../../hooks/useQueueAnswerContinuationActions";
 import { useWorkspaceQueue } from "../../hooks/useWorkspaceQueue";
 import { focusQueueDestination } from "../../lib/activity-queue-navigation";
 import { openQueueItem } from "../../lib/queue-item-open";
@@ -19,7 +20,7 @@ import { useActivityQueueStore } from "../../stores/activity-queue-store";
 import { useQueueNavigationStore } from "../../stores/queue-navigation-store";
 import { trpc } from "../../trpc/client";
 import { QueuePanel, queueButton } from "./QueuePanel";
-import type { AnswerQuestion } from "./QueueQuestionReply";
+import type { AnswerQuestion, QueueAnswerContinuationActions } from "./QueueQuestionReply";
 import { QueueRow, queueFocus } from "./QueueRow";
 
 import { useQueueConversationActions } from "../../hooks/useQueueConversationActions";
@@ -47,6 +48,7 @@ export interface QueueScreenProps {
 	bringBack: (receipt: Receipt) => Promise<Result>;
 	undoDone: (receipt: Receipt) => Promise<Result>;
 	answer?: AnswerQuestion;
+	answerContinuationActions?: QueueAnswerContinuationActions;
 	conversationActions?: QueueConversationActions;
 	permissionActions?: QueuePermissionActionsAPI;
 }
@@ -66,6 +68,7 @@ export function QueueScreen({
 	bringBack,
 	undoDone,
 	answer,
+	answerContinuationActions,
 	conversationActions,
 	permissionActions,
 }: QueueScreenProps) {
@@ -262,6 +265,34 @@ export function QueueScreen({
 				}
 			}
 		: undefined;
+	const guardedAnswerContinuation = useMemo<QueueAnswerContinuationActions | undefined>(
+		() =>
+			answerContinuationActions
+				? {
+						...answerContinuationActions,
+						continue: async (input) => {
+							if (running.current)
+								return {
+									answer: null,
+									continuation: {
+										status: "unavailable",
+										reason: "Another queue action is still running.",
+									},
+								};
+							running.current = true;
+							setBusy(true);
+							try {
+								return await answerContinuationActions.continue(input);
+							} finally {
+								running.current = false;
+								setBusy(false);
+							}
+						},
+					}
+				: undefined,
+		[answerContinuationActions]
+	);
+
 	return (
 		<main
 			ref={root}
@@ -570,6 +601,7 @@ export function QueueScreen({
 							detailsButton.current?.focus();
 						}}
 						answer={sendAnswer}
+						answerContinuationActions={guardedAnswerContinuation}
 						conversationActions={conversationActions}
 						permissionActions={permissionActions}
 						refresh={refresh}
@@ -669,6 +701,7 @@ export function QueueScreen({
 }
 
 export function QueueView() {
+	const answerContinuationActions = useQueueAnswerContinuationActions();
 	const conversationActions = useQueueConversationActions();
 	const permissionActions = useQueuePermissionActions();
 	const selectedId = useActivityQueueStore((s) => s.selectedWorkspaceItemId);
@@ -707,6 +740,7 @@ export function QueueView() {
 			bringBack={(input) => bringBack.mutateAsync(input)}
 			undoDone={(input) => undoDone.mutateAsync(input)}
 			answer={(input) => answer.mutateAsync(input)}
+			answerContinuationActions={answerContinuationActions}
 			conversationActions={conversationActions}
 			permissionActions={permissionActions}
 		/>

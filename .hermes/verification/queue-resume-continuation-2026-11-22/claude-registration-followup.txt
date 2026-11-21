@@ -1,0 +1,29 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-reply-tui.test.ts:
+00:30:32.395 › [agent-notify] listening on port 56150
+00:30:32.676 › [ipc] sending trpc:activityQueue.workspaceList
+authentic app launch registered original policy Error: Timeout: authentic app launch registered original policy
+    at until (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-reply-tui-Dz0NfH/main/main.js:8008:9)
+    at async run (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-reply-tui-Dz0NfH/main/main.js:8277:5)
+
+Workspace queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-reply-tui-Dz0NfH
+131 | 					clearTimeout(timer);
+132 | 					if (code !== 0) console.error(output);
+133 | 					done(code);
+134 | 				});
+135 | 			});
+136 | 			expect(code).toBe(0);
+                      ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integration/queue-resume-continuation/apps/desktop/tests/queue-reply-tui.test.ts:136:17)
+(fail) actual provider TUI resumes the same sleeping chat twice through Queue admission [11590.34ms]
+
+ 0 pass
+ 1 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [11.87s]

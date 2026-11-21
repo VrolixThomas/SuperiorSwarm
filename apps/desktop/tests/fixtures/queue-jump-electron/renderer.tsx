@@ -35,6 +35,12 @@ Object.assign(window, {
 			terminal: useTabStore.getState().getActiveTabId(),
 			session: useQueueNavigationStore.getState().session,
 		}),
+		showFolder: (path: string) => {
+			const store = useTabStore.getState();
+			store.addTerminalTab("folder-0-default", path, "Folder terminal", "folder-menu-chat");
+			store.setActiveWorkspace("folder-0-default", path);
+			store.setSidebarSegment("repos");
+		},
 		addCoordinator: (path: string) =>
 			useTabStore.getState().addTerminalTab("xro-native", path, "Coordinator", "coordinator-chat"),
 	},

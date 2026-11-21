@@ -44,6 +44,50 @@ export interface DaemonFileTarget {
 	supported: boolean;
 }
 export type ClientMessage =
+	| {
+			type: "queue-resume-view";
+			id: string;
+			requestId: string;
+			generation: string;
+			owner: import("./queue-resume").QueueLaunchOwner;
+			prompt?: string;
+	  }
+	| {
+			type: "queue-register-launch";
+			id: string;
+			requestId: string;
+			owner: import("./queue-resume").QueueLaunchOwner;
+			descriptor: import("./queue-resume").QueueLaunchDescriptor;
+	  }
+	| {
+			type: "queue-sleep-prepare";
+			id: string;
+			requestId: string;
+			provider: string;
+			providerSessionId: string;
+	  }
+	| {
+			type: "queue-sleep-complete" | "queue-park-root" | "queue-stop-sleep";
+			id: string;
+			requestId: string;
+			generation: string;
+	  }
+	| {
+			type: "queue-resume-target";
+			id: string;
+			requestId: string;
+			provider: string;
+			providerSessionId: string;
+			reserve?: boolean;
+	  }
+	| {
+			type: "queue-resume-input";
+			id: string;
+			requestId: string;
+			generation: string;
+			deliveryId: string;
+			content: string;
+	  }
 	| { type: "queue-state"; id: string; state: import("./queue-terminal-state").QueueTerminalState }
 	| {
 			type: "queue-target";
@@ -81,7 +125,7 @@ export type ClientMessage =
 	| { type: "dispose"; id: string }
 	| { type: "list" };
 
-export type DaemonSession = { id: string; cwd: string; pid: number };
+export type DaemonSession = { id: string; cwd: string; pid: number; processKind?: "provider" };
 
 export type DaemonMessage =
 	| {

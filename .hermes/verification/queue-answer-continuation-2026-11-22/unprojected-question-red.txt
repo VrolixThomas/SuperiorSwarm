@@ -1,0 +1,42 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-answer-router.test.ts:
+(pass) claude/worktree/live: production router + SQL admission continues only saved answer [103.69ms]
+(pass) claude/worktree/sleeping: production router + SQL admission continues only saved answer [108.08ms]
+(pass) claude/folder/live: production router + SQL admission continues only saved answer [124.95ms]
+(pass) claude/folder/sleeping: production router + SQL admission continues only saved answer [150.89ms]
+(pass) claude/orchestrator/live: production router + SQL admission continues only saved answer [179.27ms]
+(pass) claude/orchestrator/sleeping: production router + SQL admission continues only saved answer [199.48ms]
+(pass) claude/coordinator/live: production router + SQL admission continues only saved answer [265.06ms]
+(pass) claude/coordinator/sleeping: production router + SQL admission continues only saved answer [324.14ms]
+(pass) codex/worktree/live: production router + SQL admission continues only saved answer [354.73ms]
+(pass) codex/worktree/sleeping: production router + SQL admission continues only saved answer [397.33ms]
+(pass) codex/folder/live: production router + SQL admission continues only saved answer [428.58ms]
+(pass) codex/folder/sleeping: production router + SQL admission continues only saved answer [455.14ms]
+(pass) codex/orchestrator/live: production router + SQL admission continues only saved answer [508.28ms]
+(pass) codex/orchestrator/sleeping: production router + SQL admission continues only saved answer [542.28ms]
+(pass) codex/coordinator/live: production router + SQL admission continues only saved answer [620.45ms]
+(pass) codex/coordinator/sleeping: production router + SQL admission continues only saved answer [704.38ms]
+(pass) real ledger prevents concurrent different-request continuation duplicates [1034.11ms]
+(pass) retrieval at daemon boundary sends nothing and returns already handled [602.29ms]
+(pass) lost transport response recovers actual persisted receipt without re-sending [717.14ms]
+(pass) long saved answer envelope beyond16000 characters keeps exact receipt and retrieval [803.03ms]
+316 | 	try {
+317 | 		f.before(() => {
+318 | 			f.ask(crypto.randomUUID());
+319 | 		});
+320 | 		const result = await caller.workspaceAnswerAndContinue(f.input);
+321 | 		expect(result.continuation.status).toBe("rejected");
+                                           ^
+error: expect(received).toBe(expected)
+
+Expected: "rejected"
+Received: "admitted"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-answer-continue/apps/desktop/tests/queue-answer-router.test.ts:321:38)
+(fail) a new unprojected question at daemon boundary blocks continuing the old answer [779.83ms]
+
+ 20 pass
+ 1 fail
+ 237 expect() calls
+Ran 21 tests across 1 file. [9.69s]

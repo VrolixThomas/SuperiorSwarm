@@ -1,0 +1,1 @@
+ALTER TABLE `agent_sessions` ADD `queue_launch_known` integer DEFAULT false NOT NULL;

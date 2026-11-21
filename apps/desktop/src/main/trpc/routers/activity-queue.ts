@@ -2,6 +2,13 @@ import { z } from "zod";
 import { ACTIVITY_QUEUE_KINDS, QUEUE_REPLY_MAX_CHARACTERS } from "../../../shared/activity-queue";
 import { reconcileAgentSources } from "../../activity-queue/agent-source";
 import {
+	workspaceAnswerAndContinue,
+	workspaceAnswerContinuationCapability,
+	workspaceAnswerContinuationReceipt,
+} from "../../activity-queue/answer-continuation";
+import {
+	submitWorkspaceContinuation,
+	workspaceContinuationCapability,
 	workspaceReply,
 	workspaceReplyCapability,
 	workspaceReplyReceipt,
@@ -33,7 +40,35 @@ const workspaceRevision = z.object({
 	revision: z.number().int().positive(),
 });
 
+const answerContinuationTransport = {
+	capability: workspaceContinuationCapability,
+	submit: submitWorkspaceContinuation,
+	receipt: workspaceReplyReceipt,
+};
+const answerReference = workspaceRevision.extend({ questionId: z.string().min(1).max(256) });
 export const activityQueueRouter = router({
+	workspaceAnswerContinuationCapability: publicProcedure
+		.input(answerReference)
+		.query(({ input }) =>
+			workspaceAnswerContinuationCapability(input, answerContinuationTransport)
+		),
+	workspaceAnswerAndContinue: publicProcedure
+		.input(
+			answerReference.extend({
+				requestId: z.string().min(1).max(128),
+				answerId: z.string().min(1).max(256).optional(),
+				content: z.string().min(1).max(56000),
+			})
+		)
+		.mutation(({ input }) => workspaceAnswerAndContinue(input, answerContinuationTransport)),
+	workspaceAnswerContinuationReceipt: publicProcedure
+		.input(
+			answerReference.extend({
+				requestId: z.string().min(1).max(128),
+				answerId: z.string().min(1).max(256).optional(),
+			})
+		)
+		.query(({ input }) => workspaceAnswerContinuationReceipt(input, answerContinuationTransport)),
 	workspaceReplyReceipt: publicProcedure
 		.input(z.object({ requestId: z.string().min(1).max(128) }))
 		.query(({ input }) => workspaceReplyReceipt(input.requestId)),

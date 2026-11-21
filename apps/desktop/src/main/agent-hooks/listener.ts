@@ -146,6 +146,12 @@ export function createAlertListener(
 			agent,
 			timestamp: Date.now(),
 			rawEvent,
+			launchId:
+				req.method === "POST" &&
+				typeof body["launchId"] === "string" &&
+				/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(body["launchId"])
+					? body["launchId"].toLowerCase()
+					: undefined,
 			turnId: url.searchParams.get("turnId") || undefined,
 			sessionSource: url.searchParams.get("sessionSource") || undefined,
 			producerTimestamp: parseProducerTimestamp(url.searchParams.get("producerTimestamp")),

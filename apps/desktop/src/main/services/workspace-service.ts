@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { and, asc, desc, eq, gt, inArray, isNull, max, ne, or, sql } from "drizzle-orm";
@@ -29,6 +29,7 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
+import { defaultQueueLaunch } from "../../shared/queue-resume";
 import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
 import {
 	type WorkspaceReporter,
@@ -505,10 +506,16 @@ export async function removeWorkspace(
 }
 
 export interface SpawnArgs {
+	/** False prepares an app-owned launch for an explicit create-then-write renderer flow. */
+	openInRenderer?: boolean;
+	title?: string;
 	cwd: string;
 	launchScriptContent: string;
 	workspaceId: string;
 	agent?: {
+		managed?: boolean;
+		initialPrompt?: boolean;
+		queueLaunchId?: string;
 		provider: AgentProvider;
 		providerSessionId: string | null;
 		skipPermissions: boolean;
@@ -517,6 +524,7 @@ export interface SpawnArgs {
 export interface SpawnResult {
 	sessionId: string;
 	terminalId: string;
+	launch?: { scriptPath: string; cwd: string; title: string };
 }
 export type SpawnFn = (args: SpawnArgs) => Promise<SpawnResult>;
 
@@ -536,9 +544,10 @@ function escapeShellSingleQuote(s: string): string {
 // session restarts. See apps/desktop/mcp-standalone/server.mjs.
 
 export function buildLaunchScript(opts: {
+	queueLaunchId?: string;
 	cwd: string;
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
-	prompt: string;
+	prompt?: string;
 	skipPermissions: boolean;
 	cliSessionId: string | null;
 }): string {
@@ -551,8 +560,23 @@ export function buildLaunchScript(opts: {
 	// Per-preset invocation shape. Most CLIs accept a positional prompt; opencode
 	// reserves the positional slot for `[project]` (a directory) and requires the
 	// `run` subcommand to deliver a prompt as a message.
-	const invocation = opts.cliPreset === "opencode" ? "opencode run" : opts.cliPreset;
-	const cmd = `${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	const invocation =
+		opts.cliPreset === "opencode"
+			? "opencode run"
+			: opts.cliPreset === "codex"
+				? "codex --no-daemon"
+				: opts.cliPreset;
+	if (
+		opts.queueLaunchId &&
+		!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(opts.queueLaunchId)
+	)
+		throw Error("Invalid app launch identity");
+	const launchEnv = opts.queueLaunchId
+		? `AGENT_NOTIFY_LAUNCH_ID='${opts.queueLaunchId.toLowerCase()}' `
+		: "";
+	const prompt = opts.prompt === undefined ? "" : `'${escapeShellSingleQuote(opts.prompt)}'`;
+	const cmd = `${launchEnv}exec ${invocation} ${sessionFlag}${flag}${prompt}`.trimEnd();
+
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
@@ -596,17 +620,19 @@ async function dispatchCoordinator(
 	if (!provider) throw new Error(`Unsupported coordinator provider: ${target.agentKind}`);
 	const providerSessionId = provider === "claude" ? randomUUID() : null;
 	const skipPermissions = input.skipPermissions ?? false;
+	const queueLaunchId = randomUUID();
 	const result = await (deps.spawnFn ?? defaultSpawnFn)({
 		workspaceId: target.id,
 		cwd: target.workDir,
 		launchScriptContent: buildLaunchScript({
+			queueLaunchId,
 			cwd: target.workDir,
 			cliPreset: provider,
 			prompt: input.prompt,
 			skipPermissions,
 			cliSessionId: providerSessionId,
 		}),
-		agent: { provider, providerSessionId, skipPermissions },
+		agent: { provider, providerSessionId, skipPermissions, queueLaunchId },
 	});
 	// defaultSpawnFn persists the real terminal/managed session. Dispatch alone does not
 	// clear another conversation's pending report or invent a workspace/session surrogate.
@@ -670,7 +696,9 @@ export async function dispatchAgent(
 	// Persisting up-front poisons future resumeAgent calls if the spawn throws.
 	const cliSessionId = cliPreset === "claude" ? (ws.cliSessionId ?? randomUUID()) : null;
 
+	const queueLaunchId = randomUUID();
 	const launchScriptContent = buildLaunchScript({
+		queueLaunchId,
 		cwd,
 		cliPreset,
 		prompt: input.prompt,
@@ -686,6 +714,7 @@ export async function dispatchAgent(
 		launchScriptContent,
 		workspaceId: input.workspaceId,
 		agent: {
+			queueLaunchId,
 			provider: cliPreset,
 			providerSessionId: cliSessionId,
 			skipPermissions: input.skipPermissions ?? true,
@@ -733,6 +762,7 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 
 	const sessionId = nanoid();
 	const terminalId = sessionId;
+	const title = args.title ?? "Agent session";
 
 	const db = getDb();
 	const nextSortOrder =
@@ -742,11 +772,13 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 			.get()?.value ?? -1) + 1;
 	const manager = getAgentSessionManager();
 	try {
+		if (args.agent?.managed === false && !manager)
+			throw Error("Agent session manager is unavailable");
 		db.insert(terminalSessions)
 			.values({
 				id: terminalId,
 				workspaceId: args.workspaceId,
-				title: "Agent session",
+				title,
 				cwd: args.cwd,
 				scrollback: null,
 				sortOrder: nextSortOrder,
@@ -755,33 +787,45 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 			.onConflictDoNothing()
 			.run();
 		if (args.agent) {
+			const descriptor = defaultQueueLaunch(args.agent.provider, args.agent.skipPermissions);
 			manager?.registerManagedSession({
 				terminalId,
 				workspaceId: args.workspaceId,
 				provider: args.agent.provider,
 				providerSessionId: args.agent.providerSessionId,
 				skipPermissions: args.agent.skipPermissions,
+				managed: args.agent.managed,
+				queueLaunch: descriptor
+					? { ...descriptor, initialPrompt: args.agent.initialPrompt }
+					: undefined,
+				queueLaunchId: args.agent.queueLaunchId,
 			});
 		}
 		// Freshly allocated dispatch terminal has no renderer view yet; bind to this exact managed generation.
 		setPermissionBackgroundDispatchHidden(terminalId);
-		dispatchBroadcaster({
-			workspaceId: args.workspaceId,
-			cwd: args.cwd,
-			scriptPath,
-			title: "Agent session",
-			terminalId,
-			provider: args.agent?.provider,
-			providerSessionId: args.agent?.providerSessionId,
-			skipPermissions: args.agent?.skipPermissions,
-		});
+		if (args.openInRenderer !== false)
+			dispatchBroadcaster({
+				workspaceId: args.workspaceId,
+				cwd: args.cwd,
+				scriptPath,
+				title,
+				terminalId,
+				provider: args.agent?.provider,
+				providerSessionId: args.agent?.providerSessionId,
+				skipPermissions: args.agent?.skipPermissions,
+			});
 	} catch (error) {
 		manager?.removeSession(terminalId);
 		db.delete(terminalSessions).where(eq(terminalSessions.id, terminalId)).run();
+		rmSync(dir, { recursive: true, force: true });
 		throw error;
 	}
 
-	return { sessionId, terminalId };
+	return {
+		sessionId,
+		terminalId,
+		...(args.openInRenderer === false ? { launch: { scriptPath, cwd: args.cwd, title } } : {}),
+	};
 }
 
 export type CallerContext =

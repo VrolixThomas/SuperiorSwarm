@@ -207,6 +207,7 @@ export const agentSessions = sqliteTable(
 		})
 			.notNull()
 			.default("running"),
+		queueLaunchKnown: integer("queue_launch_known", { mode: "boolean" }).notNull().default(false),
 		managed: integer("managed", { mode: "boolean" }).notNull().default(false),
 		keepRunning: integer("keep_running", { mode: "boolean" }).notNull().default(false),
 		skipPermissions: integer("skip_permissions", { mode: "boolean" }).notNull().default(false),

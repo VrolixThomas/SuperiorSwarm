@@ -2,15 +2,27 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as pty from "node-pty";
 import { MAX_SCROLLBACK_CHARS } from "../shared/daemon-protocol";
+import type { QueueLaunchOwner } from "../shared/queue-resume";
+import type { TerminalProcessIdentity } from "../shared/terminal-files";
 
 const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
+class SpawnedProcessError extends Error {}
 
 import { FileInputSessions } from "./file-input-sessions";
 import { shellIntegrationEnv } from "./shell-integration";
-import { readTerminalProcessIdentity } from "./terminal-process-identity";
+import {
+	readTerminalProcessEnvironment,
+	readTerminalProcessIdentity,
+} from "./terminal-process-identity";
 import { TerminalReplayBuffer } from "./terminal-replay-buffer";
 
 interface TerminalEntry {
+	env: Record<string, string>;
+	shell: string;
+	kind: "shell" | "provider";
+	cols: number;
+	rows: number;
+
 	pty: pty.IPty;
 	cwd: string;
 	buffer: string;
@@ -46,8 +58,23 @@ function resolveEnv(extra?: Record<string, string>): Record<string, string> {
 }
 
 export class PtyManager {
+	constructor(
+		private readonly backend: {
+			spawn?: typeof pty.spawn;
+			inspect?: (pid: number) => TerminalProcessIdentity | null;
+			replay?: () => TerminalReplayBuffer;
+			signal?: (pid: number) => void;
+			environment?: (identity: TerminalProcessIdentity) => Record<string, string> | null;
+		} = {}
+	) {}
+	private spawnProcess: typeof pty.spawn = (...args) => (this.backend.spawn ?? pty.spawn)(...args);
+	private inspectProcess = (pid: number) =>
+		(this.backend.inspect ?? readTerminalProcessIdentity)(pid);
+
 	private terminals = new Map<string, TerminalEntry>();
-	readonly fileInputs = new FileInputSessions();
+	readonly fileInputs = new FileInputSessions((identity) =>
+		(this.backend.environment ?? readTerminalProcessEnvironment)(identity)
+	);
 
 	create(
 		id: string,
@@ -63,7 +90,7 @@ export class PtyManager {
 
 		const resolvedCwd = cwd ?? homedir();
 		const shell = resolveShell();
-		const ptyProcess = pty.spawn(shell, ["-l"], {
+		const ptyProcess = this.spawnProcess(shell, ["-l"], {
 			name: "xterm-256color",
 			cols: 80,
 			rows: 24,
@@ -72,21 +99,43 @@ export class PtyManager {
 		});
 
 		const entry: TerminalEntry = {
+			env: resolveEnv(env),
+			shell,
+			kind: "shell",
+			cols: 80,
+			rows: 24,
 			pty: ptyProcess,
 			cwd: resolvedCwd,
 			buffer: "",
-			replay: new TerminalReplayBuffer(),
+			replay: this.backend.replay?.() ?? new TerminalReplayBuffer(),
 			dirty: false,
 			dataListeners: new Map([[clientId, onData]]),
 			exitListeners: new Map([[clientId, onExit]]),
 		};
 
-		ptyProcess.onData((data) => {
+		this.bindProcess(id, entry);
+
+		this.terminals.set(id, entry);
+		this.fileInputs.create(
+			id,
+			clientId,
+			shell,
+			() => ptyProcess.process ?? "",
+			(data) => ptyProcess.write(data),
+			this.backend.inspect || process.platform === "darwin"
+				? () => this.inspectProcess(ptyProcess.pid)
+				: undefined
+		);
+	}
+
+	private bindProcess(id: string, entry: TerminalEntry): void {
+		entry.pty.onData((data) => {
 			if (this.terminals.get(id) !== entry) return;
 			entry.replay.write(data, (output) => {
-				if (this.terminals.get(id) !== entry || !output) return;
-				entry.buffer = trimBuffer(entry.buffer + output, MAX_BUFFER_CHARS);
-				entry.dirty = true;
+				const active = this.terminals.get(id);
+				if (!active || active.replay !== entry.replay || !output) return;
+				active.buffer = trimBuffer(active.buffer + output, MAX_BUFFER_CHARS);
+				active.dirty = true;
 				// Framing can join a large OSC/DCS split across PTY chunks. Keep
 				// live transport frames within the limit accepted by old clients.
 				for (let start = 0; start < output.length; ) {
@@ -94,13 +143,21 @@ export class PtyManager {
 					const last = output.charCodeAt(end - 1);
 					if (end < output.length && last >= 0xd800 && last <= 0xdbff) end--;
 					const chunk = output.slice(start, end);
-					for (const cb of entry.dataListeners.values()) cb(chunk);
+					for (const cb of active.dataListeners.values()) cb(chunk);
 					start = end;
 				}
 			});
 		});
 
-		ptyProcess.onExit(({ exitCode }) => {
+		entry.pty.onExit(({ exitCode }) => {
+			if (this.terminals.get(id) === entry && entry.kind === "provider") {
+				try {
+					this.replaceProcess(id, entry, entry.shell, ["-l"], "shell");
+					return;
+				} catch {
+					/* Fall through to honest terminal exit. */
+				}
+			}
 			// Guard: only act if this PTY is still the active one for this id.
 			// A dispose() followed by create() with the same id can replace the entry
 			// before this callback fires, and we must not delete or notify for the new one.
@@ -114,16 +171,119 @@ export class PtyManager {
 				entry.replay.dispose();
 			});
 		});
-
-		this.terminals.set(id, entry);
-		this.fileInputs.create(
-			id,
-			clientId,
-			shell,
-			() => ptyProcess.process ?? "",
-			(data) => ptyProcess.write(data),
-			process.platform === "darwin" ? () => readTerminalProcessIdentity(ptyProcess.pid) : undefined
+	}
+	private replaceProcess(
+		id: string,
+		previous: TerminalEntry,
+		executable: string,
+		args: string[],
+		kind: "shell" | "provider",
+		environment?: Record<string, string>
+	): TerminalEntry {
+		if (this.terminals.get(id) !== previous) throw Error("Terminal generation changed");
+		const process = this.spawnProcess(executable, args, {
+			name: "xterm-256color",
+			cols: previous.cols,
+			rows: previous.rows,
+			cwd: previous.cwd,
+			env: kind === "shell" ? shellIntegrationEnv(previous.shell, previous.env) : environment,
+		});
+		const next: TerminalEntry = { ...previous, pty: process, kind, dirty: true };
+		try {
+			this.bindProcess(id, next);
+			this.terminals.set(id, next);
+			this.fileInputs.replaceTransport(
+				id,
+				() => process.process ?? "",
+				(data) => process.write(data),
+				() => this.inspectProcess(process.pid)
+			);
+			if (kind === "provider") this.fileInputs.trustedLaunchProcess(id, process.pid);
+			return next;
+		} catch (error) {
+			if (this.terminals.get(id) === next) this.terminals.set(id, previous);
+			try {
+				process.kill("SIGKILL");
+			} catch {}
+			throw new SpawnedProcessError(
+				error instanceof Error ? error.message : "Provider startup interrupted"
+			);
+		}
+	}
+	completeQueueSleep(id: string, generation: string): boolean {
+		const entry = this.terminals.get(id);
+		return (
+			!!entry &&
+			entry.kind === "shell" &&
+			this.fileInputs.completeSleep(id, generation, entry.pty.pid)
 		);
+	}
+	signalQueueSleep(id: string, generation: string): boolean {
+		const entry = this.terminals.get(id);
+		const identity = this.fileInputs.sleepProcess(id, generation);
+		if (!entry || !identity) return false;
+		try {
+			if (this.backend.signal) this.backend.signal(identity.pid);
+			else process.kill(-identity.pid, "SIGTERM");
+			return true;
+		} catch (error) {
+			return (error as NodeJS.ErrnoException).code === "ESRCH";
+		}
+	}
+
+	async parkQueueRoot(id: string, generation: string): Promise<boolean> {
+		const entry = this.terminals.get(id);
+		if (!entry || entry.kind !== "provider" || !this.fileInputs.canPark(id, generation))
+			return false;
+		return new Promise((resolve) => {
+			const timer = setTimeout(() => {
+				subscription.dispose();
+				resolve(false);
+			}, 2000);
+			const subscription = entry.pty.onExit(() => {
+				clearTimeout(timer);
+				subscription.dispose();
+				resolve(this.terminals.get(id)?.kind === "shell");
+			});
+			try {
+				entry.pty.kill("SIGTERM");
+			} catch {
+				clearTimeout(timer);
+				subscription.dispose();
+				resolve(false);
+			}
+		});
+	}
+	resumeQueueProcess(
+		id: string,
+		client: string,
+		generation: string,
+		content: string | undefined,
+		owner: QueueLaunchOwner
+	): "admitted" | "rejected" | "uncertain" {
+		const previous = this.terminals.get(id);
+		if (!previous || previous.kind !== "shell") return "rejected";
+		const launch = this.fileInputs.takeResume(id, client, generation, content, owner);
+		if (!launch) return "rejected";
+		try {
+			this.replaceProcess(
+				id,
+				previous,
+				launch.executable,
+				launch.args,
+				"provider",
+				launch.environment
+			);
+			this.fileInputs.admittedArgvPrompt(id, launch.provider, launch.providerSessionId, content);
+			try {
+				previous.pty.kill("SIGKILL");
+			} catch {}
+			return "admitted";
+		} catch (error) {
+			return error instanceof SpawnedProcessError || this.terminals.get(id) !== previous
+				? "uncertain"
+				: "rejected";
+		}
 	}
 
 	// Returns the buffered content and current foreground process name,
@@ -179,6 +339,8 @@ export class PtyManager {
 			console.warn(`[pty-manager] resize: terminal "${id}" not found`);
 			return;
 		}
+		terminal.cols = cols;
+		terminal.rows = rows;
 		terminal.replay.resize(cols, rows);
 		terminal.pty.resize(cols, rows);
 	}
@@ -207,11 +369,12 @@ export class PtyManager {
 		return this.terminals.size;
 	}
 
-	list(): Array<{ id: string; cwd: string; pid: number }> {
+	list(): Array<{ id: string; cwd: string; pid: number; processKind?: "provider" }> {
 		return [...this.terminals.entries()].map(([id, e]) => ({
 			id,
 			cwd: e.cwd,
 			pid: e.pty.pid,
+			...(e.kind === "provider" ? { processKind: "provider" as const } : {}),
 		}));
 	}
 

@@ -31,6 +31,12 @@ export const activityQueueDeliveries = sqliteTable(
 	"activity_queue_deliveries",
 	{
 		requestId: text("request_id").primaryKey(),
+		mode: text("mode", { enum: ["live", "resume"] })
+			.notNull()
+			.default("live"),
+		answerBinding: text("answer_binding", { mode: "json" }).$type<
+			import("../../shared/queue-answer-continuation").QueueAnswerBinding
+		>(),
 		continuationTurnId: text("continuation_turn_id"),
 		cleanupProtectedTurnId: text("cleanup_protected_turn_id"),
 		occurrenceKey: text("occurrence_key").notNull(),

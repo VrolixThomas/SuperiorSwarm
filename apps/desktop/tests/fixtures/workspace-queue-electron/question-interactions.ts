@@ -64,7 +64,7 @@ export async function checkQuestionInteractions(
 		.set({ content: questionText })
 		.where(eq(agentMessages.id, questionId))
 		.run();
-	await click("Send answer");
+	await click("Save answer only");
 	await until(() => js<boolean>("document.body.textContent.includes('Your draft is preserved')"));
 	if (
 		!(await js<boolean>(
@@ -76,7 +76,7 @@ export async function checkQuestionInteractions(
 		.capturePage()
 		.then((c) => writeFileSync(join(root, "queue-question-conflict.png"), c.toPNG()));
 	await click("Use reviewed question revision");
-	await click("Send answer");
+	await click("Save answer only");
 	await until(() =>
 		js<boolean>("document.body.textContent.includes('has not read this answer yet')")
 	);

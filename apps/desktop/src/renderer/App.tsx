@@ -31,6 +31,7 @@ import { useUpdaterStatus } from "./hooks/use-updater";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
 import { WorkspaceQueueSync } from "./hooks/useWorkspaceQueue";
+import { agentScriptInput } from "./lib/agent-script-input";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -287,10 +288,9 @@ function AuthenticatedApp() {
 				const store = useTabStore.getState();
 				store.setActiveWorkspace(workspaceId, cwd);
 				const tabId = store.addTerminalTab(workspaceId, cwd, title, terminalId);
-				const escaped = scriptPath.replace(/'/g, "'\\''");
 				const id = setTimeout(() => {
 					timers.delete(id);
-					window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
+					window.electron.terminal.write(tabId, agentScriptInput(scriptPath));
 				}, 300);
 				timers.add(id);
 			}

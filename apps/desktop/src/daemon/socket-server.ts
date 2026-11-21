@@ -68,6 +68,8 @@ export class SocketServer {
 				"file-input-v1",
 				"file-submit-v1",
 				"queue-reply-v1",
+				"queue-resume-v1",
+				"queue-answer-v1",
 				BINARY_INPUT_CAPABILITY,
 				TERMINAL_SNAPSHOT_CAPABILITY,
 			],
@@ -198,6 +200,115 @@ export class SocketServer {
 				}
 				break;
 			}
+			case "queue-register-launch": {
+				const ok = this.ptyManager.fileInputs.registerLaunch(msg.id, msg.owner, msg.descriptor);
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					delivery: ok ? "admitted" : "rejected",
+				});
+				break;
+			}
+			case "queue-sleep-prepare": {
+				const target = this.ptyManager.fileInputs.prepareSleep(
+					msg.id,
+					clientId,
+					msg.provider,
+					msg.providerSessionId
+				);
+				this.send(socket, { type: "file-result", requestId: msg.requestId, target });
+				break;
+			}
+			case "queue-sleep-complete": {
+				const ok = this.ptyManager.completeQueueSleep(msg.id, msg.generation);
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					delivery: ok ? "admitted" : "rejected",
+				});
+				break;
+			}
+			case "queue-stop-sleep": {
+				const owner = this.ptyManager.fileInputs.sleepOwner(msg.id, msg.generation);
+				let stopped = false;
+				try {
+					stopped =
+						!!owner &&
+						this.scrollbackStore.signalQueueSleep(msg.id, owner, () =>
+							this.ptyManager.signalQueueSleep(msg.id, msg.generation)
+						);
+				} catch {}
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					delivery: stopped ? "admitted" : "rejected",
+				});
+				break;
+			}
+
+			case "queue-park-root": {
+				void this.ptyManager.parkQueueRoot(msg.id, msg.generation).then((ok) =>
+					this.send(socket, {
+						type: "file-result",
+						requestId: msg.requestId,
+						delivery: ok ? "admitted" : "rejected",
+					})
+				);
+				break;
+			}
+			case "queue-resume-target": {
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					target: this.ptyManager.fileInputs.resumeTarget(
+						msg.id,
+						clientId,
+						msg.provider,
+						msg.providerSessionId,
+						msg.reserve !== false
+					),
+				});
+				break;
+			}
+			case "queue-resume-view": {
+				let delivery: "admitted" | "rejected" | "uncertain" = "uncertain";
+				try {
+					delivery = this.scrollbackStore.resumeQueueView(msg.id, msg.owner, () =>
+						this.ptyManager.resumeQueueProcess(
+							msg.id,
+							clientId,
+							msg.generation,
+							msg.prompt,
+							msg.owner
+						)
+					);
+				} catch {}
+				this.send(socket, { type: "file-result", requestId: msg.requestId, delivery });
+				break;
+			}
+
+			case "queue-resume-input": {
+				let delivery: "admitted" | "rejected" | "uncertain" = "uncertain";
+				try {
+					delivery = this.scrollbackStore.admitQueueReply(
+						msg.deliveryId,
+						msg.id,
+						msg.content,
+						(target) =>
+							this.ptyManager.resumeQueueProcess(
+								msg.id,
+								clientId,
+								msg.generation,
+								msg.content,
+								target
+							),
+						"resume"
+					);
+				} catch {}
+				this.send(socket, { type: "file-result", requestId: msg.requestId, delivery });
+				break;
+			}
+
 			case "queue-state": {
 				this.ptyManager.fileInputs.conversationState(msg.id, msg.state);
 				break;
@@ -219,13 +330,18 @@ export class SocketServer {
 			case "queue-input": {
 				let delivery: "admitted" | "rejected" | "uncertain" = "uncertain";
 				try {
-					delivery = this.scrollbackStore.admitQueueReply(msg.deliveryId, msg.id, msg.content, () =>
-						this.ptyManager.fileInputs.insertConversation(
-							msg.id,
-							clientId,
-							msg.generation,
-							msg.content
-						)
+					delivery = this.scrollbackStore.admitQueueReply(
+						msg.deliveryId,
+						msg.id,
+						msg.content,
+						(_target, answer) =>
+							this.ptyManager.fileInputs.insertConversation(
+								msg.id,
+								clientId,
+								msg.generation,
+								msg.content,
+								answer
+							)
 					);
 				} catch {}
 				this.send(socket, { type: "file-result", requestId: msg.requestId, delivery });

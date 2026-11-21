@@ -4,7 +4,11 @@ import { queueAge } from "../../lib/activity-queue-view";
 import { type QueueConversationActions, QueueConversationReply } from "./QueueConversationReply";
 import { QueueLinkedWorkContext } from "./QueueLinkedWorkContext";
 import { QueuePermissionActions, type QueuePermissionActionsAPI } from "./QueuePermissionActions";
-import { type AnswerQuestion, QueueQuestionReply } from "./QueueQuestionReply";
+import {
+	type AnswerQuestion,
+	type QueueAnswerContinuationActions,
+	QueueQuestionReply,
+} from "./QueueQuestionReply";
 import { queueFocus } from "./QueueRow";
 export const queueButton = `rounded-md px-3 py-2 text-[12px] transition-colors hover:bg-[var(--bg-elevated)] disabled:opacity-40 ${queueFocus}`;
 export function QueuePanel({
@@ -19,6 +23,7 @@ export function QueuePanel({
 	expanded,
 	close,
 	answer,
+	answerContinuationActions,
 	conversationActions,
 	permissionActions,
 	refresh,
@@ -34,6 +39,7 @@ export function QueuePanel({
 	expanded?: boolean;
 	close?: () => void;
 	answer?: AnswerQuestion;
+	answerContinuationActions?: QueueAnswerContinuationActions;
 	conversationActions?: QueueConversationActions;
 	permissionActions?: QueuePermissionActionsAPI;
 	refresh: () => Promise<unknown>;
@@ -219,6 +225,7 @@ export function QueuePanel({
 					item={item}
 					available={canAct && !busy}
 					answer={answer}
+					continuationActions={answerContinuationActions}
 					refresh={refresh}
 				/>
 				<div className="mt-3 flex items-center gap-1 text-[var(--text-tertiary)]">

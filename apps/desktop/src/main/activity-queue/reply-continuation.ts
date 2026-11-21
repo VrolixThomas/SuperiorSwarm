@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { ActivityQueueTarget } from "../../shared/activity-queue";
 import { getDb } from "../db";
 import { activityQueueDeliveries } from "../db/schema-activity-queue";
+import { markAnswerPromptReceived } from "./answer-continuation-receipts";
 /** Content-correlated cleanup and a separate one-turn ambiguity guard.
  * A missing digest never establishes a delivery receipt. */
 export function queueReplyContinuationTime(
@@ -46,6 +47,8 @@ export function queueReplyContinuationTime(
 			const ambiguous =
 				!promptHash && (!row.cleanupProtectedTurnId || row.cleanupProtectedTurnId === turnId);
 			if (matched || knownReplay || ambiguous) ceiling = Math.min(ceiling, row.createdAt);
+			if (matched && row.answerBinding && promptHash)
+				markAnswerPromptReceived(row.answerBinding, target, eventTime, promptHash);
 			if (matched && !row.continuationTurnId)
 				db.update(activityQueueDeliveries)
 					.set({ continuationTurnId: turnId })

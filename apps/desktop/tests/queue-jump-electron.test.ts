@@ -46,6 +46,12 @@ test.skipIf(process.platform !== "darwin")(
 			if (!main) throw new Error("Missing main build configuration");
 			await viteBuild({
 				...main,
+				// Full router imports auth; this isolated local fixture never signs in.
+				define: {
+					...main.define,
+					"process.env.SUPABASE_URL": JSON.stringify("http://127.0.0.1:1"),
+					"process.env.SUPABASE_ANON_KEY": JSON.stringify("synthetic-native-fixture"),
+				},
 				plugins: (main.plugins ?? []).filter(
 					(plugin) =>
 						!(
@@ -119,6 +125,7 @@ test.skipIf(process.platform !== "darwin")(
 			});
 			expect(code).toBe(0);
 			expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8"))).toMatchObject({
+				ownedChatMenus: true,
 				jump: true,
 				peek: true,
 				receipts: true,
