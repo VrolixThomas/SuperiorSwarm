@@ -48,6 +48,7 @@ import {
 import { getDb } from "../db";
 import {
 	agentMessages,
+	agentSessions,
 	crossRepoOrchestrators,
 	orchestratorMembers,
 	projects,
@@ -589,8 +590,9 @@ async function dispatchCoordinator(
 	authorizeCoordinatorDispatch(target, input.projectId, deps.caller);
 	if (!existsSync(target.workDir))
 		throw new Error(`Coordinator folder no longer exists: ${target.workDir}`);
-	const configured = AGENT_PROVIDERS.find((provider) => provider === target.agentKind) ?? "claude";
+	const configured = AGENT_PROVIDERS.find((provider) => provider === target.agentKind);
 	const provider = input.cliPreset ?? configured;
+	if (!provider) throw new Error(`Unsupported coordinator provider: ${target.agentKind}`);
 	const providerSessionId = provider === "claude" ? randomUUID() : null;
 	const skipPermissions = input.skipPermissions ?? false;
 	const result = await (deps.spawnFn ?? defaultSpawnFn)({
@@ -1332,6 +1334,82 @@ export interface ResumeAgentDeps {
 	respawnAgent?: RespawnAgentFn;
 }
 
+async function resumeCoordinator(
+	ctx: CallerContext,
+	input: ResumeAgentRequest,
+	target: typeof crossRepoOrchestrators.$inferSelect
+): Promise<ResumeAgentResponse> {
+	authorizeCoordinatorDispatch(target, undefined, ctx);
+	const db = getDb();
+	const sessions = db
+		.select()
+		.from(agentSessions)
+		.where(and(eq(agentSessions.workspaceId, target.id), eq(agentSessions.managed, true)))
+		.all();
+	const owner = sessions.length === 1 ? sessions[0] : undefined;
+	if (
+		!owner ||
+		owner.entityKind !== "coordinator" ||
+		!owner.providerSessionId ||
+		!workspaceReporter(target.id, owner.terminalId)
+	)
+		throw new ResumeNotSupportedError("Coordinator has no unique exact managed conversation");
+	const auditPath = crossRepoEventsFilePath(target.id);
+	const canContinue = () => {
+		try {
+			const current = db
+				.select()
+				.from(crossRepoOrchestrators)
+				.where(eq(crossRepoOrchestrators.id, target.id))
+				.get();
+			if (!current) return false;
+			authorizeCoordinatorDispatch(current, undefined, ctx);
+			const reporter = workspaceReporter(target.id, owner.terminalId);
+			const managed = db
+				.select()
+				.from(agentSessions)
+				.where(and(eq(agentSessions.workspaceId, target.id), eq(agentSessions.managed, true)))
+				.all();
+			return (
+				managed.length === 1 &&
+				managed[0]?.terminalId === owner.terminalId &&
+				reporter?.provider === owner.provider &&
+				reporter.providerSessionId === owner.providerSessionId
+			);
+		} catch {
+			return false;
+		}
+	};
+	const result = await getAgentSessionManager()?.wakeWorkspace(
+		target.id,
+		input.message,
+		canContinue
+	);
+	if (result?.status !== "woke" || result.terminalId !== owner.terminalId)
+		throw new ResumeNotSupportedError(
+			"Exact managed coordinator conversation is unavailable or changed; no fallback was attempted"
+		);
+	const messageId = nanoid();
+	// Coordinator-wide activity has its own durable journal, not an invented linked project.
+	appendFileSync(
+		auditPath,
+		`${JSON.stringify({
+			event: "message",
+			messageId,
+			from: ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId,
+			to: target.id,
+			kind: "resume",
+			content: input.message,
+			terminalId: owner.terminalId,
+			provider: owner.provider,
+			providerSessionId: owner.providerSessionId,
+			ts: new Date().toISOString(),
+		})}\n`,
+		"utf-8"
+	);
+	return { ok: true, messageId };
+}
+
 export async function resumeAgent(
 	ctx: CallerContext,
 	input: ResumeAgentRequest,
@@ -1353,6 +1431,16 @@ export async function resumeAgent(
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
+
+	const coordinator = db
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, input.workspaceId))
+		.get();
+	if (coordinator) {
+		if (target) throw new ForbiddenError("Ambiguous resume entity");
+		return resumeCoordinator(ctx, input, coordinator);
+	}
 
 	let fromId: string;
 	let auditProjectId: string;

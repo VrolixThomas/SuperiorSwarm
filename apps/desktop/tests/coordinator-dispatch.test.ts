@@ -54,8 +54,6 @@ for (const provider of ["claude", "codex"] as const) {
 		try {
 			const result = await dispatchAgent({
 				workspaceId: coordinator,
-				cliPreset: provider,
-				skipPermissions: false,
 				prompt: "Return SYNTHETIC_DONE without tools",
 			});
 			expect(result.status).toBe("started");
@@ -132,6 +130,14 @@ test("coordinator service rejects project-scoped or external-manager targets bef
 			{ spawnFn }
 		)
 	).rejects.toThrow();
+	getDb()
+		.update(crossRepoOrchestrators)
+		.set({ agentKind: "unsupported" })
+		.where(eq(crossRepoOrchestrators.id, coordinator))
+		.run();
+	await expect(
+		dispatchAgent({ workspaceId: coordinator, prompt: "No tools" }, { spawnFn })
+	).rejects.toThrow("Unsupported coordinator provider");
 	expect(spawned).toBe(0);
 });
 
