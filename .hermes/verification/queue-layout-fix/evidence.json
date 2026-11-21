@@ -4,7 +4,8 @@
     "800x600",
     "1440x900",
     "2304x1296",
-    "1200x500"
+    "1200x500",
+    "1440x600"
   ],
   "accessibility": {
     "status": "pass",
@@ -12,7 +13,7 @@
   },
   "responsive": {
     "status": "pass",
-    "evidence": "Production MainLayout now included in native Electron fixture with a saved three-panel layout. Asserted main bounds left=72/right=window width/bottom=window height, no repository panels, no document overflow, equal rail button widths and centered icons at all four viewports. Detail panel bottom and overflow checked; short-window scroll brings every action into view. Workspace navigation restores repository panels and Queue does not change persisted panel sizes."
+    "evidence": "Production MainLayout now included in native Electron fixture with a saved three-panel layout. Asserted main bounds left=72/right=window width/bottom=window height, no repository panels, no document overflow, equal rail button widths and centered icons at all four viewports. Detail panel bottom and overflow checked; short-window scroll brings every action into view. Workspace navigation restores repository panels and Queue does not change persisted panel sizes. Actual Sidebar native wheel regression reaches both ends of folder/repository lists at 1440x900 and 1440x600 without scrolling the sidebar shell."
   },
   "contentStates": {
     "loading": {
@@ -75,10 +76,20 @@
       "viewport": "1440x900",
       "artifact": "rail-hover-projects.png",
       "observation": "Cropped native capture of Projects selected and Tickets hovered. Tooltip stays outside the rail, fully visible; hover background is quieter than selected background."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "sidebar-scrolled-900.png",
+      "observation": "Actual project sidebar at the end of repository list. Folder and repository bodies scroll independently; Orchestrators header remains reachable."
+    },
+    {
+      "viewport": "1440x600",
+      "artifact": "sidebar-scrolled-600.png",
+      "observation": "Cropped sidebar capture after native wheel input reaches the final repository in a short window; section headers stay visible."
     }
   ],
   "limitations": [
-    "Native fixture uses the shared production MainLayout, NavRail and QueueView with production query/mutations and isolated SQLite/PTYs. Workspace sidebar and repository-tools contents are placeholders; no authenticated provider claims.",
+    "Native fixture uses actual production MainLayout, Sidebar, NavRail and QueueView with production query/mutations and isolated SQLite/PTYs. Main workspace content and repository tools remain placeholders. No authenticated provider claims.",
     "Renderer type diagnostics match the existing 81-error baseline. Graphify module remains unavailable."
   ]
 }

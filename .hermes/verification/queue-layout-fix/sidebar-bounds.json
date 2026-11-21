@@ -1,0 +1,63 @@
+{
+  "height": 900,
+  "sidebar": {
+    "top": 0,
+    "bottom": 900,
+    "height": 900,
+    "clientHeight": 900,
+    "scrollHeight": 900,
+    "overflow": "hidden"
+  },
+  "bands": [
+    {
+      "top": 52,
+      "bottom": 560.796875,
+      "height": 508.796875,
+      "clientHeight": 508,
+      "scrollHeight": 508,
+      "overflow": "visible"
+    },
+    {
+      "top": 567.796875,
+      "bottom": 841.5,
+      "height": 273.703125,
+      "clientHeight": 273,
+      "scrollHeight": 273,
+      "overflow": "visible"
+    },
+    {
+      "top": 848.5,
+      "bottom": 900,
+      "height": 51.5,
+      "clientHeight": 51,
+      "scrollHeight": 51,
+      "overflow": "visible"
+    }
+  ],
+  "bodies": [
+    {
+      "top": 96,
+      "bottom": 559.796875,
+      "height": 463.796875,
+      "clientHeight": 464,
+      "scrollHeight": 585,
+      "overflow": "auto"
+    },
+    {
+      "top": 611.796875,
+      "bottom": 840.5,
+      "height": 228.703125,
+      "clientHeight": 229,
+      "scrollHeight": 1889,
+      "overflow": "auto"
+    },
+    {
+      "top": 892.5,
+      "bottom": 899,
+      "height": 6.5,
+      "clientHeight": 7,
+      "scrollHeight": 7,
+      "overflow": "auto"
+    }
+  ]
+}

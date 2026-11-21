@@ -109,7 +109,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
 	if (collapsed) return null;
 
 	return (
-		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+		<div
+			data-workspace-sidebar
+			className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]"
+		>
 			{/* Traffic light clearance */}
 			<div className="app-drag flex h-[52px] shrink-0 items-center pl-3 pr-2">
 				<div className="app-no-drag flex shrink-0 items-center gap-0.5">

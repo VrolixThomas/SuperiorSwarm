@@ -3,11 +3,16 @@ import { createRoot } from "react-dom/client";
 import { registerCoreActions } from "../../../src/renderer/actions/core-actions";
 import { MainLayout } from "../../../src/renderer/components/MainLayout";
 import { NavRail } from "../../../src/renderer/components/NavRail";
+import { Sidebar } from "../../../src/renderer/components/Sidebar";
 import { QueueView } from "../../../src/renderer/components/queue/QueueView";
 import { WorkspaceQueueSync } from "../../../src/renderer/hooks/useWorkspaceQueue";
+import { useProjectStore } from "../../../src/renderer/stores/projects";
 import { useTabStore } from "../../../src/renderer/stores/tab-store";
 import { trpc, trpcVanilla } from "../../../src/renderer/trpc/client";
 registerCoreActions();
+useProjectStore.setState({
+	expandedProjectIds: new Set(["p1", ...Array.from({ length: 8 }, (_, i) => `folder-${i}`)]),
+});
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 for (const id of ["w1", "w2", "w3"])
 	useTabStore.getState().addTerminalTab(id, "/tmp", id, `terminal-${id}`);
@@ -27,7 +32,7 @@ function Surface() {
 			<NavRail />
 			<div className="ml-[72px] min-w-0">
 				<MainLayout
-					sidebar={() => <div data-workspace-sidebar>Workspace list</div>}
+					sidebar={(collapsed, onExpand) => <Sidebar collapsed={collapsed} onExpand={onExpand} />}
 					diff={<aside data-workspace-diff>Repository tools</aside>}
 				>
 					{segment === "queue" ? (

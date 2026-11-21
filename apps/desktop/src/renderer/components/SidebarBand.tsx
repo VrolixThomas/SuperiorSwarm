@@ -51,6 +51,7 @@ export function SidebarBand({
 	return (
 		<div
 			ref={setNodeRef}
+			data-sidebar-band={id}
 			className={`border-b border-[var(--border-subtle)] ${sizingClass(style)}`}
 			style={{
 				transform: CSS.Transform.toString(transform),
@@ -70,7 +71,11 @@ export function SidebarBand({
 				className="shrink-0 bg-[var(--bg-surface)]"
 				dragHandle={{ attributes, listeners }}
 			/>
-			{isOpen && <div className={BODY_CLASS}>{children}</div>}
+			{isOpen && (
+				<div data-sidebar-band-body={id} className={BODY_CLASS}>
+					{children}
+				</div>
+			)}
 		</div>
 	);
 }

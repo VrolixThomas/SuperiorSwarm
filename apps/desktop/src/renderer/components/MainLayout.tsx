@@ -57,7 +57,10 @@ function WorkspaceLayout({ children, sidebar, diff }: MainLayoutProps) {
 			orientation="horizontal"
 			defaultLayout={defaultLayout}
 			onLayoutChanged={onLayoutChanged}
-			className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
+			className="min-w-0 overflow-hidden bg-[var(--bg-base)]"
+			// Group supplies inline height:100%, which cannot resolve against the app
+			// wrapper's auto height. Override it here so each sidebar band can scroll.
+			style={{ height: "100vh" }}
 		>
 			<Panel
 				id="sidebar"

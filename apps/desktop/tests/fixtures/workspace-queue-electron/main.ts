@@ -74,6 +74,45 @@ async function run() {
 			.values({ id, name, repoPath: join(root, id), createdAt: now, updatedAt: now })
 			.run();
 	}
+	for (let i = 0; i < 29; i++) {
+		const folder = i < 8;
+		const id = folder ? `folder-${i}` : `repo-${i}`;
+		getDb()
+			.insert(projects)
+			.values({
+				id,
+				name: `${folder ? "Folder" : "Repository"} ${i + 1}`,
+				kind: folder ? "folder" : "repo",
+				repoPath: join(root, id),
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		if (folder)
+			getDb()
+				.insert(workspaces)
+				.values({
+					id: `${id}-default`,
+					projectId: id,
+					type: "folder",
+					name: "default",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+	}
+	for (let i = 0; i < 30; i++)
+		getDb()
+			.insert(workspaces)
+			.values({
+				id: `extra-${i}`,
+				projectId: "p1",
+				type: "branch",
+				name: `Workspace ${i + 1}`,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
 	const names = [
 		"Choose the workspace restore behavior",
 		"Finish the activity queue redesign",
@@ -173,6 +212,11 @@ async function run() {
 		},
 	});
 	const appRouter = router({
+		projects: router({ list: publicProcedure.query(() => getDb().select().from(projects).all()) }),
+		crossRepoOrchestrators: router({
+			list: publicProcedure.query(() => []),
+			memberCounts: publicProcedure.query(() => ({})),
+		}),
 		activityQueue: activityQueueRouter,
 		agentSessions: agentSessionsRouter,
 		workspaces: workspacesRouter,
@@ -331,6 +375,85 @@ async function run() {
 			"document.querySelector('[data-workspace-diff]')?.getBoundingClientRect().width > 0"
 		)
 	);
+	step = "sidebar scroll bounds";
+	await until(() =>
+		js<boolean>(
+			"document.querySelector('[data-sidebar-band-body=repositories]')?.textContent.includes('Workspace 30') ?? false"
+		)
+	);
+	const sidebarBounds = await js(`(() => {
+		const metrics = el => {const r=el.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,height:r.height,clientHeight:el.clientHeight,scrollHeight:el.scrollHeight,overflow:getComputedStyle(el).overflowY};};
+		return {height:innerHeight, sidebar:metrics(document.querySelector('[data-workspace-sidebar]')), bands:[...document.querySelectorAll('[data-sidebar-band]')].map(metrics), bodies:[...document.querySelectorAll('[data-sidebar-band-body]')].map(metrics)};
+	})()`);
+	writeFileSync(join(root, "sidebar-bounds.json"), JSON.stringify(sidebarBounds, null, 2));
+	if (
+		!(await js<boolean>(
+			"[...document.querySelectorAll('[data-sidebar-band]')].every(el=>el.getBoundingClientRect().bottom<=innerHeight)"
+		))
+	)
+		throw new Error("Sidebar bands extend below window");
+	contents.debugger.attach("1.3");
+	for (const height of [900, 600]) {
+		win.setContentSize(1440, height);
+		await until(() =>
+			js<boolean>(
+				"document.querySelector('[data-workspace-sidebar]').getBoundingClientRect().bottom===innerHeight"
+			)
+		);
+		for (const band of ["folders", "repositories"]) {
+			step = `${band} native wheel at ${height}`;
+			const point = await js<{ x: number; y: number; top: number }>(`(() => {
+				const el = document.querySelector('[data-sidebar-band-body="${band}"]');
+				const r=el.getBoundingClientRect();
+				return {x:r.x+r.width/2,y:r.y+r.height/2,top:el.parentElement.getBoundingClientRect().top};
+			})()`);
+			await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
+				type: "mouseWheel",
+				x: point.x,
+				y: point.y,
+				deltaX: 0,
+				deltaY: 10000,
+			});
+			await until(() =>
+				js<boolean>(
+					`(() => {const el=document.querySelector('[data-sidebar-band-body="${band}"]'); return el.scrollTop>0 && el.scrollTop+el.clientHeight>=el.scrollHeight-1;})()`
+				)
+			);
+			if (
+				!(await js<boolean>(`(() => {
+				const el=document.querySelector('[data-sidebar-band-body="${band}"]');
+				const last=el.firstElementChild.lastElementChild.getBoundingClientRect();
+				return last.bottom<=el.getBoundingClientRect().bottom+1 && Math.abs(el.parentElement.getBoundingClientRect().top-${point.top})<1 && document.querySelector('[data-workspace-sidebar]').scrollTop===0;
+			})()`))
+			)
+				throw new Error("Sidebar header moved or last item unreachable");
+			if (band === "repositories")
+				await contents
+					.capturePage({ x: 72, y: 0, width: 360, height })
+					.then((c) => writeFileSync(join(root, `sidebar-scrolled-${height}.png`), c.toPNG()));
+			await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
+				type: "mouseWheel",
+				x: point.x,
+				y: point.y,
+				deltaX: 0,
+				deltaY: -10000,
+			});
+			await until(() =>
+				js<boolean>(`document.querySelector('[data-sidebar-band-body="${band}"]').scrollTop===0`)
+			);
+		}
+	}
+	contents.debugger.detach();
+	await js("document.querySelector('[data-sidebar-band=folders] button[aria-expanded]').click()");
+	await until(() => js<boolean>("!document.querySelector('[data-sidebar-band-body=folders]')"));
+	if (
+		!(await js<boolean>(
+			"document.querySelector('[data-sidebar-band=orchestrators]').getBoundingClientRect().bottom<=innerHeight"
+		))
+	)
+		throw new Error("Collapsed sections overflow");
+	await js("document.querySelector('[data-sidebar-band=folders] button[aria-expanded]').click()");
+	win.setContentSize(1440, 900);
 	const ticketsPoint = await js<{ x: number; y: number }>(`(() => {
 		const r = document.querySelector('nav button[aria-label="Tickets"]').getBoundingClientRect();
 		return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
@@ -389,6 +512,11 @@ async function run() {
 	key("z");
 	step = "Undo";
 	await until(() => count(3));
+	await until(() =>
+		js<boolean>(
+			"document.body.textContent.includes('Restored to the queue') && document.querySelector('[aria-label=\"Queue item details\"] button')?.disabled===false"
+		)
+	);
 	key("h");
 	await until(() => js<boolean>("!!document.querySelector('dialog')"));
 	key("1");
