@@ -18,10 +18,10 @@ import {
 } from "../src/main/db/schema";
 import { AgentSessionManager } from "../src/main/services/agent-session-manager";
 import {
+	type CallerContext,
 	readMessages,
 	sendMessage,
 	setStatus,
-	type CallerContext,
 } from "../src/main/services/workspace-service";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import type { AgentEvent } from "../src/shared/agent-events";
@@ -48,8 +48,8 @@ async function scenario(provider: "claude" | "codex", kind: string, managed: boo
 			.set({ type: "folder", folderPath: "/tmp/postpatch-folder" })
 			.where(eq(workspaces.id, id))
 			.run();
-	const owner = `owner-${id}`,
-		sibling = `sibling-${id}`;
+	const owner = `owner-${id}`;
+	const sibling = `sibling-${id}`;
 	const manager = new AgentSessionManager({
 		daemonClient: {} as DaemonClient,
 		processController: {

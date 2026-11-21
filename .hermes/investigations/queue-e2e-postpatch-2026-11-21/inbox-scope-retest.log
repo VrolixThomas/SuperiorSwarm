@@ -1,0 +1,50 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-inbox-scope.test.ts:
+(pass) workspace: sibling-only rows are filtered before the bounded inbox limit [16.96ms]
+(pass) workspace: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [72.65ms]
+(pass) workspace: wrong generation/provider/entity/project is never visible or retrieved [5.20ms]
+(pass) coordinator: sibling-only rows are filtered before the bounded inbox limit [12.19ms]
+(pass) coordinator: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [60.90ms]
+(pass) coordinator: wrong generation/provider/entity/project is never visible or retrieved [6.32ms]
+(pass) all-project coordinator scope follows current inventory and keeps its own directory [2.05ms]
+(pass) selected coordinator scope stays limited to current explicit links [2.32ms]
+
+tests/queue-postpatch-independent.test.ts:
+(pass) independent claude/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [111.38ms]
+(pass) independent claude/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [112.02ms]
+(pass) independent claude/folder/manual: exact owner, grouped completion, sibling isolation and continuation [126.58ms]
+(pass) independent claude/folder/managed: exact owner, grouped completion, sibling isolation and continuation [178.98ms]
+(pass) independent claude/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [151.99ms]
+(pass) independent claude/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [162.56ms]
+(pass) independent claude/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [185.06ms]
+(pass) independent claude/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [208.06ms]
+(pass) independent codex/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [223.54ms]
+(pass) independent codex/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [245.48ms]
+(pass) independent codex/folder/manual: exact owner, grouped completion, sibling isolation and continuation [259.60ms]
+(pass) independent codex/folder/managed: exact owner, grouped completion, sibling isolation and continuation [293.08ms]
+(pass) independent codex/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [284.44ms]
+(pass) independent codex/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [301.08ms]
+(pass) independent codex/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [345.81ms]
+(pass) independent codex/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [361.35ms]
+(pass) all-projects coordinator context includes dynamically authorized repo and folder [3.21ms]
+(pass) recipient inbox pagination cannot starve an older unread answer behind sibling-only answers [218.13ms]
+555 | 	input: DispatchAgentRequest,
+556 | 	deps: DispatchAgentDeps = {}
+557 | ): Promise<DispatchAgentResponse> {
+558 | 	const db = getDb();
+559 | 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
+560 | 	if (!ws) throw new NotFoundError(input.workspaceId);
+                      ^
+NotFoundError: not_found: xro-l7tGdHb_
+      at dispatchAgent (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/src/main/services/workspace-service.ts:560:17)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-postpatch-independent.test.ts:239:23)
+(fail) cross-repo coordinator accepts the production dispatch service with an isolated launch target [1.15ms]
+
+1 tests failed:
+(fail) cross-repo coordinator accepts the production dispatch service with an isolated launch target [1.15ms]
+
+ 26 pass
+ 1 fail
+ 654 expect() calls
+Ran 27 tests across 2 files. [4.09s]

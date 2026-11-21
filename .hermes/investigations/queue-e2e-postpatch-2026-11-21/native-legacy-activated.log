@@ -1,0 +1,10 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-electron.test.ts:
+Native queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-electron-FlKwYL
+(pass) native queue connects hooks, SQLite receipts and production tRPC to Chromium [6173.86ms]
+
+ 1 pass
+ 0 fail
+ 2 expect() calls
+Ran 1 test across 1 file. [6.34s]

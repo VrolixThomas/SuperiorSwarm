@@ -12,7 +12,7 @@ import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import type { AgentEvent } from "../src/shared/agent-events";
 import { seedCrossRepoOrchestrator, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
-// Investigation characterizations: GAP assertions document observed defects, not acceptance.
+// Acceptance regressions for the original findings; missing-identity cases stay conservative.
 // Every entity is test-owned; Bun's SQLite shim uses /tmp/superiorswarm-test-<pid>.
 beforeAll(setupTestDb);
 let serial = 0;

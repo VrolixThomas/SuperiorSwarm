@@ -1,0 +1,9 @@
+{
+  "stagingBaseline": "c596d4d4c76abc7838eb7dc109849ab5b37c2cab",
+  "checkedHead": "42462d48060cdeaf576f677bd0f8dc8b3c847ad2",
+  "currentErrors": 204,
+  "baselineErrors": 204,
+  "added": [],
+  "removed": [],
+  "normalization": "Absolute resolved repository paths only; diagnostic positions and counts preserved."
+}

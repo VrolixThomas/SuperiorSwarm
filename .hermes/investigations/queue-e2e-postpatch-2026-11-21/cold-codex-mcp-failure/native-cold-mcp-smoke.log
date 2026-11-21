@@ -1,0 +1,62 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-postpatch-native-live.test.ts:
+18:23:15.803 › [agent-notify] listening on port 49173
+18:23:16.056 › [ipc] sending trpc:aiReview.getReviewDrafts
+18:23:16.057 › [ipc] sending trpc:prPoller.getCachedPRs
+18:23:16.067 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:16.904 › [ipc] sending trpc:activityQueue.workspaceList
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-postpatch-native-live-iNcaoB%2Ffolder 200 request_id=24ded866-3da9-48d4-8003-c0adefb51380 latency=2ms
+18:23:17.097 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:18.799 › [ipc] sending trpc:activityQueue.workspaceList
+[control-plane] POST /workspaces.set_status 200 request_id=9900da6c-7a27-4845-8e53-f6a9d1f62f64 latency=4ms
+18:23:18.880 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:19.943 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:21.081 › [ipc] sending trpc:crossRepoOrchestrators.list
+18:23:21.082 › [ipc] sending trpc:crossRepoOrchestrators.memberCounts
+18:23:21.082 › [ipc] sending trpc:projects.list
+18:23:21.471 › [ipc] sending trpc:activityQueue.workspaceList
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-postpatch-native-live-iNcaoB%2Ffolder 200 request_id=e7a59c8b-d381-4a29-88de-98e71e776112 latency=1ms
+18:23:21.597 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:22.711 › [ipc] sending trpc:activityQueue.workspaceList
+[pty-manager] write: terminal "terminal-claude-folder-manual" not found
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-postpatch-native-live-iNcaoB%2Ffolder 200 request_id=2c7f3b1c-2e23-4588-b26a-1115910ad48e latency=0ms
+18:23:25.776 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:25.842 › [ipc] sending trpc:activityQueue.workspaceList
+18:23:27.412 › [ipc] sending trpc:activityQueue.workspaceList
+codex-folder-manual AssertionError [ERR_ASSERTION]: First actual MCP must bind the CLI session
++ actual - expected
+
++ undefined
+- '01a1ff22-5ae1-7900-9ff4-9a68715d2397'
+
+    at run (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-postpatch-native-live-iNcaoB/main/main.js:11650:16) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: '01a1ff22-5ae1-7900-9ff4-9a68715d2397',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+18:23:28.191 › [ipc] sending trpc:activityQueue.workspaceList
+
+Workspace queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-postpatch-native-live-iNcaoB
+123 | 					clearTimeout(timer);
+124 | 					if (code !== 0) console.error(output);
+125 | 					done(code);
+126 | 				});
+127 | 			});
+128 | 			expect(code).toBe(0);
+                      ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-postpatch-native-live.test.ts:128:17)
+(fail) actual providers traverse isolated native SQLite, QueueView and PTY follow-up [13347.02ms]
+
+ 0 pass
+ 1 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [13.49s]
