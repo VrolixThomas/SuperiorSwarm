@@ -1,0 +1,116 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-ownership.test.ts:
+(pass) claude/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [47.01ms]
+(pass) claude/workspace: closed/replaced question owner cannot receive or mutate [16.61ms]
+(pass) claude/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [63.38ms]
+(pass) claude/coordinator: closed/replaced question owner cannot receive or mutate [25.39ms]
+(pass) codex/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [71.63ms]
+(pass) codex/workspace: closed/replaced question owner cannot receive or mutate [28.46ms]
+(pass) codex/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [99.79ms]
+(pass) codex/coordinator: closed/replaced question owner cannot receive or mutate [43.50ms]
+(pass) report and turn receipt group atomically; stale member rejects all actions and Undo retains exact revisions [216.82ms]
+(pass) legacy question/report remains explicitly unavailable for safe reply and never binds to sibling [57.24ms]
+(pass) polymorphic session constraints reject nonexistent owners and cascade both real entity kinds [3.35ms]
+(pass) wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution [87.64ms]
+(pass) ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval [65.56ms]
+(pass) grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically [200.82ms]
+
+tests/describe-workspace-item.test.ts:
+(pass) a chat turn ending requests review without claiming task completion [0.28ms]
+(pass) workspace completion shows the actual report and asks for review [0.06ms]
+(pass) an input request or question shows the actual question
+(pass) permission and failure notifications admit when their details are absent
+(pass) latched failure remains a failed-turn explanation after a generic Stop
+(pass) unconfirmed permission outcome asks for review rather than another approval
+
+tests/queue-question-reply.test.tsx:
+(pass) correlated answer uses displayed message, owner and revision; saved is not retrieved or resumed [14.39ms]
+(pass) transport error preserves input; stale revision refuses send until explicitly reviewed [10.63ms]
+(pass) backend conflict preserves the pending answer and does not claim delivery [2.92ms]
+(pass) refresh failure after saved cannot reenable duplicate delivery [3.10ms]
+(pass) drafts remain associated with their question when selecting another item [1.66ms]
+(pass) persisted saved answer remains readable after remount without claiming task execution [0.81ms]
+
+tests/queue-view.test.tsx:
+(pass) Open only navigates; Done sends displayed revision and Undo restores it [22.81ms]
+(pass) conflict refreshes same item without advancing or opening another [7.18ms]
+(pass) Later then Bring back use exact revisions and keyboard options [10.46ms]
+(pass) selection survives refresh and typing never runs quick actions [10.40ms]
+(pass) new revision closes the Later menu instead of acting on unseen activity [6.49ms]
+(pass) loading, empty and fetch errors offer honest recovery states [1.28ms]
+(pass) unavailable permission items remain readable but cannot be handled [5.71ms]
+(pass) keyboard focus follows the next row after Done [12.75ms]
+(pass) Later keeps category counts tied to pending items [8.18ms]
+(pass) Later does not offer an Undo receipt for a different previously completed item [12.40ms]
+(pass) selected item keeps its source and next action visible [2.23ms]
+(pass) narrow details action exposes full context and returns keyboard focus [5.42ms]
+(pass) canonical grouped actions preserve every displayed member receipt including Undo [15.20ms]
+(pass) provider request evidence keeps provenance and does not claim permission execution [1.83ms]
+(pass) handling an item from narrow details returns focus to the visible next row [7.03ms]
+(pass) unconfirmed permission outcome is shown as unknown without invented success [6.77ms]
+(pass) an in-flight answer blocks other queue actions and preserves its draft on failure [14.22ms]
+
+tests/activity-queue-navigation.test.ts:
+(pass) direct Queue navigation > leaves repos directly without an intermediate restoration or shell [0.46ms]
+(pass) direct Queue navigation > leaves tickets directly without an intermediate restoration or shell
+(pass) direct Queue navigation > leaves prs directly without an intermediate restoration or shell [0.17ms]
+(pass) direct Queue navigation > leaves hermes directly without an intermediate restoration or shell [0.05ms]
+(pass) direct Queue navigation > Back returns to the selected Hermes conversation
+(pass) direct Queue navigation > PR activation retains direct history from Hermes [0.34ms]
+(pass) Queue source targeting > workspace reporter target opens the exact reporting chat instead of the selected sibling [0.74ms]
+(pass) Queue source targeting > selects the exact tab and split pane, preserving the other terminal [0.32ms]
+(pass) Queue source targeting > reopens the exact review drawer without creating a pane terminal [0.34ms]
+(pass) Queue source targeting > missing terminal and changed provider session preserve active work
+(pass) Queue source targeting > PR duplicate clicks reuse one in-flight review operation [0.34ms]
+(pass) Queue source targeting > PR failure leaves current workspace and unlocks retry [0.22ms]
+(pass) Queue source targeting > same repository name on a different provider is not navigated
+(pass) Queue source targeting > unavailable and Hermes recovery targets explain their limits [0.11ms]
+(pass) missing PR branches are resolved before creating a review workspace [0.02ms]
+(pass) missing live PTYs cannot be recreated by Queue navigation [0.19ms]
+(pass) terminal service errors retain the current workspace [0.03ms]
+(pass) closing the requested chat during inventory preflight cannot select its sibling [0.20ms]
+(pass) Queue marks terminals added during preflight before any destination activation [0.21ms]
+(pass) coordinator entity navigation never substitutes a linked workspace or creates a shell [0.09ms]
+(pass) coordinator chat navigation never substitutes a linked workspace or creates a shell [0.08ms]
+(pass) mismatched coordinator owner is rejected before navigation [0.09ms]
+(pass) a dead unrelated sibling does not block the healthy exact reporter [0.09ms]
+(pass) conversation replacement during inventory is rejected before switching workspaces
+
+tests/activity-queue-workspace.test.ts:
+(pass) public workspace list excludes external sources from items, counts, errors and update time [30.62ms]
+(pass) workspace/project rename and color enrich context without bumping revisions or fingerprints [13.43ms]
+(pass) classification uses structured permission/failure/question evidence, never summary instructions [24.27ms]
+(pass) workspace mutations reject missing, external and mismatched source targets [81.28ms]
+(pass) Done refuses wrong revision, failed inventory, disconnect and retired work [53.19ms]
+(pass) fresh state is reconciled after inventory wait, so an old click cannot acknowledge new work [11.87ms]
+(pass) terminal identity must match the current workspace and provider generation [35.20ms]
+(pass) unavailable source is visible with its own error but cannot be acknowledged or deferred [29.00ms]
+(pass) Later persists across DB reopen, expires at the boundary and never affects generic counts [72.02ms]
+(pass) new revision returns pending and a stale bringBack cannot delete the newer snooze [43.45ms]
+(pass) Done and Undo require the same current revision and acknowledgement [75.97ms]
+(pass) failed inventory cannot restore handled work or remove its deferral [25.48ms]
+(pass) Later validates future bounded timestamps or untilChange, including invalid numeric values [18.37ms]
+(pass) removed source cascades its snooze and retired terminals do not contribute Later counts [14.54ms]
+(pass) confirmed exact managed terminal can be handled and undone without sending provider input [29.34ms]
+(pass) exact terminal binding is required even when another terminal keeps its old workspace live [24.10ms]
+(pass) global counts combine pending, snoozed and handled work independently of project/view filters [47.90ms]
+(pass) expiry uses the time after waiting for inventory [12.01ms]
+(pass) concurrent Done then Later rejects deferral so Undo returns the item to pending [26.36ms]
+(pass) concurrent restore mutations use persisted receipts rather than their pre-await views [39.36ms]
+(pass) chat titles identify the conversation without changing its source revision [11.67ms]
+(pass) a sibling terminal cannot keep a closed reporting chat's workspace item current [18.06ms]
+
+tests/queue-later-options.test.ts:
+(pass) event option comes first, calendar options use local time and input is unchanged [0.52ms]
+(pass) at/after 18h evening moves to tomorrow; Monday means the following Monday [0.12ms]
+(pass) calendar choices preserve wall clock time through month/year and DST boundaries
+
+tests/queue-model.test.ts:
+(pass) workspace queue prioritizes input then oldest; grouping preserves that order [0.36ms]
+(pass) selection survives refresh and picks the same position after removal [0.05ms]
+
+ 94 pass
+ 0 fail
+ 481 expect() calls
+Ran 94 tests across 8 files. [2.22s]

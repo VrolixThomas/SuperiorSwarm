@@ -1,0 +1,135 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-ownership.test.ts:
+(pass) claude/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [46.97ms]
+(pass) claude/workspace: closed/replaced question owner cannot receive or mutate [16.09ms]
+(pass) claude/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [60.94ms]
+(pass) claude/coordinator: closed/replaced question owner cannot receive or mutate [24.18ms]
+(pass) codex/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [76.50ms]
+(pass) codex/workspace: closed/replaced question owner cannot receive or mutate [29.32ms]
+(pass) codex/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [101.20ms]
+(pass) codex/coordinator: closed/replaced question owner cannot receive or mutate [44.14ms]
+(pass) report and turn receipt group atomically; stale member rejects all actions and Undo retains exact revisions [261.61ms]
+(pass) legacy question/report remains explicitly unavailable for safe reply and never binds to sibling [56.34ms]
+(pass) polymorphic session constraints reject nonexistent owners and cascade both real entity kinds [2.43ms]
+(pass) wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution [100.91ms]
+(pass) ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval [78.12ms]
+(pass) grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically [205.10ms]
+
+tests/agent-evidence-persistence.test.ts:
+(pass) claude: acknowledged failure stays handled through Stop, compaction and missing-turn replay [14.77ms]
+(pass) codex: acknowledged failure stays handled through Stop, compaction and missing-turn replay [15.35ms]
+
+tests/agent-event-transition.test.ts:
+(pass) claude > Stop and tool activity retain unresolved permission and actual request text [0.20ms]
+(pass) claude > new prompt explicitly continues without claiming permission was granted [0.27ms]
+(pass) claude > only a matching explicit permission outcome changes pending permission
+(pass) claude > legacy replay keeps cleared attention cleared; a genuine later turn still appears
+(pass) claude > missing-turn prompt cannot clear newer work [0.16ms]
+(pass) codex > Stop and tool activity retain unresolved permission and actual request text
+(pass) codex > new prompt explicitly continues without claiming permission was granted
+(pass) codex > only a matching explicit permission outcome changes pending permission
+(pass) codex > legacy replay keeps cleared attention cleared; a genuine later turn still appears
+(pass) codex > missing-turn prompt cannot clear newer work
+(pass) stable event IDs reject replay and provider timestamps reject older events
+(pass) view-only resume and compaction preserve attention and fingerprint
+(pass) compaction cannot mutate completed work
+(pass) same-turn new text changes the exact revision fingerprint [0.28ms]
+(pass) uncertain replay cannot invalidate an exact dismissal receipt [0.04ms]
+(pass) old v2 snapshot format retains its receipt unless new evidence arrives
+(pass) retained permission plus reply and error remain bounded without dropping either kind
+(pass) unseen event identity alone cannot order a missing-turn Stop after explicit continuation
+(pass) a distinct permission request replaces stale request text instead of relabeling it [0.38ms]
+(pass) failure receipt and error survive generic Stop and compaction until a real continuation [0.07ms]
+(pass) unconfirmed permission outcome updates wording without reopening an exact receipt [0.04ms]
+
+tests/queue-investigation-matrix.test.ts:
+(pass) claude/worktree/manual: exact direct continuation and sibling isolation [257.88ms]
+(pass) claude/folder/manual: exact direct continuation and sibling isolation [220.32ms]
+(pass) claude/repo-orchestrator/manual: exact direct continuation and sibling isolation [219.77ms]
+(pass) claude/cross-repo/manual: registered coordinator callback is accepted [46.81ms]
+(pass) claude/worktree/managed: exact direct continuation and sibling isolation [284.40ms]
+(pass) claude/folder/managed: exact direct continuation and sibling isolation [272.30ms]
+(pass) claude/repo-orchestrator/managed: exact direct continuation and sibling isolation [436.73ms]
+(pass) claude/cross-repo/managed: registered coordinator callback is accepted [59.57ms]
+(pass) claude: known reporter is preserved in navigation [177.83ms]
+(pass) claude: untagged prompt preserves report and exposes uncertain chat attention [149.85ms]
+(pass) claude: structured question preserves ownership and retires on reporter closure [292.36ms]
+(pass) claude: untagged replay cannot reopen explicitly cleared work [273.74ms]
+(pass) claude: managed sibling cannot clear a legacy ownerless manual report [144.34ms]
+(pass) codex/worktree/manual: exact direct continuation and sibling isolation [495.10ms]
+(pass) codex/folder/manual: exact direct continuation and sibling isolation [644.82ms]
+(pass) codex/repo-orchestrator/manual: exact direct continuation and sibling isolation [819.32ms]
+(pass) codex/cross-repo/manual: registered coordinator callback is accepted [96.73ms]
+(pass) codex/worktree/managed: exact direct continuation and sibling isolation [611.95ms]
+(pass) codex/folder/managed: exact direct continuation and sibling isolation [753.46ms]
+(pass) codex/repo-orchestrator/managed: exact direct continuation and sibling isolation [659.30ms]
+(pass) codex/cross-repo/managed: registered coordinator callback is accepted [119.28ms]
+(pass) codex: known reporter is preserved in navigation [505.08ms]
+(pass) codex: untagged prompt preserves report and exposes uncertain chat attention [402.04ms]
+(pass) codex: structured question preserves ownership and retires on reporter closure [658.60ms]
+(pass) codex: untagged replay cannot reopen explicitly cleared work [687.10ms]
+(pass) codex: managed sibling cannot clear a legacy ownerless manual report [485.64ms]
+
+tests/agent-hooks/listener.test.ts:
+(pass) AgentAlertListener > returns 200 and maps rawEvent via agent registry [5.08ms]
+(pass) AgentAlertListener > returns 400 for missing rawEvent param [0.75ms]
+(pass) AgentAlertListener > returns 204 for unknown agent (silently ignored) [0.43ms]
+(pass) AgentAlertListener > returns 204 when agent mapper returns null (unrecognised event) [0.38ms]
+(pass) AgentAlertListener > returns 404 for unknown paths [0.36ms]
+(pass) AgentAlertListener > emits AgentEvent on valid request [0.59ms]
+(pass) AgentAlertListener > getPort returns the bound port [0.02ms]
+(pass) AgentAlertListener > returns 200 with app identifier on /health [0.28ms]
+(pass) AgentAlertListener > /shutdown requires POST method [4.34ms]
+(pass) AgentAlertListener authentication > rejects missing tokens and accepts the configured bearer token [3.73ms]
+(pass) reclaimPort > reclaims port from a stale SuperiorSwarm listener [212.21ms]
+(pass) reclaimPort > completes without error when port is free (connection refused) [0.67ms]
+(pass) EADDRINUSE fallback > fallback listener binds to a different port [0.29ms]
+(pass) EADDRINUSE fallback > fallback listener still serves requests [1.47ms]
+(pass) bounded POST evidence is sanitized and cannot forge a permission decision [8.63ms]
+
+tests/agent-hooks/bridge.test.ts:
+(pass) generated launcher parses top-level identities and sends authenticated turn metadata [584.57ms]
+
+tests/agent-hooks/evidence.test.ts:
+(pass) admits actual reply with provenance without importing prompts or tools [0.79ms]
+(pass) bounds and sanitizes provider text before transport/storage [0.52ms]
+(pass) listener admission reconstructs provenance and rejects forged/unknown fields [0.09ms]
+(pass) Claude StopFailure admits rendered error and error_details with error provenance
+
+tests/agent-hooks/claude.test.ts:
+(pass) claudeConfig.mapEvent > maps UserPromptSubmit to active
+(pass) claudeConfig.mapEvent > maps PostToolUse to active
+(pass) claudeConfig.mapEvent > maps Stop to task-complete [0.02ms]
+(pass) claudeConfig.mapEvent > maps PermissionRequest to needs-input
+(pass) claudeConfig.mapEvent > returns null for unknown events
+(pass) mergeClaudeHooks > creates settings.json if it does not exist [0.68ms]
+(pass) mergeClaudeHooks > preserves existing non-hook settings [1.20ms]
+(pass) mergeClaudeHooks > replaces old agent-notify hooks on re-run [1.14ms]
+
+tests/agent-hooks/opencode.test.ts:
+(pass) OpenCode lifecycle plugin > generates valid JavaScript with authenticated per-session events [0.52ms]
+
+tests/agent-hooks/gemini.test.ts:
+(pass) geminiConfig.mapEvent > maps BeforeAgent to active [0.07ms]
+(pass) geminiConfig.mapEvent > maps AfterAgent to task-complete [0.01ms]
+(pass) geminiConfig.mapEvent > maps AfterTool to active [0.02ms]
+(pass) geminiConfig.mapEvent > returns null for unknown events [0.02ms]
+(pass) mergeGeminiHooks > creates settings.json if it does not exist [0.68ms]
+(pass) mergeGeminiHooks > preserves existing settings [0.43ms]
+(pass) mergeGeminiHooks > replaces old hooks on re-run [0.36ms]
+
+tests/agent-hooks/codex.test.ts:
+(pass) codexConfig.mapEvent > maps SessionStart to active [0.01ms]
+(pass) codexConfig.mapEvent > maps per-turn activity, approvals and compaction without treating subagent stop as parent [0.09ms]
+(pass) codexConfig.mapEvent > maps Stop to task-complete [0.01ms]
+(pass) codexConfig.mapEvent > returns null for unknown events [0.01ms]
+(pass) mergeCodexHooks > creates hooks.json if it does not exist [0.62ms]
+(pass) mergeCodexHooks > preserves malformed settings instead of silently overwriting them [0.29ms]
+(pass) mergeCodexHooks > preserves existing settings [0.66ms]
+(pass) mergeCodexHooks > replaces old hooks on re-run [0.37ms]
+
+ 107 pass
+ 0 fail
+ 503 expect() calls
+Ran 107 tests across 11 files. [11.92s]

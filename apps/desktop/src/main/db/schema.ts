@@ -150,9 +150,15 @@ export const agentMessages = sqliteTable(
 		// (xro-… id) which is not in the workspaces table.  Application-level
 		// integrity is enforced by resolveCaller / sendMessage / resumeAgent.
 		fromWorkspaceId: text("from_workspace_id"),
-		toWorkspaceId: text("to_workspace_id").references(() => workspaces.id, {
-			onDelete: "set null",
-		}),
+		toWorkspaceId: text("to_workspace_id"),
+		// Exact conversation bindings; absent on legacy messages.
+		reporter: text("reporter", { mode: "json" }).$type<
+			import("../../shared/activity-queue").ActivityQueueTarget
+		>(),
+		recipient: text("recipient", { mode: "json" }).$type<
+			import("../../shared/activity-queue").ActivityQueueTarget
+		>(),
+		retrievedAt: integer("retrieved_at", { mode: "timestamp_ms" }),
 		kind: text("kind", {
 			enum: ["resume", "note", "question", "answer", "broadcast"],
 		}).notNull(),
@@ -187,9 +193,11 @@ export const agentSessions = sqliteTable(
 	"agent_sessions",
 	{
 		terminalId: text("terminal_id").primaryKey(),
-		workspaceId: text("workspace_id")
+		entityKind: text("entity_kind", { enum: ["workspace", "coordinator"] })
 			.notNull()
-			.references(() => workspaces.id, { onDelete: "cascade" }),
+			.default("workspace"),
+		// Polymorphic entity ID; migration triggers enforce workspace/coordinator ownership.
+		workspaceId: text("workspace_id").notNull(),
 		provider: text("provider", {
 			enum: ["claude", "codex", "gemini", "opencode"],
 		}).notNull(),
@@ -659,6 +667,9 @@ export const crossRepoOrchestrators = sqliteTable("cross_repo_orchestrators", {
 	workDir: text("work_dir").notNull(),
 	agentKind: text("agent_kind").notNull(),
 	status: text("status").notNull().default("idle"),
+	statusText: text("status_text"),
+	needs: text("needs"),
+	statusUpdatedAt: integer("status_updated_at", { mode: "timestamp_ms" }),
 	colorIndex: integer("color_index"),
 	sortOrder: integer("sort_order").notNull(),
 	// "workspace" = in-app coordinator terminal (cwd-resolved). "external" = an

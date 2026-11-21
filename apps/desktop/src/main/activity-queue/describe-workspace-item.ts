@@ -3,6 +3,8 @@ import type {
 	ActivityQueueSource,
 	WorkspaceQueueItem,
 } from "../../shared/activity-queue";
+import { validateAgentEvidence } from "../../shared/agent-evidence";
+import type { AgentEventSnapshot } from "./agent-event-order";
 
 export function projectTint(projectId: string): number {
 	let hash = 0;
@@ -17,20 +19,25 @@ export function describeWorkspaceItem(
 	context: WorkspaceQueueItem["context"]
 ): WorkspaceQueueItem {
 	const snapshot = source.snapshot;
+	const eventSnapshot = snapshot as Partial<AgentEventSnapshot> | null;
 	const rawEvent =
 		snapshot && typeof snapshot === "object" && "rawEvent" in snapshot ? snapshot.rawEvent : null;
 	const hasReason = (code: string) => item.reasons.some((reason) => reason.code === code);
 	const situation: WorkspaceQueueItem["situation"] =
 		source.sourceType === "agent-question"
 			? "agent-question"
-			: hasReason("turn-failed") || rawEvent === "StopFailure"
+			: hasReason("turn-failed") || eventSnapshot?.failure === true || rawEvent === "StopFailure"
 				? "agent-failed"
-				: rawEvent === "PermissionRequest"
+				: hasReason("permission-unresolved") || rawEvent === "PermissionRequest"
 					? "agent-permission"
 					: item.kind === "agent-ready"
 						? "agent-done"
 						: "agent-input";
 	const chat = source.sourceType === "agent-session";
+	const entityText = (text: string) =>
+		context.role === "coordinator"
+			? text.replace(/workspace/g, "coordinator").replace(/Workspace/g, "Coordinator")
+			: text;
 	const provider =
 		context.provider === "codex"
 			? "Codex"
@@ -41,12 +48,13 @@ export function describeWorkspaceItem(
 		? `${provider ?? "Agent"} chat`
 		: situation === "agent-question"
 			? "Agent question"
-			: "Workspace update";
+			: entityText("Workspace update");
 	const descriptions = {
 		"agent-question": {
 			why: "Answer the question",
-			nextAction: "Open the workspace and answer the agent’s question below.",
-			openLabel: "Open workspace to answer",
+			nextAction:
+				"Send an answer to this question. Ordinary chat input does not submit an answer here.",
+			openLabel: "Open question’s conversation",
 			detailLabel: "Question from the agent",
 			missingContext: "The question text is unavailable here. Open the workspace to read it.",
 		},
@@ -97,7 +105,16 @@ export function describeWorkspaceItem(
 				"The notification says input is needed, but does not include the request. Open the chat to see what the agent is asking.",
 		},
 	};
-	const description = descriptions[situation];
+	const description =
+		situation === "agent-permission" && eventSnapshot?.permission?.outcome === "unconfirmed"
+			? {
+					...descriptions[situation],
+					why: "Review the permission outcome",
+					nextAction:
+						"The permission result was not reported. Review the conversation before continuing.",
+					openLabel: "Open chat to review outcome",
+				}
+			: descriptions[situation];
 	// Generic lifecycle labels are not a question, reply or completion report.
 	const generic = new Set([
 		"Ready for next input",
@@ -108,7 +125,30 @@ export function describeWorkspaceItem(
 		"Unanswered question",
 	]);
 	const summary = item.summary.trim();
-	const evidence = summary && !generic.has(summary) ? [summary] : [];
+	// Each retained field keeps the provider event that admitted it (e.g. permission + later Stop).
+	let remaining = 4096;
+	const providerEvidence = (Array.isArray(eventSnapshot?.evidence) ? eventSnapshot.evidence : [])
+		.slice(0, 4)
+		.flatMap((entry) => {
+			if (
+				!entry ||
+				typeof entry !== "object" ||
+				typeof entry.rawEvent !== "string" ||
+				remaining <= 0
+			)
+				return [];
+			return validateAgentEvidence([entry], context.provider ?? "", entry.rawEvent).map((value) => {
+				const text = value.text.slice(0, remaining);
+				remaining -= text.length;
+				return { ...value, text, truncated: value.truncated || text.length < value.text.length };
+			});
+		});
+	const evidence = [
+		...new Set([
+			...(summary && !generic.has(summary) ? [summary] : []),
+			...providerEvidence.map((value) => value.text),
+		]),
+	];
 	const terminalTitle = context.terminalTitle?.trim();
 	const questionText = summary.replace(/\s+/g, " ");
 	const questionTitle = questionText.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() || questionText;
@@ -129,14 +169,20 @@ export function describeWorkspaceItem(
 		situation,
 		subject,
 		why: description.why,
-		nextAction: description.nextAction,
-		openLabel: description.openLabel,
+		nextAction: entityText(description.nextAction),
+		openLabel:
+			item.target.type === "terminal"
+				? description.openLabel.replace("workspace", "chat")
+				: entityText(description.openLabel),
 		detailLabel: description.detailLabel,
-		missingContext: evidence.length ? undefined : description.missingContext,
+		missingContext: evidence.length ? undefined : entityText(description.missingContext),
 		sourceLabel,
 		clearsWhen:
 			"Done removes this item from the queue. It does not send a reply or finish the task.",
 		context,
+		providerEvidence,
+		permission: eventSnapshot?.permission ?? undefined,
+		ordering: eventSnapshot?.ordering,
 		evidence,
 	};
 }

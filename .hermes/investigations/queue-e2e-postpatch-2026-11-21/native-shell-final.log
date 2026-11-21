@@ -1,0 +1,91 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/workspace-queue-electron.test.ts:
+Workspace queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-workspace-queue-gNYEsM
+(pass) workspace-only queue redesign connects navigation, Later and exact receipts in Chromium [14219.38ms]
+
+tests/activity-queue-electron.test.ts:
+19:18:17.904 › [agent-notify] listening on port 56072
+19:18:18.349 › [ipc] sending trpc:activityQueue.list
+19:18:19.034 › [ipc] sending trpc:activityQueue.list
+19:18:19.085 › [ipc] sending trpc:activityQueue.list
+19:18:19.089 › [ipc] sending trpc:workspaces.getById
+19:18:19.098 › [ipc] sending trpc:agentSessions.list
+19:18:19.101 › [ipc] sending trpc:agentSessions.list
+19:18:19.916 › [ipc] sending trpc:activityQueue.list
+19:18:20.193 › [ipc] sending trpc:activityQueue.list
+19:18:20.260 › [ipc] sending trpc:workspaces.getById
+19:18:20.261 › [ipc] sending trpc:agentSessions.list
+19:18:20.264 › [ipc] sending trpc:agentSessions.list
+19:18:20.438 › [ipc] sending trpc:activityQueue.list
+19:18:20.907 › [ipc] sending trpc:activityQueue.list
+19:18:20.926 › [ipc] sending trpc:workspaces.getById
+19:18:20.927 › [ipc] sending trpc:agentSessions.list
+19:18:20.932 › [ipc] sending trpc:agentSessions.list
+19:18:21.288 › [ipc] sending trpc:activityQueue.list
+19:18:21.627 › [ipc] sending trpc:activityQueue.list
+19:18:21.676 › [ipc] sending trpc:workspaces.getById
+19:18:21.677 › [ipc] sending trpc:agentSessions.list
+19:18:21.682 › [ipc] sending trpc:agentSessions.list
+19:18:21.995 › [ipc] sending trpc:activityQueue.list
+19:18:22.211 › [ipc] sending trpc:activityQueue.list
+19:18:23.099 › [ipc] sending trpc:activityQueue.list
+19:18:23.294 › [ipc] sending trpc:activityQueue.list
+19:18:23.677 › [ipc] sending trpc:activityQueue.list
+19:18:23.705 › [ipc] sending trpc:workspaces.getById
+19:18:23.706 › [ipc] sending trpc:agentSessions.list
+19:18:23.708 › [ipc] sending trpc:agentSessions.list
+19:18:23.844 › [ipc] sending trpc:activityQueue.list
+19:18:23.992 › [ipc] sending trpc:activityQueue.list
+19:18:24.007 › [ipc] sending trpc:workspaces.getById
+19:18:24.008 › [ipc] sending trpc:agentSessions.list
+19:18:24.010 › [ipc] sending trpc:agentSessions.list
+19:18:24.150 › [ipc] sending trpc:activityQueue.list
+19:18:24.340 › [ipc] sending trpc:activityQueue.list
+19:18:24.353 › [ipc] sending trpc:workspaces.getById
+19:18:24.355 › [ipc] sending trpc:agentSessions.list
+19:18:24.356 › [ipc] sending trpc:agentSessions.list
+19:18:24.502 › [ipc] sending trpc:activityQueue.list
+19:18:24.658 › [ipc] sending trpc:activityQueue.list
+19:18:24.675 › [ipc] sending trpc:workspaces.getById
+19:18:24.676 › [ipc] sending trpc:agentSessions.list
+19:18:24.678 › [ipc] sending trpc:agentSessions.list
+19:18:24.892 › [ipc] sending trpc:activityQueue.list
+19:18:25.063 › [ipc] sending trpc:activityQueue.list
+19:18:25.688 › [ipc] sending trpc:activityQueue.list
+19:18:26.096 › [ipc] sending trpc:activityQueue.list
+19:18:26.356 › [ipc] sending trpc:activityQueue.list
+19:18:26.510 › [ipc] sending trpc:activityQueue.list
+19:18:26.524 › [ipc] sending trpc:activityQueue.list
+19:18:26.530 › [ipc] sending trpc:activityQueue.acknowledge
+19:18:26.535 › [ipc] sending trpc:activityQueue.list
+19:18:26.541 › [ipc] sending trpc:activityQueue.list
+19:18:26.746 › [ipc] sending trpc:activityQueue.list
+19:18:26.904 › [ipc] sending trpc:activityQueue.list
+19:18:27.373 › [ipc] sending trpc:activityQueue.list
+19:18:27.573 › [ipc] sending trpc:activityQueue.list
+19:18:27.611 › [ipc] sending trpc:activityQueue.list
+19:18:27.811 › [ipc] sending trpc:activityQueue.list
+PR and agent rows together Error: Keyboard focus is not visible: {"hasFocus":false,"visible":false,"style":"none","width":"0px"}
+    at run (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-electron-wWoYwR/main/main.js:9189:13)
+
+Native queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-electron-wWoYwR
+112 | 					clearTimeout(timer);
+113 | 					if (code !== 0) console.error(output);
+114 | 					done(code);
+115 | 				});
+116 | 			});
+117 | 			expect(code).toBe(0);
+                      ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/activity-queue-electron.test.ts:117:17)
+(fail) native queue connects hooks, SQLite receipts and production tRPC to Chromium [12819.19ms]
+
+ 1 pass
+ 1 fail
+ 3 expect() calls
+Ran 2 tests across 2 files. [27.37s]

@@ -221,7 +221,9 @@ async function run() {
 	setupTerminalIPC(daemon, manager);
 	await win.loadFile(join(root, "index.html"));
 	win.show();
+	app.focus({ steal: true });
 	win.focus();
+	contents.focus();
 	const js = <T = unknown>(source: string): Promise<T> => contents.executeJavaScript(source);
 	const hasCount = (count: number) =>
 		js<boolean>(`!!document.querySelector('button[aria-label="Queue ${count}"]')`);
@@ -320,7 +322,7 @@ lines.on('line', line => {
 						kind: "workspace",
 						projectId: "project",
 						workspaceId: "workspace",
-						...(managed ? {} : { terminalId: "terminal" }),
+						terminalId: "terminal",
 					},
 					{
 						phase,
@@ -417,7 +419,10 @@ lines.on('line', line => {
 	await hook("PermissionRequest", "turn-2");
 	step = "same-session next-turn input";
 	await until(() => hasCount(1));
-	await until(() => js<boolean>("document.body.textContent.includes('Agent needs input')"));
+	await until(() => js<boolean>("document.body.textContent.includes('Permission requested')"));
+	await hook("Stop", "turn-2");
+	if ((await listCurrentActivityQueue()).items[0]?.kind !== "agent-input")
+		throw new Error("Same-turn Stop discarded unresolved permission");
 	const beforeDisconnect = (await listCurrentActivityQueue()).items.map((item) => item.id);
 	daemon.disconnect();
 	const disconnected = await listCurrentActivityQueue();
@@ -509,6 +514,10 @@ lines.on('line', line => {
 			bounds.bottom > bounds.viewportHeight + 1
 		)
 			throw new Error("Queue does not fit viewport");
+		app.focus({ steal: true });
+		win.focus();
+		contents.focus();
+		await until(() => js<boolean>("document.hasFocus()"));
 		await js("document.querySelector('#activity-queue-panel').focus()");
 		contents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
 		contents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });

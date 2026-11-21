@@ -305,7 +305,7 @@ describe("agent_messages audit retention", () => {
 		expect(rows[0]?.content).toBe("audit me");
 	});
 
-	test("messages persist after recipient workspace is removed (toWorkspaceId SET NULL)", async () => {
+	test("messages retain their removed recipient without becoming broadcasts", async () => {
 		const sender = await createWorkspace({
 			projectId: PROJECT_ID,
 			branch: "feature/audit-sender",
@@ -321,7 +321,7 @@ describe("agent_messages audit retention", () => {
 		});
 
 		const db = getDb();
-		// Delete the recipient workspace + its worktree row to trigger the FK SET NULL
+		// Ownership history remains addressed to the removed entity, never widened to a broadcast.
 		db.delete(schema.workspaces).where(eq(schema.workspaces.id, recipient.workspaceId)).run();
 
 		const surviving = db
@@ -330,7 +330,11 @@ describe("agent_messages audit retention", () => {
 			.where(eq(schema.agentMessages.fromWorkspaceId, sender.workspaceId))
 			.all();
 		expect(surviving).toHaveLength(1);
-		expect(surviving[0]?.toWorkspaceId).toBeNull();
+		expect(surviving[0]?.toWorkspaceId).toBe(recipient.workspaceId);
+		expect(
+			(await readMessages(wsCtx(sender.workspaceId, PROJECT_ID), { includeBroadcasts: true }))
+				.messages
+		).toHaveLength(0);
 		expect(surviving[0]?.content).toBe("for the record");
 	});
 });

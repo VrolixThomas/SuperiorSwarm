@@ -1,0 +1,10 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-postpatch-native-live.test.ts:
+Workspace queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-postpatch-native-live-0nZNRn
+(pass) actual providers traverse isolated native SQLite, QueueView and PTY follow-up [20563.08ms]
+
+ 1 pass
+ 0 fail
+ 2 expect() calls
+Ran 1 test across 1 file. [20.72s]

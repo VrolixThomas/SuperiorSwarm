@@ -1,0 +1,116 @@
+[
+  {
+    "mode": "current",
+    "provider": "claude",
+    "terminalId": "terminal-ws-6UBhiCo3",
+    "reporter": {
+      "type": "terminal",
+      "entity": {
+        "kind": "workspace",
+        "id": "ws-6UBhiCo3"
+      },
+      "workspaceId": "ws-6UBhiCo3",
+      "terminalId": "terminal-ws-6UBhiCo3",
+      "provider": "claude",
+      "providerSessionId": "conversation-terminal-ws-6UBhiCo3"
+    },
+    "source": "agent-workspace:ws-6UBhiCo3",
+    "revision": 1
+  },
+  {
+    "mode": "current",
+    "provider": "claude",
+    "missingPromptHook": true,
+    "workingClearedChat": true
+  },
+  {
+    "mode": "current",
+    "provider": "codex",
+    "terminalId": "terminal-ws-ZQaBKbAO",
+    "reporter": {
+      "type": "terminal",
+      "entity": {
+        "kind": "workspace",
+        "id": "ws-ZQaBKbAO"
+      },
+      "workspaceId": "ws-ZQaBKbAO",
+      "terminalId": "terminal-ws-ZQaBKbAO",
+      "provider": "codex",
+      "providerSessionId": "conversation-terminal-ws-ZQaBKbAO"
+    },
+    "source": "agent-workspace:ws-ZQaBKbAO",
+    "revision": 1
+  },
+  {
+    "mode": "current",
+    "provider": "codex",
+    "missingPromptHook": true,
+    "workingClearedChat": true
+  },
+  {
+    "mode": "missing-identity",
+    "provider": "claude",
+    "terminalId": "terminal-ws-4fO4rkow",
+    "reporter": null,
+    "source": "agent-workspace:ws-4fO4rkow",
+    "revision": 1
+  },
+  {
+    "mode": "missing-identity",
+    "provider": "claude",
+    "missingPromptHook": true,
+    "workingClearedChat": false
+  },
+  {
+    "mode": "missing-identity",
+    "provider": "codex",
+    "terminalId": "terminal-ws-bxgiK4PR",
+    "reporter": null,
+    "source": "agent-workspace:ws-bxgiK4PR",
+    "revision": 1
+  },
+  {
+    "mode": "missing-identity",
+    "provider": "codex",
+    "missingPromptHook": true,
+    "workingClearedChat": false
+  },
+  {
+    "mode": "installed",
+    "provider": "claude",
+    "terminalId": "terminal-ws-WG55sthv",
+    "reporter": null,
+    "source": "agent-workspace:ws-WG55sthv",
+    "revision": 1
+  },
+  {
+    "mode": "installed",
+    "provider": "claude",
+    "missingPromptHook": true,
+    "workingClearedChat": false
+  },
+  {
+    "mode": "installed",
+    "provider": "codex",
+    "terminalId": "terminal-ws-3RMmDAqZ",
+    "reporter": null,
+    "source": "agent-workspace:ws-3RMmDAqZ",
+    "revision": 1
+  },
+  {
+    "mode": "installed",
+    "provider": "codex",
+    "missingPromptHook": true,
+    "workingClearedChat": false
+  },
+  {
+    "mode": "cross-repo",
+    "linkedKinds": [
+      "repo",
+      "folder"
+    ],
+    "setStatusAccepted": true,
+    "persistedStatus": "blocked",
+    "queueItems": 1
+  }
+]

@@ -8,7 +8,9 @@ import {
 	type AgentSessionStatusEvent,
 	type AgentSleepSettings,
 } from "../../shared/agent-session";
-import { observeValidatedAgentEvent } from "../activity-queue/agent-source";
+import { observeValidatedAgentEvent, workspaceReporter } from "../activity-queue/agent-source";
+import { queueEntities } from "../activity-queue/entities";
+import { reporterAdmissions } from "../activity-queue/reporter-admission";
 import { recordAcceptedHookEvent } from "../agent-hooks/diagnostics";
 import { publishCurrentHookEndpoint } from "../agent-hooks/endpoint";
 import { getDb } from "../db";
@@ -115,6 +117,8 @@ export class AgentSessionManager {
 	}
 
 	registerManagedSession(input: RegisterManagedAgentInput): AgentSessionInfo {
+		const entity = queueEntities().get(input.workspaceId);
+		if (!entity) throw new Error("Unknown or ambiguous agent entity");
 		const db = getDb();
 		const now = new Date();
 		db.transaction((tx) => {
@@ -135,6 +139,7 @@ export class AgentSessionManager {
 				.values({
 					terminalId: input.terminalId,
 					workspaceId: input.workspaceId,
+					entityKind: entity.entity.kind,
 					provider: input.provider,
 					providerSessionId: input.providerSessionId,
 					state: "running",
@@ -152,6 +157,7 @@ export class AgentSessionManager {
 					target: agentSessions.terminalId,
 					set: {
 						workspaceId: input.workspaceId,
+						entityKind: entity.entity.kind,
 						provider: input.provider,
 						providerSessionId: input.providerSessionId,
 						state: "running",
@@ -168,6 +174,8 @@ export class AgentSessionManager {
 		});
 		const session = this.getSession(input.terminalId);
 		if (!session) throw new Error("Failed to persist managed agent session");
+		const reporter = workspaceReporter(input.workspaceId, input.terminalId);
+		if (reporter) reporterAdmissions.record(reporter);
 		publishCurrentHookEndpoint(input.terminalId);
 		this.emit(session);
 		return session;
@@ -177,9 +185,17 @@ export class AgentSessionManager {
 		return getDb().transaction(() => this.applyAgentEvent(event));
 	}
 
-	private applyAgentEvent(event: AgentEvent): AgentEvent | null {
+	private applyAgentEvent(incoming: AgentEvent): AgentEvent | null {
+		let event = incoming;
 		if (!isAgentProvider(event.agent)) return null;
-		if (!observeValidatedAgentEvent(event)) return null;
+		let confirmedPrompt = false;
+		if (
+			!observeValidatedAgentEvent(event, (normalized, snapshot) => {
+				event = normalized;
+				confirmedPrompt = snapshot.ordering === "identified" && snapshot.continuation === "prompt";
+			})
+		)
+			return null;
 		const resolved = this.resolveEventTarget(event, event.agent);
 		if (!resolved) return null;
 
@@ -226,6 +242,7 @@ export class AgentSessionManager {
 			.values({
 				terminalId: resolved.terminalId,
 				workspaceId: resolved.workspaceId,
+				entityKind: queueEntities().get(resolved.workspaceId)?.entity.kind ?? "workspace",
 				provider: event.agent,
 				providerSessionId,
 				state,
@@ -243,6 +260,7 @@ export class AgentSessionManager {
 				target: agentSessions.terminalId,
 				set: {
 					workspaceId: resolved.workspaceId,
+					entityKind: queueEntities().get(resolved.workspaceId)?.entity.kind ?? "workspace",
 					provider: event.agent,
 					providerSessionId,
 					managed,
@@ -261,14 +279,14 @@ export class AgentSessionManager {
 		// a sibling terminal must not advance another chat's workspace status.
 		if (
 			event.rawEvent === "UserPromptSubmit" &&
+			confirmedPrompt &&
 			event.turnId &&
 			event.providerSessionId &&
-			event.providerSessionId === existing?.providerSessionId &&
-			event.producerTimestamp !== undefined
+			event.providerSessionId === existing?.providerSessionId
 		) {
 			continueWorkspaceAfterPrompt(
 				resolved.workspaceId,
-				event.producerTimestamp,
+				event.providerTimestamp ?? event.timestamp,
 				{
 					type: "terminal",
 					workspaceId: resolved.workspaceId,
@@ -281,6 +299,8 @@ export class AgentSessionManager {
 		}
 
 		const session = this.getSession(resolved.terminalId);
+		const reporter = workspaceReporter(resolved.workspaceId, resolved.terminalId);
+		if (reporter) reporterAdmissions.record(reporter);
 		if (session) {
 			if (state === "idle") this.scheduleIfEligible(session);
 			else this.cancelTimer(session.terminalId);
@@ -365,13 +385,18 @@ export class AgentSessionManager {
 		return session;
 	}
 
-	async wake(terminalId: string, prompt?: string): Promise<AgentSessionInfo | null> {
+	async wake(
+		terminalId: string,
+		prompt?: string,
+		canContinue?: () => boolean
+	): Promise<AgentSessionInfo | null> {
 		let session = this.getSession(terminalId);
 		if (this.transitions.has(terminalId)) {
 			await this.waitForTransition(terminalId);
 			session = this.getSession(terminalId);
 		}
-		if (!session || session.state !== "hibernated") return session;
+		if (canContinue && !canContinue()) return null;
+		if (!session || session.state !== "hibernated") return canContinue ? null : session;
 		if (!this.options.daemonClient.isConnected) return session;
 		this.transitions.add(terminalId);
 		this.cancelTimer(terminalId);
@@ -380,6 +405,8 @@ export class AgentSessionManager {
 			const daemonSession = (await this.options.daemonClient.listSessions()).find(
 				(candidate) => candidate.id === terminalId
 			);
+			if (canContinue && (!canContinue() || this.getSession(terminalId)?.state !== "hibernated"))
+				return null;
 			if (!daemonSession) {
 				return this.updateState(terminalId, "error", {
 					lastError: "Terminal shell is no longer available",
@@ -394,6 +421,7 @@ export class AgentSessionManager {
 				lastError: null,
 			});
 		} catch (error) {
+			if (canContinue && !canContinue()) return null;
 			return this.updateState(terminalId, "error", {
 				lastError: error instanceof Error ? error.message : "Failed to resume agent",
 			});
@@ -402,7 +430,12 @@ export class AgentSessionManager {
 		}
 	}
 
-	async wakeWorkspace(workspaceId: string, prompt: string): Promise<WorkspaceWakeResult> {
+	async wakeWorkspace(
+		workspaceId: string,
+		prompt: string,
+		canContinue?: () => boolean
+	): Promise<WorkspaceWakeResult> {
+		if (canContinue && !canContinue()) return { status: "none" };
 		const targets = getDb()
 			.select()
 			.from(agentSessions)
@@ -420,13 +453,14 @@ export class AgentSessionManager {
 		const target = targets[0];
 		if (!target) return { status: "none" };
 		const ready = await this.waitForFollowUpReady(target.terminalId);
-		if (!ready) return { status: "none" };
+		if (!ready || (canContinue && !canContinue())) return { status: "none" };
 		let sleeping = ready;
 		if (ready.state === "idle") {
-			sleeping = (await this.sleep(ready.terminalId, false)) ?? ready;
+			sleeping = (await this.sleep(ready.terminalId, false, canContinue)) ?? ready;
 		}
-		if (sleeping.state !== "hibernated") return { status: "none" };
-		const result = await this.wake(sleeping.terminalId, prompt);
+		if (sleeping.state !== "hibernated" || (canContinue && !canContinue()))
+			return { status: "none" };
+		const result = await this.wake(sleeping.terminalId, prompt, canContinue);
 		if (result?.state === "running") {
 			return { status: "woke", terminalId: sleeping.terminalId };
 		}
@@ -442,6 +476,7 @@ export class AgentSessionManager {
 	}
 
 	removeSessions(terminalIds: readonly string[]): void {
+		for (const id of terminalIds) reporterAdmissions.invalidate(id);
 		const uniqueTerminalIds = [...new Set(terminalIds)];
 		for (const terminalId of uniqueTerminalIds) {
 			this.cancelTimer(terminalId);
@@ -609,13 +644,19 @@ export class AgentSessionManager {
 		this.timers.set(session.terminalId, timer);
 	}
 
-	private async sleep(terminalId: string, automatic: boolean): Promise<AgentSessionInfo | null> {
+	private async sleep(
+		terminalId: string,
+		automatic: boolean,
+		canContinue?: () => boolean
+	): Promise<AgentSessionInfo | null> {
+		if (canContinue && !canContinue()) return null;
 		const session = this.getSession(terminalId);
 		if (!session) {
 			if (automatic) return null;
 			throw new Error(`Unknown agent terminal: ${terminalId}`);
 		}
 		if (session.state === "hibernated") return session;
+		if (canContinue && session.state !== "idle") return null;
 		if (this.transitions.has(terminalId)) return session;
 
 		if (automatic) {
@@ -659,6 +700,8 @@ export class AgentSessionManager {
 				};
 			}
 			if (this.disposed) return session;
+			if (canContinue && (!canContinue() || this.getSession(terminalId)?.state !== "hibernating"))
+				return null;
 			if (!result.ok) {
 				const state: AgentSessionState = automatic ? "idle" : "error";
 				return (

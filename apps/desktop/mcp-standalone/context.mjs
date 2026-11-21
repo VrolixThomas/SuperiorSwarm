@@ -12,6 +12,7 @@ export async function resolveContext(discovery, { cwd = process.cwd(), env = pro
 			headers["X-Manager-Token"] = env.SUPERIORSWARM_MANAGER_TOKEN;
 		} else if (env.AGENT_NOTIFY_WORKSPACE_ID) {
 			headers["X-Workspace-Id"] = env.AGENT_NOTIFY_WORKSPACE_ID;
+			if (env.AGENT_NOTIFY_TERMINAL_ID) headers["X-Terminal-Id"] = env.AGENT_NOTIFY_TERMINAL_ID;
 		}
 	}
 	const res = await fetch(`http://127.0.0.1:${discovery.port}/context.resolve?${params}`, {

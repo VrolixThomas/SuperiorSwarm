@@ -56,7 +56,10 @@ function row(
 		clearsWhen: "Clears when the agent continues.",
 	};
 }
-async function mount(initial = [row("one"), row("two", "agent-ready")]) {
+async function mount(
+	initial = [row("one"), row("two", "agent-ready")],
+	answer?: import("../src/renderer/components/queue/QueueQuestionReply").AnswerQuestion
+) {
 	const host = document.createElement("div");
 	document.body.append(host);
 	root = createRoot(host);
@@ -77,6 +80,7 @@ async function mount(initial = [row("one"), row("two", "agent-ready")]) {
 	const draw = () =>
 		root?.render(
 			<QueueScreen
+				answer={answer}
 				data={data()}
 				pendingItems={rows}
 				view={view}
@@ -344,5 +348,167 @@ test("selected item keeps its source and next action visible", async () => {
 	expect(panel?.textContent).toContain(item.nextAction);
 	expect(panel?.textContent).toContain(item.missingContext);
 	expect(panel?.textContent).toContain(item.clearsWhen);
-	expect(panel?.querySelector("button")?.textContent).toContain("Open chat to read reply");
+	expect(
+		[...(panel?.querySelectorAll("button") ?? [])].some((button) =>
+			button.textContent?.includes("Open chat to read reply")
+		)
+	).toBe(true);
+});
+
+test("narrow details action exposes full context and returns keyboard focus", async () => {
+	const item = row("question");
+	item.evidence = [
+		"Full question with\nmultiple lines",
+		"Second detail",
+		"Third detail",
+		"Fourth detail",
+		"Fifth detail is not hidden",
+	];
+	item.context.projectKind = "folder";
+	item.context.projectPath = "/isolated/folder";
+	item.context.role = "orchestrator";
+	await mount([item]);
+	await click("Details / reply");
+	expect(document.activeElement?.textContent).toBe("Back to queue items");
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.className).toContain("absolute");
+	expect(panel?.textContent).toContain("Fifth detail is not hidden");
+	expect(panel?.textContent).toContain("Folder · /isolated/folder");
+	expect(panel?.textContent).toContain("orchestrator");
+	await key("Escape");
+	expect(document.activeElement?.textContent).toBe("Details / reply");
+	expect(panel?.className).not.toContain("absolute");
+});
+
+test("canonical grouped actions preserve every displayed member receipt including Undo", async () => {
+	const item = row("report");
+	item.members = [
+		{ id: "report", revision: 1 },
+		{ id: "turn", revision: 9 },
+	];
+	const f = await mount([item]);
+	await key("e");
+	expect(f.calls.at(-1)?.input).toEqual({ id: "report", revision: 1, members: item.members });
+	await key("z");
+	expect(f.calls.at(-1)).toEqual({
+		action: "undo",
+		input: { id: "report", revision: 1, members: item.members },
+	});
+	await key("h");
+	await key("1");
+	expect(f.calls.at(-1)?.input).toEqual({
+		id: "report",
+		revision: 1,
+		members: item.members,
+		until: undefined,
+		untilChange: true,
+	});
+	await click("Later 1");
+	await key("b");
+	expect(f.calls.at(-1)).toEqual({
+		action: "back",
+		input: { id: "report", revision: 1, members: item.members },
+	});
+});
+
+test("provider request evidence keeps provenance and does not claim permission execution", async () => {
+	const item = row("permission");
+	item.situation = "agent-permission";
+	item.evidence = ["Read the isolated fixture?"];
+	item.providerEvidence = [
+		{
+			kind: "permission",
+			text: "Read the isolated fixture?",
+			provider: "codex",
+			rawEvent: "PermissionRequest",
+			sourceField: "permission_prompt",
+			truncated: true,
+			redacted: true,
+		},
+	];
+	item.permission = { requestId: "request-1", outcome: "pending" };
+	item.ordering = "uncertain";
+	await mount([item]);
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.textContent).toContain("PermissionRequest / permission_prompt");
+	expect(panel?.textContent).toContain("Truncated excerpt");
+	expect(panel?.textContent).toContain("Sensitive text redacted");
+	expect(panel?.textContent).toContain("does not confirm that the requested action ran");
+	expect(panel?.textContent).toContain("timing of this update could not be confirmed");
+	expect(panel?.querySelector("details")?.open).toBe(false);
+	expect(panel?.querySelector("details")?.textContent).toContain(
+		"PermissionRequest / permission_prompt"
+	);
+});
+
+test("handling an item from narrow details returns focus to the visible next row", async () => {
+	await mount();
+	await click("Details / reply");
+	await key("e");
+	expect(selected()).toBe("two");
+	expect(document.querySelector('[aria-label="Queue item details"]')?.className).not.toContain(
+		"absolute"
+	);
+	expect(document.activeElement?.getAttribute("data-queue-row")).toBe("two");
+});
+
+test("unconfirmed permission outcome is shown as unknown without invented success", async () => {
+	const item = row("permission");
+	item.situation = "agent-permission";
+	item.permission = { outcome: "unconfirmed" };
+	item.nextAction = "Review the conversation to determine the permission outcome.";
+	await mount([item]);
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.textContent).toContain("Permission outcome unknown");
+	expect(panel?.textContent).toContain("does not confirm that the requested action ran");
+	expect(panel?.textContent).not.toContain("Permission: allowed");
+});
+
+test("an in-flight answer blocks other queue actions and preserves its draft on failure", async () => {
+	const item = row("question");
+	item.question = { messageId: "q", replyCapability: "mcp-inbox" };
+	let fail: () => void = () => {};
+	const response = new Promise<import("../src/shared/activity-queue").WorkspaceQueueAnswerResult>(
+		(_resolve, reject) => {
+			fail = () => reject(Error("Delivery failed"));
+		}
+	);
+	const f = await mount([item], async () => response);
+	const input = document.querySelector("textarea");
+	if (!input) throw Error("Missing answer input");
+	await act(() => {
+		Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set?.call(
+			input,
+			"Preserve this draft"
+		);
+		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+	});
+	await click("Send answer");
+	await key("e", document.querySelector("main"));
+	await key("Enter", document.querySelector("main"));
+	expect(f.calls).toHaveLength(0);
+	await act(async () => {
+		fail();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	expect(input.value).toBe("Preserve this draft");
+	expect(document.body.textContent).toContain("Delivery failed");
+});
+
+test("question, reply and command error evidence preserve multiline plain text", async () => {
+	const item = row("multiline-question");
+	item.situation = "agent-question";
+	item.evidence = [
+		"Which command should run?\nbun test tests/example.test.ts\n  --timeout 5000",
+		"Reply:\nKeep the fixture isolated.",
+		"Error:\n<command> failed\n  at fixture.ts:4",
+	];
+	await mount([item]);
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	for (const text of item.evidence) {
+		const paragraph = [...(panel?.querySelectorAll("p") ?? [])].find((p) => p.textContent === text);
+		expect(paragraph).toBeDefined();
+		expect(paragraph?.className).toContain("whitespace-pre-wrap");
+	}
+	expect(panel?.querySelector("command")).toBeNull();
 });

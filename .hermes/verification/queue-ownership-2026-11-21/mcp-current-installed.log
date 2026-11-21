@@ -1,0 +1,41 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-investigation-mcp.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy%2Fcurrent-claude 200 request_id=9104b5cc-b6fb-4555-bb39-b3259fccb260 latency=7ms
+[control-plane] POST /workspaces.set_status 200 request_id=8df0faea-b8cf-4559-9575-c4b5f85e3b68 latency=7ms
+[control-plane] POST /workspaces.set_status 200 request_id=5b59488e-8dca-45b7-a7f6-9857a2810c23 latency=4ms
+[control-plane] POST /workspaces.send_message 200 request_id=dff817a7-97fe-4718-9a58-6d3949e1b932 latency=4ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=46d58cc5-e1af-4fe4-b65e-a03d66419f72 latency=1ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=53f50662-8881-4a6d-bb3e-8430bdfb4988 latency=3ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-ix8jS-9c&includeBroadcasts=false 200 request_id=febb4027-7ed1-4f7b-bbb4-bd2b5ef48dad latency=2ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=911ae67f-f619-4b03-9507-5eeea2d68ff7 latency=3ms
+[control-plane] POST /workspaces.set_status 401 request_id=0fc56204-ccc7-4627-9c47-b6f9acdc3e6b latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy%2Fcurrent-codex 200 request_id=db11b24c-041e-4613-b414-9b9e5def7d2f latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=a73d8ba3-8606-49fb-b91e-83530b91144b latency=4ms
+[control-plane] POST /workspaces.set_status 200 request_id=20408656-200f-47cc-b0d4-8d5d511dfbba latency=5ms
+[control-plane] POST /workspaces.send_message 200 request_id=e146032d-f8f1-47d5-8128-71282bb12a38 latency=2ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=a09b6b6b-e349-486c-946a-77f4a5236b4d latency=1ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=7e62a8e4-7d60-4a02-afbb-5f69fc279997 latency=3ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-qn1Efykm&includeBroadcasts=false 200 request_id=6761994d-f7aa-4dff-ad5e-0f3530458473 latency=3ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=7dc6b513-d570-4d0c-b1f3-64992344e767 latency=3ms
+[control-plane] POST /workspaces.set_status 401 request_id=dc8eb3ab-b761-4353-8834-2f2bc488c342 latency=1ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy%2Fmissing-identity-claude 200 request_id=7d163f1b-b487-4549-af75-723529accaa2 latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=71e30652-ea68-4f49-bf4e-dc91bf89989d latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=2af74ed7-15f3-471e-91dd-04183f6ed417 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy%2Fmissing-identity-codex 200 request_id=f85ced21-bf60-4bd3-8ccd-0ec4fa3e09a9 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=93d637af-a21c-4c35-a4fe-47b1cd6a85a3 latency=4ms
+[control-plane] POST /workspaces.set_status 200 request_id=482c2dde-b9fe-48aa-97dc-74783414d77d latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy%2Finstalled-claude 200 request_id=d5bb0ce3-9b70-45af-a5c9-30be63f671f5 latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=6223cefc-5c57-4ec5-a312-10aa1b577f59 latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=d64baef6-4f7e-4f8a-8162-5177e7c24a86 latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy%2Finstalled-codex 200 request_id=bc4f909f-4736-4379-8a25-219ad45fc045 latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=896f5c86-ee0e-4871-bb76-3ef6d26e6a3f latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=8277837e-bd7f-4aa5-9a30-063266ee2144 latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-GXjJHy 200 request_id=b6ce938b-0412-4487-9d5f-971c16c2ca69 latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=0e65c3b0-993b-4926-9707-d96445bb3e5b latency=6ms
+(pass) MCP current/legacy/missing identity and cross-repo linked folder reports [1698.68ms]
+
+ 1 pass
+ 0 fail
+ 52 expect() calls
+Ran 1 test across 1 file. [1.87s]

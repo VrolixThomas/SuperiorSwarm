@@ -5,6 +5,7 @@ import {
 	observeValidatedAgentEvent,
 	questionSourceId,
 	reconcileAgentSources,
+	sessionSourceId,
 	workspaceSourceId,
 } from "../src/main/activity-queue/agent-source";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
@@ -156,18 +157,26 @@ test("two terminals remain independent; Stop means next input and active clears 
 	const agent = manager();
 	register(agent, "one");
 	register(agent, "two");
-	agent.handleAgentEvent(event("one", "needs-input"));
-	agent.handleAgentEvent(event("two"));
+	agent.handleAgentEvent({
+		...event("one", "needs-input"),
+		rawEvent: "PermissionRequest",
+		turnId: "first",
+	});
+	agent.handleAgentEvent({ ...event("two"), rawEvent: "Stop", turnId: "first" });
 	reconcileAgentSources();
 	expect(queue().list().totalPending).toBe(2);
 	expect(queue().list().items[1]?.summary).toBe("Ready for next input");
 	const before = queue().list().items[1];
-	agent.handleAgentEvent(event("two"));
+	agent.handleAgentEvent({ ...event("two"), rawEvent: "Stop", turnId: "first" });
 	expect(queue().list().items[1]?.revision).toBe(before?.revision);
 	closeDb();
 	reconcileAgentSources();
 	expect(queue().list().totalPending).toBe(2);
-	agent.handleAgentEvent(event("two", "active"));
+	agent.handleAgentEvent({
+		...event("two", "active"),
+		rawEvent: "UserPromptSubmit",
+		turnId: "next",
+	});
 	reconcileAgentSources();
 	expect(
 		queue()
@@ -178,6 +187,7 @@ test("two terminals remain independent; Stop means next input and active clears 
 			type: "terminal",
 			workspaceId,
 			terminalId: "one",
+			entity: { kind: "workspace", id: workspaceId },
 			provider: "codex",
 			providerSessionId: "one-provider",
 		},
@@ -194,7 +204,7 @@ for (const provider of ["codex", "claude"] as const) {
 			.set({ provider })
 			.where(eq(agentSessions.terminalId, "dispatched"))
 			.run();
-		const ctx = { kind: "workspace" as const, projectId, workspaceId };
+		const ctx = { kind: "workspace" as const, projectId, workspaceId, terminalId: "dispatched" };
 		let stamp = Date.now() + 1;
 		const deliver = (rawEvent: string, turnId: string, alert: AgentEvent["alert"]) => {
 			stamp = Math.max(stamp + 1, Date.now() + 1);
@@ -288,11 +298,11 @@ test("a prompt produced before a newer workspace report cannot clear it on delay
 			...event("dispatched"),
 			rawEvent: "Stop",
 			turnId: "old-turn",
-			producerTimestamp: producedAt,
+			providerTimestamp: producedAt,
 		});
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		await setStatus(
-			{ kind: "workspace", projectId, workspaceId },
+			{ kind: "workspace", projectId, workspaceId, terminalId: "dispatched" },
 			{ phase: "blocked", needs: "Newer decision" }
 		);
 		closeDb();
@@ -301,7 +311,7 @@ test("a prompt produced before a newer workspace report cannot clear it on delay
 			...event("dispatched", "active"),
 			rawEvent: "UserPromptSubmit",
 			turnId: "delayed-turn",
-			producerTimestamp: producedAt,
+			providerTimestamp: producedAt,
 		});
 		reconcileAgentSources();
 		expect(queue().read(workspaceSourceId(workspaceId))?.candidate?.summary).toBe("Newer decision");
@@ -516,7 +526,12 @@ test("repeated turns reappear while duplicate and out-of-order events preserve c
 	register(agent, "one");
 	const start = Date.now();
 	const deliver = (alert: AgentEvent["alert"], delta: number) =>
-		agent.handleAgentEvent({ ...event("one", alert), timestamp: start + delta });
+		agent.handleAgentEvent({
+			...event("one", alert),
+			timestamp: start + delta,
+			rawEvent: alert === "active" ? "UserPromptSubmit" : "Stop",
+			turnId: delta < 3 ? "first" : "second",
+		});
 	deliver("task-complete", 1);
 	const first = queue().list().items[0];
 	queue().acknowledge({ id: first?.id ?? "", revision: first?.revision ?? 0 });
@@ -588,7 +603,7 @@ for (const provider of ["codex", "claude"] as const) {
 				workspaceId,
 				providerSessionId: "one-provider",
 				producerTimestamp: String(time),
-				...(provider === "codex" ? { turnId: `turn-${turn}` } : {}),
+				turnId: `turn-${turn}`,
 				...extra,
 			});
 			const response = await fetch(`http://127.0.0.1:${listener.getPort()}/event?${query}`, {
@@ -631,15 +646,19 @@ for (const provider of ["codex", "claude"] as const) {
 				}
 				previousStop = ++produced;
 				await deliver("Stop", turn, previousStop);
-				expect(agent.getSession("one")?.state).toBe("idle");
+				expect(agent.getSession("one")?.state).toBe(turn % 5 === 0 ? "needs-input" : "idle");
 				const ready = queue().list().items[0];
-				expect(ready?.summary).toBe("Ready for next input");
+				expect(ready?.summary).toBe(
+					turn % 5 === 0
+						? "Permission outcome not confirmed; review the conversation"
+						: "Ready for next input"
+				);
 				queue().acknowledge({ id: ready?.id ?? "", revision: ready?.revision ?? 0 });
 				await deliver("Stop", turn, previousStop);
 				expect(queue().list().totalPending).toBe(0);
 				if (turn % 10 === 0) {
 					await deliver("PostCompact", turn);
-					expect(agent.getSession("one")?.state).toBe("idle");
+					expect(agent.getSession("one")?.state).toBe("needs-input");
 				}
 				if (turn === 40) {
 					closeDb();
@@ -648,7 +667,7 @@ for (const provider of ["codex", "claude"] as const) {
 				}
 			}
 			await deliver("SessionStart", 55, ++produced, { sessionSource: "resume" });
-			expect(agent.getSession("one")?.state).toBe("running");
+			expect(agent.getSession("one")?.state).toBe("needs-input");
 			await deliver("UserPromptSubmit", 56);
 			await deliver("Stop", 56);
 			expect(queue().list().totalPending).toBe(1);
@@ -682,7 +701,6 @@ test("fresh explicit generation start can reuse a terminal; delayed old generati
 			providerSessionId: "new-provider",
 			rawEvent: "SessionStart",
 			sessionSource: "startup",
-			producerTimestamp: stamp + 1,
 			timestamp: stamp + 1,
 		})
 	).not.toBeNull();
@@ -709,7 +727,7 @@ test("fresh explicit generation start can reuse a terminal; delayed old generati
 	agent.dispose();
 });
 
-test("newer timed activity recovers a missed prompt; an unknown Stop cannot invent the next turn", () => {
+test("bridge invocation time cannot recover a missed prompt or invent the next turn", () => {
 	const agent = manager();
 	register(agent, "one");
 	const stamp = Date.now();
@@ -723,7 +741,8 @@ test("newer timed activity recovers a missed prompt; an unknown Stop cannot inve
 		});
 	deliver("task-complete", "first", "Stop", 0);
 	expect(deliver("task-complete", "unseen", "Stop", 1)).toBeNull();
-	expect(deliver("active", "second", "PostToolUse", 2)).not.toBeNull();
+	expect(deliver("active", "second", "PostToolUse", 2)).toBeNull();
+	expect(deliver("active", "second", "UserPromptSubmit", 2)).not.toBeNull();
 	expect(agent.getSession("one")?.state).toBe("running");
 	expect(deliver("task-complete", "first", "Stop", 3)).toBeNull();
 	expect(deliver("task-complete", "second", "Stop", 4)).not.toBeNull();
@@ -731,14 +750,22 @@ test("newer timed activity recovers a missed prompt; an unknown Stop cannot inve
 	agent.dispose();
 });
 
-test("failure supersedes a handled approval request without claiming task success", () => {
+test("failure retains unresolved permission and reopens its revised evidence", () => {
 	const agent = manager();
 	register(agent, "one");
-	agent.handleAgentEvent({ ...event("one", "needs-input"), rawEvent: "PermissionRequest" });
+	agent.handleAgentEvent({
+		...event("one", "needs-input"),
+		turnId: "failure-turn",
+		rawEvent: "PermissionRequest",
+	});
 	const input = queue().list().items[0];
 	queue().acknowledge({ id: input?.id ?? "", revision: input?.revision ?? 0 });
-	agent.handleAgentEvent({ ...event("one", "needs-input"), rawEvent: "StopFailure" });
-	expect(queue().list().items[0]?.reasons[0]?.code).toBe("turn-failed");
+	agent.handleAgentEvent({
+		...event("one", "needs-input"),
+		turnId: "failure-turn",
+		rawEvent: "StopFailure",
+	});
+	expect(queue().list().items[0]?.reasons[0]?.code).toBe("permission-unresolved");
 	expect(queue().list().items[0]?.kind).toBe("agent-input");
 	agent.dispose();
 });
@@ -855,4 +882,32 @@ test("working status without a valid reporter cannot clear arbitrary chats", asy
 	} finally {
 		agent.dispose();
 	}
+});
+
+test("replacement retires even a registered generation that never emitted its first callback", () => {
+	const agent = manager();
+	register(agent, "one");
+	const start = Date.now();
+	expect(
+		agent.handleAgentEvent({
+			...event("one", "active"),
+			providerSessionId: "replacement",
+			rawEvent: "SessionStart",
+			sessionSource: "startup",
+			timestamp: start,
+		})
+	).not.toBeNull();
+	expect(
+		agent.handleAgentEvent({
+			...event("one", "active"),
+			rawEvent: "SessionStart",
+			sessionSource: "startup",
+			timestamp: start + 1,
+		})
+	).toBeNull();
+	expect(agent.getSession("one")?.providerSessionId).toBe("replacement");
+	expect(
+		queue().read(sessionSourceId(workspaceId, "one", "codex", "one-provider"))?.candidate
+	).toBeNull();
+	agent.dispose();
 });

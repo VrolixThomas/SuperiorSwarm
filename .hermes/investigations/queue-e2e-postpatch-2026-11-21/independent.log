@@ -1,0 +1,52 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-postpatch-independent.test.ts:
+(pass) independent claude/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [103.40ms]
+(pass) independent claude/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [67.03ms]
+(pass) independent claude/folder/manual: exact owner, grouped completion, sibling isolation and continuation [60.51ms]
+(pass) independent claude/folder/managed: exact owner, grouped completion, sibling isolation and continuation [64.04ms]
+(pass) independent claude/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [72.73ms]
+(pass) independent claude/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [86.70ms]
+(pass) independent claude/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [114.72ms]
+(pass) independent claude/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [164.94ms]
+(pass) independent codex/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [143.52ms]
+(pass) independent codex/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [138.63ms]
+(pass) independent codex/folder/manual: exact owner, grouped completion, sibling isolation and continuation [145.21ms]
+(pass) independent codex/folder/managed: exact owner, grouped completion, sibling isolation and continuation [171.43ms]
+(pass) independent codex/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [164.59ms]
+(pass) independent codex/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [173.60ms]
+(pass) independent codex/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [216.24ms]
+(pass) independent codex/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [213.21ms]
+177 | 			.where(eq(crossRepoOrchestrators.id, id))
+178 | 			.run();
+179 | 		const linked = queueEntities()
+180 | 			.get(id)
+181 | 			?.context.linkedProjects?.map((p) => p.id);
+182 | 		expect(linked).toContain(s.projectId);
+                       ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "proj-Ta34wJ_9"
+Received: []
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-postpatch-independent.test.ts:182:18)
+(fail) all-projects coordinator context includes dynamically authorized repo and folder [1.93ms]
+222 | 			{ ...s.ctx, deferQueueRetrieval: true },
+223 | 			{ includeBroadcasts: false }
+224 | 		);
+225 | 		expect(
+226 | 			inbox.messages.some((m) => m.inReplyTo === q.question?.messageId && m.content === "Amber")
+227 | 		).toBe(true);
+          ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-postpatch-independent.test.ts:227:5)
+(fail) recipient inbox pagination cannot starve an older unread answer behind sibling-only answers [132.87ms]
+
+ 16 pass
+ 2 fail
+ 183 expect() calls
+Ran 18 tests across 1 file. [2.41s]

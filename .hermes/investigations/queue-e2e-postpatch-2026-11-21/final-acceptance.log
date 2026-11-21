@@ -1,0 +1,141 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/coordinator-resume.test.ts:
+(pass) claude: coordinator resume uses its exact managed conversation and own audit log [24.50ms]
+(pass) claude: missing/ambiguous/replaced coordinator session never falls back or writes to a sibling [21.75ms]
+(pass) claude: coordinator resume denies project-only and revoked authority [51.45ms]
+(pass) codex: coordinator resume uses its exact managed conversation and own audit log [24.30ms]
+(pass) codex: missing/ambiguous/replaced coordinator session never falls back or writes to a sibling [19.04ms]
+(pass) codex: coordinator resume denies project-only and revoked authority [13.96ms]
+[control-plane] POST /workspaces.resume_agent 200 request_id=d645eb56-e596-40a6-a74c-5c4e320346ff latency=19ms
+(pass) claude: authenticated resume_agent HTTP reaches the exact managed coordinator [38.50ms]
+[control-plane] POST /workspaces.resume_agent 200 request_id=3e92a33a-5fc0-4ecc-9ecd-5e573a531f75 latency=15ms
+(pass) codex: authenticated resume_agent HTTP reaches the exact managed coordinator [22.72ms]
+
+tests/queue-postpatch-coordinator-resume.test.ts:
+(pass) production resumeAgent claude: authorized coordinator uses exact managed session; partial scope cannot act [56.65ms]
+(pass) production resumeAgent codex: authorized coordinator uses exact managed session; partial scope cannot act [69.24ms]
+
+tests/queue-inbox-scope.test.ts:
+(pass) workspace: sibling-only rows are filtered before the bounded inbox limit [19.46ms]
+(pass) workspace: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [75.53ms]
+(pass) workspace: wrong generation/provider/entity/project is never visible or retrieved [9.77ms]
+(pass) coordinator: sibling-only rows are filtered before the bounded inbox limit [15.77ms]
+(pass) coordinator: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [68.99ms]
+(pass) coordinator: wrong generation/provider/entity/project is never visible or retrieved [11.76ms]
+(pass) all-project coordinator scope follows current inventory and keeps its own directory [3.86ms]
+(pass) selected coordinator scope stays limited to current explicit links [4.81ms]
+
+tests/queue-postpatch-independent.test.ts:
+(pass) independent claude/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [266.24ms]
+(pass) independent claude/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [277.48ms]
+(pass) independent claude/folder/manual: exact owner, grouped completion, sibling isolation and continuation [546.93ms]
+(pass) independent claude/folder/managed: exact owner, grouped completion, sibling isolation and continuation [540.03ms]
+(pass) independent claude/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [414.28ms]
+(pass) independent claude/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [678.13ms]
+(pass) independent claude/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [558.74ms]
+(pass) independent claude/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [590.96ms]
+(pass) independent codex/worktree/manual: exact owner, grouped completion, sibling isolation and continuation [479.52ms]
+(pass) independent codex/worktree/managed: exact owner, grouped completion, sibling isolation and continuation [514.12ms]
+(pass) independent codex/folder/manual: exact owner, grouped completion, sibling isolation and continuation [550.55ms]
+(pass) independent codex/folder/managed: exact owner, grouped completion, sibling isolation and continuation [572.53ms]
+(pass) independent codex/orchestrator/manual: exact owner, grouped completion, sibling isolation and continuation [615.76ms]
+(pass) independent codex/orchestrator/managed: exact owner, grouped completion, sibling isolation and continuation [608.25ms]
+(pass) independent codex/coordinator/manual: exact owner, grouped completion, sibling isolation and continuation [645.66ms]
+(pass) independent codex/coordinator/managed: exact owner, grouped completion, sibling isolation and continuation [707.23ms]
+(pass) all-projects coordinator context includes dynamically authorized repo and folder [2.25ms]
+(pass) recipient inbox pagination cannot starve an older unread answer behind sibling-only answers [268.12ms]
+(pass) cross-repo coordinator accepts the production dispatch service with an isolated launch target [0.76ms]
+
+tests/queue-reporter-admission.test.ts:
+(pass) first admission stays pending until registration, then pins exactly once
+(pass) unexchanged lease never binds a replacement, sibling, unobserved registration or expired owner
+(pass) coordinator/provider identity and explicit terminal removal cannot be bypassed
+(pass) initial event-aware wait resolves first generation and rejects replacement before response [6.48ms]
+
+tests/coordinator-dispatch.test.ts:
+(pass) claude: production coordinator dispatch persists exact managed ownership without a surrogate workspace [7.74ms]
+(pass) codex: production coordinator dispatch persists exact managed ownership without a surrogate workspace [4.12ms]
+(pass) coordinator service rejects project-scoped or external-manager targets before spawn [20.75ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=0e795936-70fb-4a06-abf9-98c8b37389fe latency=2ms
+[control-plane] POST /workspaces.dispatch 403 request_id=b8861bd2-e336-4108-ae54-18bdf2304062 latency=0ms
+[control-plane] POST /workspaces.dispatch 401 request_id=e81b1dc9-df49-4bdb-834d-4b1c7f50c595 latency=0ms
+[control-plane] POST /workspaces.dispatch 403 request_id=c3ceb371-4243-486a-8964-e95222fa9947 latency=1ms
+[control-plane] POST /workspaces.dispatch 200 request_id=0a86a7be-5c0c-41f7-ab1d-14c287a8a091 latency=1ms
+[control-plane] POST /workspaces.dispatch 403 request_id=678eff4e-f366-407b-9a20-a66fe199b392 latency=0ms
+[control-plane] POST /workspaces.dispatch 499 request_id=6e3ab1a0-8614-4da9-bbb3-6a79fba0ad99 latency=0ms
+[control-plane] POST /workspaces.dispatch 200 request_id=c7c5f56f-d81d-4c0b-a87e-d46e431c13ea latency=0ms
+(pass) HTTP coordinator dispatch preserves token, linked scope, all-scope and confirmation policy [8.78ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=e26d56fb-610d-45b5-a912-1090af06573e latency=1ms
+(pass) coordinator authority is rechecked after confirmation and spawn failure preserves status [3.80ms]
+
+tests/queue-postpatch-bootstrap.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-BhUU1X 200 request_id=8cb12019-5c2b-4f72-8b37-21753243e5b0 latency=5ms
+[control-plane] POST /context.admit 202 request_id=9761c465-7b4e-4864-a801-576fb0fad88c latency=2ms
+[control-plane] POST /context.admit 202 request_id=b8c073a6-bae5-4414-8205-683a4fee7f29 latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-BhUU1X 200 request_id=43732539-2965-4cc6-9312-1a5a00156501 latency=5ms
+[control-plane] POST /context.admit 202 request_id=16372436-d69d-4a34-ab8f-89f1fc031400 latency=2ms
+[control-plane] POST /context.admit 200 request_id=4075c525-8a2a-4bf8-83a2-f6b1076056a8 latency=6ms
+[control-plane] POST /workspaces.set_status 200 request_id=b9d91c6f-36c7-4ab6-bd94-6cb53f94180b latency=23ms
+[control-plane] POST /context.admit 200 request_id=f2a1c742-f233-464c-a4ad-3d855172ae41 latency=6ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-BhUU1X 200 request_id=555488df-0730-45ae-baa1-b290e45d661b latency=6ms
+[control-plane] POST /workspaces.set_status 200 request_id=ee711aa1-f188-468b-8ed9-e192be557bb4 latency=20ms
+[control-plane] POST /workspaces.set_status 401 request_id=dbe6a669-e6f9-428b-b990-fe7e42e6f487 latency=5ms
+[control-plane] POST /workspaces.set_status 401 request_id=93a7a01f-063f-4886-b443-a57e5072a649 latency=6ms
+(pass) MCP-before-hook claude: same process admits first registered generation and rejects replacements [650.76ms]
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-MD2v06 200 request_id=c9c510b4-b31e-449b-a3e6-f07b965f1773 latency=4ms
+[control-plane] POST /context.admit 202 request_id=29d21c1c-f2ce-42ba-a55c-6f423b9a2a27 latency=2ms
+[control-plane] POST /context.admit 202 request_id=6deb67f1-04f2-4cd7-8458-6ffe813faf8f latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-MD2v06 200 request_id=a476daaf-5d6c-4d06-a40a-579504d3d1d7 latency=5ms
+[control-plane] POST /context.admit 202 request_id=803687c2-9317-4035-948e-33d8f3766857 latency=2ms
+[control-plane] POST /context.admit 200 request_id=e967a464-d8ef-4485-a973-47c338d9deb8 latency=6ms
+[control-plane] POST /workspaces.set_status 200 request_id=32924371-a1fb-4a77-a98f-02f8c23f4deb latency=23ms
+[control-plane] POST /context.admit 200 request_id=705745a9-06b0-4967-bfc5-6bdd47184771 latency=5ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-MD2v06 200 request_id=c8a7bb32-b690-4d8b-80d8-acfc3aba3feb latency=6ms
+[control-plane] POST /workspaces.set_status 200 request_id=7dfa19a4-3aa2-4a20-931b-5081943f3577 latency=21ms
+[control-plane] POST /workspaces.set_status 401 request_id=cbf8e53b-5e0d-4a06-95b9-f26178c43fe6 latency=5ms
+[control-plane] POST /workspaces.set_status 401 request_id=7b1b48fc-6f60-44af-9c8a-324a1f5ffc17 latency=5ms
+(pass) MCP-before-hook codex: same process admits first registered generation and rejects replacements [607.37ms]
+
+tests/queue-ownership-migration.test.ts:
+(pass) 0067 preserves legacy sessions/messages and enforces polymorphic ownership with foreign keys enabled [28.75ms]
+
+tests/queue-investigation-mcp.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ%2Fcurrent-claude 200 request_id=133dde7a-390c-419a-bccd-331b627c4124 latency=6ms
+[control-plane] POST /workspaces.set_status 200 request_id=e9915077-49e6-447e-a33b-9a2663428b62 latency=21ms
+[control-plane] POST /workspaces.set_status 200 request_id=ebd90ef1-1f27-4a63-8049-c8df20c8249e latency=20ms
+[control-plane] POST /workspaces.send_message 200 request_id=1117684f-46d3-4414-8873-7975e2f71405 latency=10ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=7931b863-fa92-42f5-a8e4-b17bbd4dfeb5 latency=1ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=bc847b7b-4439-4b20-a1ac-70f3039e7f03 latency=10ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-WwJruAuv&includeBroadcasts=false 200 request_id=f3aff812-043a-4613-ac39-be63ec825b55 latency=10ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=6e1fba08-e334-4c46-aa2e-2de467da04ca latency=10ms
+[control-plane] POST /workspaces.set_status 401 request_id=5febe627-3534-4150-bc34-db0ba4b01046 latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ%2Fcurrent-codex 200 request_id=5e1a4cc2-3950-4296-9b58-545b264c00db latency=5ms
+[control-plane] POST /workspaces.set_status 200 request_id=8edfabc7-92f1-42e6-9589-a3c76cd26a63 latency=21ms
+[control-plane] POST /workspaces.set_status 200 request_id=7b6d0f99-3406-49e7-b985-b7f9028a31b4 latency=21ms
+[control-plane] POST /workspaces.send_message 200 request_id=906f88d8-cbd5-4c6d-82ca-f1895c908092 latency=10ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=9c3f6344-0d15-422e-a181-79d732a5e9e9 latency=1ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=e7a35295-11aa-4b52-8384-852e6f78b615 latency=10ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-6WQNJrH_&includeBroadcasts=false 200 request_id=3e979f61-8287-4987-8246-a7d209275689 latency=10ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=6961d47b-7286-43f7-9954-4a7604186460 latency=10ms
+[control-plane] POST /workspaces.set_status 401 request_id=146913f1-2417-4447-ba92-71781e57f13c latency=5ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ%2Fmissing-identity-claude 200 request_id=cd719cd2-1dbf-407a-9afa-2a5f7730ed6a latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=174b5abf-abdb-416d-917e-c931e08ae6cf latency=11ms
+[control-plane] POST /workspaces.set_status 200 request_id=cc49e790-d385-4c82-a09b-a6f66bce54e8 latency=10ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ%2Fmissing-identity-codex 200 request_id=93e6fb8f-86be-4cd3-9d84-465911a396fe latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=96bb86c6-64fa-4883-a6fe-e3156d0dc648 latency=14ms
+[control-plane] POST /workspaces.set_status 200 request_id=57c25a47-234b-4996-915a-9bce9b5dcc64 latency=11ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ%2Finstalled-claude 200 request_id=35d94baa-7ccd-4ff2-a528-97d41ccad44b latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=b2451d1b-7a61-4f6a-bfdb-7febb2ebaa48 latency=12ms
+[control-plane] POST /workspaces.set_status 200 request_id=42c2c529-7d4a-410e-b6f1-ace89cad5b34 latency=11ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ%2Finstalled-codex 200 request_id=79b292c1-c814-4222-b08f-0ea247fce046 latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=2e92f39f-e129-4ec0-a6d3-c21bf67e6667 latency=12ms
+[control-plane] POST /workspaces.set_status 200 request_id=cd7865c8-6569-45de-b6a7-c87a8156739c latency=12ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-ElkagJ 200 request_id=420ee22b-bcae-47d4-affc-a05adeb602ff latency=7ms
+[control-plane] POST /workspaces.set_status 200 request_id=965f426a-7c9c-4960-9f62-e5ea83892d74 latency=27ms
+(pass) MCP current/legacy/missing identity and cross-repo linked folder reports [2010.85ms]
+
+ 50 pass
+ 0 fail
+ 877 expect() calls
+Ran 50 tests across 9 files. [12.96s]

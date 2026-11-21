@@ -1,0 +1,12 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/workspace-queue-electron.test.ts:
+(pass) workspace-only queue redesign connects navigation, Later and exact receipts in Chromium [7568.20ms]
+
+tests/activity-queue-electron.test.ts:
+(pass) native queue connects hooks, SQLite receipts and production tRPC to Chromium [5105.55ms]
+
+ 2 pass
+ 0 fail
+ 4 expect() calls
+Ran 2 tests across 2 files. [12.84s]

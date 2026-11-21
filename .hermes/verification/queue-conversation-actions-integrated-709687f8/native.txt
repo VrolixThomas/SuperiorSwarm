@@ -1,0 +1,14 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/workspace-queue-electron.test.ts:
+Workspace queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-workspace-queue-w8ONVb
+(pass) workspace-only queue redesign connects navigation, Later and exact receipts in Chromium [9520.24ms]
+
+tests/activity-queue-electron.test.ts:
+Native queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-electron-0jAMGe
+(pass) native queue connects hooks, SQLite receipts and production tRPC to Chromium [5361.13ms]
+
+ 2 pass
+ 0 fail
+ 4 expect() calls
+Ran 2 tests across 2 files. [15.06s]

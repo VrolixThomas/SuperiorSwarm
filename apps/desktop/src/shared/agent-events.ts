@@ -2,6 +2,21 @@
 
 export type AgentAlert = "active" | "needs-input" | "task-complete";
 
+export interface AgentEvidence {
+	kind: "reply" | "question" | "error" | "permission";
+	text: string;
+	sourceField: string;
+	provider: string;
+	rawEvent: string;
+	truncated: boolean;
+	redacted: boolean;
+}
+
+export interface AgentPermission {
+	requestId?: string;
+	outcome: "pending" | "unconfirmed" | "allowed" | "denied" | "cancelled";
+}
+
 export interface AgentEvent {
 	/** @deprecated Legacy alias for terminalId. */
 	sessionId: string;
@@ -18,6 +33,11 @@ export interface AgentEvent {
 	/** Hook bridge invocation time, distinct from listener receipt time. */
 	producerTimestamp?: number;
 	sessionSource?: string;
+	/** Stable provider metadata only; bridge invocation/receipt time is not identity. */
+	providerEventId?: string;
+	providerTimestamp?: number;
+	evidence?: AgentEvidence[];
+	permission?: AgentPermission;
 }
 
 export const AGENT_NOTIFY_PORT = 27392;

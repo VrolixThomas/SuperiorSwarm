@@ -1,0 +1,171 @@
+{
+  "code": 0,
+  "probeOutput": [
+    {
+      "type": "result",
+      "text": "Which color: amber or blue?"
+    }
+  ],
+  "trace": [
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a",
+      "conversation": "09e5ab44-6c4a-49de-a7dd-e3efe8a2c126",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795280106220,
+      "receivedAt": 1795280106229,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a",
+      "conversation": "09e5ab44-6c4a-49de-a7dd-e3efe8a2c126",
+      "turn": "94c23a3b-bb72-4df1-ab2c-13f569732b64",
+      "source": null,
+      "producedAt": 1795280106375,
+      "receivedAt": 1795280106383,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "PreToolUse",
+      "terminal": "live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a",
+      "conversation": "09e5ab44-6c4a-49de-a7dd-e3efe8a2c126",
+      "turn": "94c23a3b-bb72-4df1-ab2c-13f569732b64",
+      "source": null,
+      "producedAt": 1795280107646,
+      "receivedAt": 1795280107654,
+      "accepted": true,
+      "attention": [],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "PostToolUse",
+      "terminal": "live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a",
+      "conversation": "09e5ab44-6c4a-49de-a7dd-e3efe8a2c126",
+      "turn": "94c23a3b-bb72-4df1-ab2c-13f569732b64",
+      "source": null,
+      "producedAt": 1795280107715,
+      "receivedAt": 1795280107723,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-spaTFIp9",
+          "kind": "agent-input",
+          "revision": 1
+        }
+      ],
+      "evidence": [],
+      "transitionAttention": null,
+      "providerTimestamp": null,
+      "providerEventId": null
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a",
+      "conversation": "09e5ab44-6c4a-49de-a7dd-e3efe8a2c126",
+      "turn": "94c23a3b-bb72-4df1-ab2c-13f569732b64",
+      "source": null,
+      "producedAt": 1795280108656,
+      "receivedAt": 1795280108663,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-spaTFIp9",
+          "kind": "agent-input",
+          "revision": 1
+        },
+        {
+          "sourceId": "[\"agent-session\",\"ws-spaTFIp9\",\"live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a\",\"claude\",\"09e5ab44-6c4a-49de-a7dd-e3efe8a2c126\"]",
+          "kind": "agent-ready",
+          "revision": 3
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "reply",
+          "text": "Which color: amber or blue?",
+          "sourceField": "last_assistant_message",
+          "provider": "claude",
+          "rawEvent": "Stop",
+          "truncated": false,
+          "redacted": false
+        }
+      ],
+      "transitionAttention": {
+        "kind": "agent-ready",
+        "summary": "Which color: amber or blue?",
+        "reason": {
+          "code": "turn-ended",
+          "label": "Ready for next input"
+        },
+        "evidence": [
+          {
+            "kind": "reply",
+            "text": "Which color: amber or blue?",
+            "sourceField": "last_assistant_message",
+            "provider": "claude",
+            "rawEvent": "Stop",
+            "truncated": false,
+            "redacted": false
+          }
+        ],
+        "permission": null,
+        "ordering": "identified",
+        "continuation": "prompt"
+      },
+      "providerTimestamp": null,
+      "providerEventId": null
+    }
+  ],
+  "queue": [
+    {
+      "id": "agent-workspace:ws-spaTFIp9",
+      "evidence": [
+        "Choose amber or blue",
+        "Which color: amber or blue?"
+      ],
+      "providerEvidence": [
+        {
+          "kind": "reply",
+          "text": "Which color: amber or blue?",
+          "sourceField": "last_assistant_message",
+          "provider": "claude",
+          "rawEvent": "Stop",
+          "truncated": false,
+          "redacted": false
+        }
+      ],
+      "ordering": "identified",
+      "target": {
+        "type": "terminal",
+        "entity": {
+          "kind": "workspace",
+          "id": "ws-spaTFIp9"
+        },
+        "workspaceId": "ws-spaTFIp9",
+        "terminalId": "live-investigation-claude-f2d73c7b-21db-4f4e-a87b-dcd28d12199a",
+        "provider": "claude",
+        "providerSessionId": "09e5ab44-6c4a-49de-a7dd-e3efe8a2c126"
+      }
+    }
+  ]
+}

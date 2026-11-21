@@ -117,6 +117,10 @@ test.skipIf(process.platform !== "darwin")(
 			expect(code).toBe(0);
 			expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8"))).toEqual({
 				workspaceOnly: true,
+				correlatedReply: true,
+				exactReporter: true,
+				coordinatorNavigation: true,
+				groupedReceipts: true,
 				openOnly: true,
 				doneUndo: true,
 				laterBringBack: true,

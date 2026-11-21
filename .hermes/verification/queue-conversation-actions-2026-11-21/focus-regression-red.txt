@@ -1,0 +1,36 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-view.test.tsx:
+(pass) Open only navigates; Done sends displayed revision and Undo restores it [37.66ms]
+(pass) conflict refreshes same item without advancing or opening another [10.42ms]
+(pass) Later then Bring back use exact revisions and keyboard options [11.96ms]
+(pass) selection survives refresh and typing never runs quick actions [9.04ms]
+(pass) new revision closes the Later menu instead of acting on unseen activity [5.99ms]
+(pass) loading, empty and fetch errors offer honest recovery states [1.43ms]
+(pass) unavailable permission items remain readable but cannot be handled [4.99ms]
+(pass) keyboard focus follows the next row after Done [12.53ms]
+(pass) Later keeps category counts tied to pending items [7.47ms]
+(pass) Later does not offer an Undo receipt for a different previously completed item [11.47ms]
+(pass) selected item keeps its source and next action visible [1.85ms]
+(pass) narrow details action exposes full context and returns keyboard focus [4.06ms]
+(pass) canonical grouped actions preserve every displayed member receipt including Undo [14.42ms]
+(pass) provider request evidence keeps provenance and does not claim permission execution [1.95ms]
+434 | });
+435 | 
+436 | test("handling an item from narrow details returns focus to the visible next row", async () => {
+437 |  await mount(); await click("Details / reply"); await key("e");
+438 |  expect(selected()).toBe("two");
+439 |  expect(document.querySelector('[aria-label="Queue item details"]')?.className).not.toContain("absolute");
+                                                                                          ^
+error: expect(received).not.toContain(expected)
+
+Expected to not contain: "absolute"
+Received: "absolute inset-0 z-10 flex min-h-0 min-w-0 shrink-0 flex-col overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] min-[1100px]:static min-[1100px]:flex min-[1100px]:w-[420px]"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-conversation-actions/apps/desktop/tests/queue-view.test.tsx:439:85)
+(fail) handling an item from narrow details returns focus to the visible next row [9.56ms]
+
+ 14 pass
+ 1 fail
+ 63 expect() calls
+Ran 15 tests across 1 file. [246.00ms]

@@ -1,0 +1,42 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-question-reply.test.tsx:
+(pass) correlated answer uses displayed message, owner and revision; saved is not retrieved or resumed [12.56ms]
+(pass) transport error preserves input; stale revision refuses send until explicitly reviewed [8.87ms]
+(pass) backend conflict preserves the pending answer and does not claim delivery [2.91ms]
+(pass) refresh failure after saved cannot reenable duplicate delivery [2.70ms]
+(pass) drafts remain associated with their question when selecting another item [1.52ms]
+(pass) persisted saved answer remains readable after remount without claiming task execution [0.94ms]
+183 |
+184 | test("recipient uses human names once and keeps binding identifiers in collapsed technical details", async () => {
+185 |  const f=await mount();
+186 |  await f.update({...item,context:{...item.context,projectName:"Color project",workspaceName:"Choose a color",terminalTitle:"Choose a color"}});
+187 |  const recipient=document.querySelector('[aria-label="Answer recipient"]');
+188 |  expect(recipient?.textContent).toBe("Recipient: Color project / Choose a color · Codex");
+                                      ^
+error: expect(received).toBe(expected)
+
+Expected: "Recipient: Color project / Choose a color · Codex"
+Received: undefined
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-conversation-actions/apps/desktop/tests/queue-question-reply.test.tsx:188:33)
+(fail) recipient uses human names once and keeps binding identifiers in collapsed technical details [0.95ms]
+204 | });
+205 |
+206 | test("coordinator recipient names its own chat rather than a linked project", async () => {
+207 |  const f=await mount();
+208 |  await f.update({...item,context:{...item.context,role:"coordinator",projectName:"Cross-repository coordinator",workspaceName:"Release coordinator",terminalTitle:"Release planning"}});
+209 |  expect(document.querySelector('[aria-label="Answer recipient"]')?.textContent).toBe("Recipient: Coordinator Release coordinator · Codex · Release planning");
+                                                                                      ^
+error: expect(received).toBe(expected)
+
+Expected: "Recipient: Coordinator Release coordinator · Codex · Release planning"
+Received: undefined
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-conversation-actions/apps/desktop/tests/queue-question-reply.test.tsx:209:81)
+(fail) coordinator recipient names its own chat rather than a linked project [0.49ms]
+
+ 6 pass
+ 2 fail
+ 24 expect() calls
+Ran 8 tests across 1 file. [103.00ms]

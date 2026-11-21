@@ -1,8 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import type {
 	ActivityQueueAcknowledgeResult,
 	ActivityQueueSource,
+	WorkspaceQueueAnswerInput,
+	WorkspaceQueueAnswerResult,
 	WorkspaceQueueItem,
 	WorkspaceQueueLaterInput,
 	WorkspaceQueueLaterResult,
@@ -12,7 +15,7 @@ import type {
 	WorkspaceQueueRevisionInput,
 } from "../../shared/activity-queue";
 import { getDb } from "../db";
-import { agentSessions, projects, terminalSessions, workspaces } from "../db/schema";
+import { agentMessages, agentSessions, terminalSessions } from "../db/schema";
 import { activityQueueSnoozes, activityQueueSources } from "../db/schema-activity-queue";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import {
@@ -22,7 +25,9 @@ import {
 	workspaceSourceId,
 } from "./agent-source";
 import { listCurrentActivityQueue } from "./current-items";
-import { describeWorkspaceItem, projectTint } from "./describe-workspace-item";
+import { describeWorkspaceItem } from "./describe-workspace-item";
+import { queueEntities } from "./entities";
+import { isQuestionAnswer } from "./question-answers";
 import { getActivityQueueService } from "./service";
 
 const sourceTypes = ["agent-workspace", "agent-question", "agent-session"];
@@ -35,7 +40,13 @@ function isWorkspaceSource(source: ActivityQueueSource): boolean {
 	if (!target || !["agent-input", "agent-ready"].includes(source.candidate?.kind ?? ""))
 		return false;
 	if (source.sourceType === "agent-workspace")
-		return target.type === "workspace" && source.sourceId === workspaceSourceId(target.workspaceId);
+		return (
+			(target.type === "workspace" ||
+				target.type === "terminal" ||
+				target.type === "coordinator") &&
+			source.sourceId ===
+				workspaceSourceId(target.type === "coordinator" ? target.coordinatorId : target.workspaceId)
+		);
 	if (source.sourceType === "agent-session")
 		return (
 			target.type === "terminal" &&
@@ -50,7 +61,7 @@ function isWorkspaceSource(source: ActivityQueueSource): boolean {
 	const snapshot = source.snapshot;
 	return (
 		source.sourceType === "agent-question" &&
-		target.type === "workspace" &&
+		(target.type === "workspace" || target.type === "terminal" || target.type === "coordinator") &&
 		!!snapshot &&
 		typeof snapshot === "object" &&
 		"messageId" in snapshot &&
@@ -75,24 +86,7 @@ async function currentWorkspaceItems(daemon?: Inventory) {
 			.all()
 			.map((source) => [source.sourceId, source])
 	);
-	const contexts = new Map(
-		db
-			.select({ workspace: workspaces, project: projects })
-			.from(workspaces)
-			.innerJoin(projects, eq(workspaces.projectId, projects.id))
-			.all()
-			.map(({ workspace, project }) => [
-				workspace.id,
-				{
-					workspaceId: workspace.id,
-					workspaceName: workspace.name,
-					projectId: project.id,
-					projectName: project.name,
-					projectColor: project.color,
-					projectTint: projectTint(project.id),
-				},
-			])
-	);
+	const contexts = new Map([...queueEntities()].map(([id, row]) => [id, row.context]));
 	const terminals = new Map(
 		db
 			.select()
@@ -118,8 +112,15 @@ async function currentWorkspaceItems(daemon?: Inventory) {
 		)
 			continue;
 		const target = source.candidate?.target;
-		if (target?.type !== "workspace" && target?.type !== "terminal") continue;
-		const context = contexts.get(target.workspaceId);
+		if (
+			target?.type !== "workspace" &&
+			target?.type !== "terminal" &&
+			target?.type !== "coordinator"
+		)
+			continue;
+		const context = contexts.get(
+			target.type === "coordinator" ? target.coordinatorId : target.workspaceId
+		);
 		if (!context) continue;
 		if (target.type === "terminal") {
 			const session = sessions.get(target.terminalId);
@@ -136,12 +137,97 @@ async function currentWorkspaceItems(daemon?: Inventory) {
 			describeWorkspaceItem(item, source, {
 				...context,
 				...(target.type === "terminal"
-					? { provider: target.provider, terminalTitle: terminals.get(target.terminalId)?.title }
-					: {}),
+					? {
+							provider: target.provider,
+							providerSessionId: target.providerSessionId,
+							identityCapability: "exact-conversation" as const,
+							terminalTitle: terminals.get(target.terminalId)?.title,
+						}
+					: { identityCapability: "missing-owner" as const }),
 			})
 		);
+		const projected = items[items.length - 1];
+		if (projected && source.sourceType === "agent-question") {
+			const messageId = (source.snapshot as { messageId: string }).messageId;
+			const question = db.select().from(agentMessages).where(eq(agentMessages.id, messageId)).get();
+			const answer = db
+				.select()
+				.from(agentMessages)
+				.where(and(eq(agentMessages.inReplyTo, messageId), eq(agentMessages.kind, "answer")))
+				.all()
+				.find((row) => question && isQuestionAnswer(question, row));
+			projected.question = {
+				messageId,
+				replyCapability:
+					target.type === "terminal" && !!target.providerSessionId ? "mcp-inbox" : "unavailable",
+				...(target.type !== "terminal"
+					? {
+							unavailableReason:
+								"The sender conversation was not recorded. A reply cannot be delivered safely.",
+						}
+					: {}),
+				...(answer
+					? {
+							answer: {
+								messageId: answer.id,
+								content: answer.content,
+								delivery: answer.retrievedAt ? ("retrieved" as const) : ("saved" as const),
+							},
+						}
+					: {}),
+			};
+		}
 	}
 	return { items, sources, inventory, agentStatusAvailable: current.agentStatusAvailable };
+}
+
+/** Group only proven same-conversation task reports and plain turn-end receipts.
+ * Raw sources remain separate and retain their distinct lifecycle/receipts.
+ */
+function groupedItems(
+	items: WorkspaceQueueItem[],
+	sources: Map<string, ActivityQueueSource>,
+	snoozes: ReturnType<typeof currentSnoozes>
+) {
+	const deferral = (id: string) => {
+		const row = snoozes.get(id);
+		return JSON.stringify(row ? [row.until, row.untilChange] : null);
+	};
+	const hidden = new Set<string>();
+	const result = items.map((item) => {
+		if (sources.get(item.id)?.sourceType !== "agent-workspace" || item.target.type !== "terminal")
+			return item;
+		const target = item.target;
+		const turn = items.find(
+			(other) =>
+				other.id !== item.id &&
+				other.acknowledged === item.acknowledged &&
+				deferral(other.id) === deferral(item.id) &&
+				sources.get(other.id)?.sourceType === "agent-session" &&
+				other.reasons.some((reason) => reason.code === "turn-ended") &&
+				other.target.type === "terminal" &&
+				other.target.workspaceId === target.workspaceId &&
+				other.target.terminalId === target.terminalId &&
+				other.target.provider === target.provider &&
+				other.target.providerSessionId === target.providerSessionId
+		);
+		if (!turn) return item;
+		hidden.add(turn.id);
+		return {
+			...item,
+			stale: item.stale || turn.stale,
+			providerEvidence: [...(item.providerEvidence ?? []), ...(turn.providerEvidence ?? [])],
+			ordering: turn.ordering ?? item.ordering,
+			missingContext:
+				item.evidence.length || turn.evidence.length ? undefined : item.missingContext,
+			members: [item, turn].map((member) => ({ id: member.id, revision: member.revision })),
+			evidence: [
+				...item.evidence,
+				...turn.evidence.filter((value) => !item.evidence.includes(value)),
+			],
+		};
+	});
+	return result.filter((item) => !hidden.has(item.id));
 }
 
 /** Expired/obsolete deferrals are local state only; never modify adapter observations. */
@@ -179,7 +265,10 @@ export async function listWorkspaceQueue(
 ): Promise<WorkspaceQueueListResult> {
 	const current = await currentWorkspaceItems(daemon);
 	const snoozes = currentSnoozes(now ?? Date.now());
-	const pending = current.items.filter((item) => !item.acknowledged);
+	// Different deferral receipts must remain independent; never hide a pending sibling in Later.
+	const pending = groupedItems(current.items, current.sources, snoozes).filter(
+		(item) => !item.acknowledged
+	);
 	const items = pending
 		.filter(
 			(item) =>
@@ -201,12 +290,14 @@ export async function listWorkspaceQueue(
 		updatedAt: current.items.length
 			? Math.max(...current.items.map((item) => current.sources.get(item.id)?.observedAt ?? 0))
 			: null,
-		sourceErrors: items.flatMap((item) => {
-			const source = current.sources.get(item.id);
-			return source?.error
-				? [{ sourceId: source.sourceId, error: source.error, observedAt: source.observedAt }]
-				: [];
-		}),
+		sourceErrors: items.flatMap((item) =>
+			(item.members ?? [{ id: item.id, revision: item.revision }]).flatMap((member) => {
+				const source = current.sources.get(member.id);
+				return source?.error
+					? [{ sourceId: source.sourceId, error: source.error, observedAt: source.observedAt }]
+					: [];
+			})
+		),
 	};
 }
 
@@ -231,6 +322,27 @@ function validateCurrent(
 	return { status: "current", source } as const;
 }
 
+function validateMembers(
+	input: WorkspaceQueueRevisionInput,
+	current: Awaited<ReturnType<typeof currentWorkspaceItems>>
+) {
+	const freshItems = current.items.map((item) => {
+		const source = getActivityQueueService().read(item.id);
+		return { ...item, acknowledged: source?.acknowledgedRevision === source?.revision };
+	});
+	const canonical = groupedItems(freshItems, current.sources, currentSnoozes(Date.now())).find(
+		(item) => item.id === input.id
+	);
+	if (!canonical) return null; // A formerly standalone member is now hidden inside a newer group.
+	const expected = canonical.members ?? [{ id: input.id, revision: input.revision }];
+	const supplied = input.members ?? [{ id: input.id, revision: input.revision }];
+	const key = (rows: { id: string; revision: number }[]) =>
+		JSON.stringify(rows.map((row) => [row.id, row.revision]).sort());
+	if (key(expected) !== key(supplied)) return null;
+	if (supplied.some((member) => validateCurrent(member, current).status !== "current")) return null;
+	return supplied;
+}
+
 export async function workspaceDone(
 	input: WorkspaceQueueRevisionInput,
 	daemon?: Inventory
@@ -240,6 +352,10 @@ export async function workspaceDone(
 		const checked = validateCurrent(input, current);
 		if (checked.status === "not-found") return checked;
 		if (checked.status === "conflict") return { status: "conflict", item: null };
+		const members = validateMembers(input, current);
+		if (!members) return { status: "conflict", item: null };
+		for (const member of members)
+			if (member.id !== input.id) getActivityQueueService().acknowledge(member);
 		return getActivityQueueService().acknowledge(input);
 	});
 }
@@ -271,17 +387,21 @@ export async function later(
 			(input.until !== undefined && input.until <= Date.now())
 		)
 			return { status: "conflict" };
-		const snooze = {
-			sourceId: input.id,
-			revision: input.revision,
-			until: input.until ?? null,
-			untilChange: input.untilChange,
-			createdAt: now,
-		};
-		db.insert(activityQueueSnoozes)
-			.values(snooze)
-			.onConflictDoUpdate({ target: activityQueueSnoozes.sourceId, set: snooze })
-			.run();
+		const members = validateMembers(input, current);
+		if (!members) return { status: "conflict" };
+		for (const member of members) {
+			const snooze = {
+				sourceId: member.id,
+				revision: member.revision,
+				until: input.until ?? null,
+				untilChange: input.untilChange,
+				createdAt: now,
+			};
+			db.insert(activityQueueSnoozes)
+				.values(snooze)
+				.onConflictDoUpdate({ target: activityQueueSnoozes.sourceId, set: snooze })
+				.run();
+		}
 		return { status: "snoozed" };
 	});
 }
@@ -295,16 +415,27 @@ export async function bringBack(
 	return db.transaction(() => {
 		const checked = validateCurrent(input, current);
 		if (checked.status !== "current") return checked;
-		const deleted = db
-			.delete(activityQueueSnoozes)
-			.where(
-				and(
-					eq(activityQueueSnoozes.sourceId, input.id),
-					eq(activityQueueSnoozes.revision, input.revision)
-				)
+		const members = validateMembers(input, current);
+		if (
+			!members ||
+			members.some(
+				(member) =>
+					!getDb()
+						.select()
+						.from(activityQueueSnoozes)
+						.where(
+							and(
+								eq(activityQueueSnoozes.sourceId, member.id),
+								eq(activityQueueSnoozes.revision, member.revision)
+							)
+						)
+						.get()
 			)
-			.run();
-		return { status: deleted.changes ? "restored" : "conflict" };
+		)
+			return { status: "conflict" };
+		for (const member of members)
+			db.delete(activityQueueSnoozes).where(eq(activityQueueSnoozes.sourceId, member.id)).run();
+		return { status: "restored" };
 	});
 }
 
@@ -317,17 +448,79 @@ export async function undoDone(
 	return db.transaction(() => {
 		const checked = validateCurrent(input, current);
 		if (checked.status !== "current") return checked;
-		const restored = db
-			.update(activityQueueSources)
-			.set({ acknowledgedRevision: null })
-			.where(
-				and(
-					eq(activityQueueSources.sourceId, input.id),
-					eq(activityQueueSources.revision, input.revision),
-					eq(activityQueueSources.acknowledgedRevision, input.revision)
-				)
+		const members = validateMembers(input, current);
+		if (
+			!members ||
+			members.some(
+				(member) =>
+					getActivityQueueService().read(member.id)?.acknowledgedRevision !== member.revision
 			)
+		)
+			return { status: "conflict" };
+		for (const member of members)
+			db.update(activityQueueSources)
+				.set({ acknowledgedRevision: null })
+				.where(eq(activityQueueSources.sourceId, member.id))
+				.run();
+		return { status: "restored" };
+	});
+}
+
+/** Persist a reply for an exact MCP reader. This never wakes or writes into a PTY. */
+export async function workspaceAnswer(
+	input: WorkspaceQueueAnswerInput,
+	daemon?: Inventory
+): Promise<WorkspaceQueueAnswerResult> {
+	if (!input.content.trim() || input.content.length > 16000)
+		return { status: "unavailable", reason: "Enter an answer of 1 to 16000 characters." };
+	const current = await currentWorkspaceItems(daemon);
+	return getDb().transaction(() => {
+		const checked = validateCurrent(input, current);
+		if (checked.status !== "current") return checked;
+		if (checked.source.acknowledgedRevision === input.revision) return { status: "conflict" };
+		if (
+			checked.source.sourceType !== "agent-question" ||
+			input.id !== questionSourceId(input.questionId)
+		)
+			return { status: "conflict" };
+		const target = checked.source.candidate?.target;
+		if (target?.type !== "terminal" || !target.providerSessionId)
+			return { status: "unavailable", reason: "The question has no verified conversation owner." };
+		const db = getDb();
+		const question = db
+			.select()
+			.from(agentMessages)
+			.where(eq(agentMessages.id, input.questionId))
+			.get();
+		if (!question || question.fromWorkspaceId !== target.workspaceId) return { status: "conflict" };
+		if (
+			db
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.inReplyTo, question.id))
+				.all()
+				.some((answer) => isQuestionAnswer(question, answer))
+		)
+			return { status: "conflict" };
+		const messageId = nanoid();
+		db.insert(agentMessages)
+			.values({
+				id: messageId,
+				projectId: question.projectId,
+				fromWorkspaceId: null,
+				toWorkspaceId: target.workspaceId,
+				recipient: target,
+				kind: "answer",
+				content: input.content.trim(),
+				inReplyTo: question.id,
+				createdAt: new Date(),
+			})
 			.run();
-		return { status: restored.changes ? "restored" : "conflict" };
+		return {
+			status: "saved",
+			messageId,
+			delivery: "saved",
+			detail: "Saved for this conversation. The agent has not read or acted on it yet.",
+		};
 	});
 }

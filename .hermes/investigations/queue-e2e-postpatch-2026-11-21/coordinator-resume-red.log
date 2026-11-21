@@ -1,0 +1,36 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-postpatch-coordinator-resume.test.ts:
+92 | 				resumeAgent(
+93 | 					{ kind: "xro", xroId: caller, linkedProjectIds: projects.slice(0, 1) },
+94 | 					{ workspaceId: target, message: "Synthetic follow-up" },
+95 | 					deps
+96 | 				)
+97 | 			).rejects.toThrow(/forbidden|not linked|scope/i);
+                  ^
+error: expect(received).toThrow(expected)
+
+Expected pattern: /forbidden|not linked|scope/i
+Received message: "not_found: xro-0dW-bUrS"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-postpatch-coordinator-resume.test.ts:97:14)
+(fail) production resumeAgent claude: authorized coordinator uses exact managed session; partial scope cannot act [16.68ms]
+92 | 				resumeAgent(
+93 | 					{ kind: "xro", xroId: caller, linkedProjectIds: projects.slice(0, 1) },
+94 | 					{ workspaceId: target, message: "Synthetic follow-up" },
+95 | 					deps
+96 | 				)
+97 | 			).rejects.toThrow(/forbidden|not linked|scope/i);
+                  ^
+error: expect(received).toThrow(expected)
+
+Expected pattern: /forbidden|not linked|scope/i
+Received message: "not_found: xro-htPR06Ue"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/investigation/queue-e2e-followups-2026-11-21/apps/desktop/tests/queue-postpatch-coordinator-resume.test.ts:97:14)
+(fail) production resumeAgent codex: authorized coordinator uses exact managed session; partial scope cannot act [13.96ms]
+
+ 0 pass
+ 2 fail
+ 4 expect() calls
+Ran 2 tests across 1 file. [125.00ms]

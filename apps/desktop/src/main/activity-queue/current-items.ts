@@ -41,6 +41,7 @@ export async function listCurrentActivityQueue(
 			.map((terminal) => terminal.workspaceId)
 	);
 	const result = getActivityQueueService().list(input, (item) => {
+		if (item.target.type === "coordinator") return liveWorkspaces.has(item.target.coordinatorId);
 		if (item.target.type === "workspace") {
 			if (!liveWorkspaces.has(item.target.workspaceId)) return false;
 			const source = getActivityQueueService().read(item.id);
@@ -57,8 +58,15 @@ export async function listCurrentActivityQueue(
 				current.providerSessionId === reporter.providerSessionId
 			);
 		}
-		if (item.target.type === "terminal")
-			return live.has(item.target.terminalId) && liveWorkspaces.has(item.target.workspaceId);
+		if (item.target.type === "terminal") {
+			const current = workspaceReporter(item.target.workspaceId, item.target.terminalId);
+			return (
+				live.has(item.target.terminalId) &&
+				!!current &&
+				current.provider === item.target.provider &&
+				current.providerSessionId === item.target.providerSessionId
+			);
+		}
 		return true;
 	});
 	return { ...result, agentStatusAvailable };

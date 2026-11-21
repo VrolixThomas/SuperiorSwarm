@@ -7,10 +7,16 @@ export const ACTIVITY_QUEUE_KINDS = [
 ] as const;
 export type ActivityQueueKind = (typeof ACTIVITY_QUEUE_KINDS)[number];
 
+/** IDs remain existing workspace/coordinator IDs; never synthesize workspace rows. */
+export type QueueEntity = { kind: "workspace"; id: string } | { kind: "coordinator"; id: string };
+
 export type ActivityQueueTarget =
 	| { type: "workspace"; workspaceId: string }
+	| { type: "coordinator"; coordinatorId: string }
 	| {
 			type: "terminal";
+			/** Legacy workspaceId is the entity ID for both owner kinds. */
+			entity?: QueueEntity;
 			workspaceId: string;
 			terminalId: string;
 			provider: string;
@@ -88,6 +94,8 @@ export interface ActivityQueueSource extends ActivityQueueObservation {
 
 /** Read-time workspace projection; display enrichment never changes source identity. */
 export interface WorkspaceQueueItem extends ActivityQueueItem {
+	/** Canonical report plus exact-conversation turn receipt; all mutations carry every revision. */
+	members?: WorkspaceQueueRevisionInput[];
 	category: "agents";
 	situation: "agent-input" | "agent-permission" | "agent-question" | "agent-failed" | "agent-done";
 	subject: string;
@@ -98,7 +106,21 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 	openLabel: string;
 	detailLabel: string;
 	missingContext?: string;
+	/** Explicit correlated inbox reply, never an arbitrary terminal write. */
+	question?: {
+		messageId: string;
+		replyCapability: "mcp-inbox" | "unavailable";
+		unavailableReason?: string;
+		answer?: { messageId: string; delivery: "saved" | "retrieved"; content?: string };
+	};
 	context: {
+		entity?: QueueEntity;
+		linkedProjects?: { id: string; name: string; kind: "repo" | "folder"; path: string }[];
+		projectKind?: "repo" | "folder";
+		projectPath?: string;
+		role?: "workspace" | "orchestrator" | "coordinator";
+		providerSessionId?: string | null;
+		identityCapability?: "exact-conversation" | "missing-owner";
 		projectId?: string;
 		projectName: string;
 		projectColor?: string | null;
@@ -109,6 +131,9 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 		provider?: string;
 		terminalTitle?: string;
 	};
+	providerEvidence?: import("./agent-events").AgentEvidence[];
+	permission?: import("./agent-events").AgentPermission;
+	ordering?: "identified" | "uncertain";
 	evidence: string[];
 	snoozed?: { until: number | null; untilChange: boolean };
 }
@@ -129,6 +154,7 @@ export interface WorkspaceQueueListResult {
 }
 
 export interface WorkspaceQueueRevisionInput {
+	members?: { id: string; revision: number }[];
 	id: string;
 	revision: number;
 }
@@ -138,3 +164,11 @@ export interface WorkspaceQueueLaterInput extends WorkspaceQueueRevisionInput {
 }
 export type WorkspaceQueueLaterResult = { status: "snoozed" | "conflict" | "not-found" };
 export type WorkspaceQueueRestoreResult = { status: "restored" | "conflict" | "not-found" };
+
+export interface WorkspaceQueueAnswerInput extends WorkspaceQueueRevisionInput {
+	questionId: string;
+	content: string;
+}
+export type WorkspaceQueueAnswerResult =
+	| { status: "saved"; messageId: string; delivery: "saved"; detail: string }
+	| { status: "conflict" | "not-found" | "unavailable"; reason?: string };

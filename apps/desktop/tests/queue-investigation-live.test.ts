@@ -7,6 +7,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import TOML from "@iarna/toml";
 import { eq } from "drizzle-orm";
+import { transitionAgentEvent } from "../src/main/activity-queue/agent-event-transition";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
 import { listWorkspaceQueue } from "../src/main/activity-queue/workspace-queue";
 import { claudeConfig, mergeClaudeHooks } from "../src/main/agent-hooks/agents/claude";
@@ -26,14 +27,17 @@ import { seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 // No global configuration edits; Claude uses isolated settings, Codex uses existing
 // reviewed lifecycle hooks and a unique terminal/token routed to the isolated listener.
 test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
-	"authenticated provider lifecycle probes (bounded, synthetic content)",
+	"authenticated provider evidence probes (bounded; approval-correlation limits recorded)",
 	async () => {
 		setupTestDb();
 		const root = mkdtempSync(join(tmpdir(), "ss-queue-live-investigation-"));
-		const evidence = resolve(
-			import.meta.dir,
-			"../../../.hermes/investigations/queue-e2e-2026-11-21"
-		);
+		const evidence =
+			process.env["SS_QUEUE_EVIDENCE_DIR"] ??
+			resolve(
+				import.meta.dir,
+				process.env["SS_QUEUE_LIVE_EVIDENCE_DIR"] ??
+					"../../../.hermes/verification/queue-provider-evidence-2026-11-21"
+			);
 		mkdirSync(evidence, { recursive: true });
 		const token = randomUUID();
 		const listener = createAlertListener(0, token);
@@ -47,6 +51,7 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 		});
 		const trace: ({ terminal: string; event: string | undefined } & Record<string, unknown>)[] = [];
 		const results: unknown[] = [];
+		const transitions = new Map<string, ReturnType<typeof transitionAgentEvent>>();
 		const projectId = await seedProject();
 		getDb()
 			.update(projects)
@@ -68,6 +73,8 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 		agentRegistry.set("claude", claudeConfig);
 		agentRegistry.set("codex", codexConfig);
 		listener.onEvent((event) => {
+			const transition = transitionAgentEvent(transitions.get(event.terminalId)?.snapshot, event);
+			if (transition) transitions.set(event.terminalId, transition);
 			const accepted = manager.handleAgentEvent(event) !== null;
 			const attention = new ActivityQueueService()
 				.list()
@@ -86,6 +93,11 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 				receivedAt: event.timestamp,
 				accepted,
 				attention,
+				evidence: event.evidence,
+				permission: event.permission,
+				transitionAttention: transition?.attention,
+				providerTimestamp: event.providerTimestamp ?? null,
+				providerEventId: event.providerEventId ?? null,
 			});
 		});
 		await listener.start();
@@ -93,7 +105,7 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 		// Retain field names and lifecycle identity only, never prompt/transcript/tool data.
 		writeFileSync(
 			join(root, "capture.cjs"),
-			`const fs=require('node:fs'); const cp=require('node:child_process'); const raw=fs.readFileSync(0,'utf8'); const p=JSON.parse(raw); fs.appendFileSync(${JSON.stringify(join(root, "fields.jsonl"))},JSON.stringify({event:p.hook_event_name,keys:Object.keys(p).sort(),session:p.session_id,turn:p.turn_id??p.prompt_id??null})+'\\n'); const r=cp.spawnSync(process.execPath,[${JSON.stringify(join(root, "bridge.cjs"))}],{input:raw,env:process.env}); process.stdout.write(r.stdout??'');`
+			`const fs=require('node:fs'); const cp=require('node:child_process'); const raw=fs.readFileSync(0,'utf8'); const p=JSON.parse(raw); fs.appendFileSync(${JSON.stringify(join(root, "fields.jsonl"))},JSON.stringify({event:p.hook_event_name,keys:Object.keys(p).sort(),session:p.session_id,turn:p.turn_id??p.prompt_id??null,toolUseId:p.tool_use_id??null,permissionRequestId:p.permission_request_id??null,toolResponseKeys:p.tool_response&&typeof p.tool_response==='object'?Object.keys(p.tool_response).sort():[],toolName:p.tool_name??null})+'\\n'); const r=cp.spawnSync(process.execPath,[${JSON.stringify(join(root, "bridge.cjs"))}],{input:raw,env:process.env}); process.stdout.write(r.stdout??''); if(process.env.SS_QUEUE_APPROVE_SYNTHETIC==='1' && p.hook_event_name==='PermissionRequest' && p.tool_name==='mcp__superiorswarm__set_status' && p.tool_input?.phase==='blocked' && p.tool_input?.needs==='Choose amber or blue' && Object.keys(p.tool_input).every(k=>['phase','needs'].includes(k))) { try { const fd=fs.openSync(${JSON.stringify(join(root, "approval-used"))},'wx',0o600); fs.closeSync(fd); process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'PermissionRequest',decision:{behavior:'allow'}}})); } catch {} }`
 		);
 		mergeClaudeHooks(
 			join(root, "settings.json"),
@@ -131,8 +143,17 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 				}
 			);
 		}
+		const cases = (
+			[
+				{ provider: "claude", approveRequest: false },
+				{ provider: "codex", approveRequest: false },
+				{ provider: "claude", approveRequest: true },
+			] as const
+		).filter(
+			(entry) => !entry.approveRequest || process.env["SS_QUEUE_LIVE_SKIP_APPROVED"] !== "1"
+		);
 		try {
-			for (const provider of ["claude", "codex"] as const) {
+			for (const { provider, approveRequest } of cases) {
 				const workspaceId = await seedWorkspace(projectId, {
 					name: `Live ${provider} synthetic probe`,
 				});
@@ -160,6 +181,7 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 					AGENT_NOTIFY_TERMINAL_ID: terminalId,
 					AGENT_NOTIFY_WORKSPACE_ID: workspaceId,
 					AGENT_NOTIFY_AGENT: provider,
+					SS_QUEUE_APPROVE_SYNTHETIC: approveRequest ? "1" : "0",
 				};
 				// Do not inherit the parent investigator's MCP/workspace routing credentials.
 				for (const key of Object.keys(env))
@@ -208,8 +230,7 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 								JSON.stringify({ mcpServers: { superiorswarm: mcp } }),
 								"--tools",
 								"",
-								"--allowedTools",
-								"mcp__superiorswarm__set_status",
+								...(approveRequest ? [] : ["--allowedTools", "mcp__superiorswarm__set_status"]),
 								"--disable-slash-commands",
 								"--output-format",
 								"json",
@@ -239,6 +260,14 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 				};
 				const firstItems = (await listWorkspaceQueue({}, inventory)).items;
 				const known = manager.getSession(terminalId);
+				const persisted = new ActivityQueueService()
+					.list()
+					.items.find(
+						(item) =>
+							item.target.type === "terminal" &&
+							item.target.terminalId === terminalId &&
+							item.id.startsWith("[")
+					);
 				const probeOutput = first.output
 					.split("\n")
 					.flatMap<{ type: string; tool?: string; status?: string; text?: string }>((line) => {
@@ -263,7 +292,10 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 						}
 					});
 				writeFileSync(
-					join(evidence, `live-${provider}-diagnostic.json`),
+					join(
+						evidence,
+						`live-${provider}${approveRequest ? "-approved-request" : ""}-diagnostic.json`
+					),
 					JSON.stringify(
 						{
 							code: first.code,
@@ -272,6 +304,9 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 							queue: firstItems.map((i) => ({
 								id: i.id,
 								evidence: i.evidence,
+								providerEvidence: i.providerEvidence,
+								permission: i.permission,
+								ordering: i.ordering,
 								missingContext: i.missingContext,
 								target: i.target,
 							})),
@@ -286,13 +321,57 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 				const providerReportDelivered = firstItems.some(
 					(i) => i.id === `agent-workspace:${workspaceId}`
 				);
-				if (provider === "claude") expect(providerReportDelivered).toBe(true);
-				else if (!providerReportDelivered)
+				if (provider === "claude") {
+					expect(providerReportDelivered).toBe(true);
+					expect(persisted?.summary).toContain("Which color: amber or blue?");
+					expect(
+						trace.some(
+							(e) =>
+								e.terminal === terminalId &&
+								Array.isArray(e["evidence"]) &&
+								e["evidence"].some(
+									(entry) =>
+										entry.sourceField === "last_assistant_message" &&
+										entry.text.includes("Which color: amber or blue?")
+								)
+						)
+					).toBe(true);
+				} else if (!providerReportDelivered) {
 					expect(
 						trace.some((e) => e.terminal === terminalId && e.event === "PermissionRequest")
 					).toBe(true);
+					expect(transitions.get(terminalId)?.attention?.permission?.outcome).toBe("unconfirmed");
+					expect(transitions.get(terminalId)?.attention?.kind).toBe("agent-input");
+					// This assertion tests production persistence, not only the pure helper.
+					expect(
+						firstItems.some(
+							(i) =>
+								i.kind === "agent-input" &&
+								i.reasons.some((reason) => reason.code === "permission-unresolved")
+						)
+					).toBe(true);
+				}
+				if (approveRequest) {
+					expect(
+						trace.some(
+							(entry) => entry.terminal === terminalId && entry.event === "PermissionRequest"
+						)
+					).toBe(true);
+					expect(
+						trace.some((entry) => entry.terminal === terminalId && entry.event === "PostToolUse")
+					).toBe(true);
+					expect(providerReportDelivered).toBe(true);
+				}
 				const summary: Record<string, unknown> = {
+					approvedRequestProbe: approveRequest,
+					permissionResolutionCoverage: approveRequest
+						? "unsupported automatic resolution: actual approval executed, but provider request has no correlatable ID"
+						: "not this probe",
 					provider,
+					bridgeCoverage:
+						provider === "claude"
+							? "current isolated bridge"
+							: "existing reviewed global bridge; new transport unverified",
 					firstExit: first.code,
 					timedOut: first.timedOut,
 					generatedQuestion: /Which color: amber or blue\?/.test(first.output),
@@ -331,6 +410,12 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 							(i) => i.id === `agent-workspace:${workspaceId}`
 						)
 					).toBe(false);
+					if (provider === "claude")
+						expect(
+							transitions
+								.get(terminalId)
+								?.attention?.evidence.some((entry) => entry.text.includes("COLOR_BLUE_DONE"))
+						).toBe(true);
 					summary["followupExit"] = second.code;
 					summary["followupTimedOut"] = second.timedOut;
 					summary["followupReply"] = second.output.includes("COLOR_BLUE_DONE");
@@ -380,7 +465,7 @@ test.skipIf(process.env["SS_QUEUE_LIVE"] !== "1")(
 					readFileSync(join(root, "fields.jsonl"))
 				);
 			} catch {}
-			expect(results).toHaveLength(2);
+			expect(results).toHaveLength(cases.length);
 		} finally {
 			manager.dispose();
 			listener.stop();

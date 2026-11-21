@@ -1,0 +1,7 @@
+{
+  "command": "bunx tsc --noEmit -p tests/tsconfig.json",
+  "globalDiagnostics": 206,
+  "ownedPathDiagnostics": [],
+  "globallyClean": false,
+  "baselineComparison": "not rerun for final A-integrated tree; no owned-path diagnostics; earlier preintegration test-project count was 204"
+}

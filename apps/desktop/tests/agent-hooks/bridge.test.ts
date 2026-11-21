@@ -132,4 +132,68 @@ test("generated launcher parses top-level identities and sends authenticated tur
 		turnId: "claude-prompt-2",
 		providerSessionId: "claude-session",
 	});
+	await run(
+		JSON.stringify({
+			hook_event_name: "Stop",
+			session_id: "claude-session",
+			prompt_id: "claude-prompt-2",
+			event_id: "provider-event-2",
+			event_timestamp: started,
+			last_assistant_message: "Which color: amber or blue?\u001b[31m",
+			prompt: "PRIVATE_PROMPT_MUST_NOT_BE_IMPORTED",
+			tool_input: { command: "PRIVATE_TOOL" },
+		}),
+		"test-token",
+		"",
+		"claude"
+	);
+	expect(events.at(-1)).toMatchObject({
+		providerEventId: "provider-event-2",
+		providerTimestamp: started,
+		evidence: [
+			{
+				text: "Which color: amber or blue?",
+				sourceField: "last_assistant_message",
+				provider: "claude",
+				rawEvent: "Stop",
+				kind: "reply",
+			},
+		],
+	});
+	expect(JSON.stringify(events.at(-1))).not.toContain("PRIVATE");
+	await run(
+		JSON.stringify({
+			hook_event_name: "PermissionRequest",
+			session_id: "session",
+			turn_id: "turn-1",
+			permission_request_id: "permission-1",
+			permission_prompt: "Allow synthetic status?",
+			permission: { outcome: "allowed" },
+			tool_input: { secret: "PRIVATE" },
+		}),
+		"test-token",
+		"",
+		"codex"
+	);
+	expect(events.at(-1)?.permission).toEqual({ requestId: "permission-1", outcome: "pending" });
+	expect(events.at(-1)?.evidence?.[0]?.text).toBe("Allow synthetic status?");
+	await run(
+		JSON.stringify({
+			hook_event_name: "StopFailure",
+			session_id: "claude-session",
+			prompt_id: "claude-prompt-2",
+			error: "Synthetic error password=syntheticsecret",
+			last_assistant_message: "Unable to continue",
+		}),
+		"test-token",
+		"",
+		"claude"
+	);
+	expect(
+		events
+			.at(-1)
+			?.evidence?.some(
+				(e) => e.kind === "error" && e.text === "Synthetic error password=[redacted]"
+			)
+	).toBe(true);
 });

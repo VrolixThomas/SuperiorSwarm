@@ -1,0 +1,40 @@
+{
+  "stagingCommit": "709687f8dd3f17815d3ffc3c31b004c3c509417e",
+  "localMergeCommit": "beacdbd506cffb91dc984b6aaeb8fdee2fb51bbd",
+  "verifiedAt": "2026-11-21T17:05:25.352089+00:00",
+  "productionDifferencesFromStaging": [],
+  "focused": {
+    "pass": 156,
+    "fail": 0,
+    "assertions": 2333,
+    "files": 14
+  },
+  "mcpStdio": {
+    "pass": 1,
+    "fail": 0,
+    "assertions": 44,
+    "providerExecution": false
+  },
+  "live": {
+    "pass": 1,
+    "fail": 0,
+    "assertions": 21,
+    "providers": [
+      "claude",
+      "codex"
+    ],
+    "sameConversationFollowups": true,
+    "approvedMetadataProbeRepeated": false
+  },
+  "nativeGui": "not rerun in this scoped retest; prior native artifacts are not final-source GUI proof",
+  "limits": [
+    "automatic positive permission cleanup without provider correlation remains limited",
+    "new Codex bridge transport under real provider trust unverified",
+    "full authenticated GUI dispatch unverified"
+  ],
+  "productionEdits": false,
+  "globalConfigEdits": false,
+  "sharedDbPolicyChanges": false,
+  "unsafeApprovalBypass": false,
+  "subagents": false
+}

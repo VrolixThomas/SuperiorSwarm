@@ -12,11 +12,12 @@ import {
 	workspaceSourceId,
 } from "../src/main/activity-queue/agent-source";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
-import { listWorkspaceQueue } from "../src/main/activity-queue/workspace-queue";
+import { listWorkspaceQueue, workspaceAnswer } from "../src/main/activity-queue/workspace-queue";
 import { startControlPlane } from "../src/main/control-plane";
 import { setEventsDir } from "../src/main/control-plane/orchestrator-event-sink";
 import { getDb } from "../src/main/db";
 import {
+	agentMessages,
 	agentSessions,
 	crossRepoOrchestrators,
 	projects,
@@ -173,6 +174,89 @@ test.skipIf(process.platform !== "darwin")(
 							missingPromptHook: true,
 							workingClearedChat: new ActivityQueueService().read(sessionId)?.candidate === null,
 						});
+						if (mode === "current") {
+							const asked = await client.callTool({
+								name: "send_message",
+								arguments: { kind: "question", content: "Synthetic exact inbox decision" },
+							});
+							expect(asked.isError).not.toBe(true);
+							const inventory = {
+								isConnected: true,
+								async listSessionsStrict() {
+									return [{ id: terminalId, cwd: folder, pid: 1 }];
+								},
+							};
+							const question = (await listWorkspaceQueue({}, inventory)).items.find(
+								(row) => row.context.workspaceId === workspaceId && row.question
+							);
+							if (!question?.question) throw new Error("MCP question missing exact owner");
+							const reply = await workspaceAnswer(
+								{
+									id: question.id,
+									revision: question.revision,
+									questionId: question.question.messageId,
+									content: "Synthetic answer",
+								},
+								inventory
+							);
+							expect(reply.status).toBe("saved");
+							const unpinned = await fetch(
+								`http://127.0.0.1:${server.port}/workspaces.read_messages?includeBroadcasts=false`,
+								{
+									headers: {
+										Authorization: `Bearer ${server.token}`,
+										"X-Workspace-Id": workspaceId,
+										"X-Terminal-Id": terminalId,
+									},
+								}
+							);
+							expect((await unpinned.json()).messages).toEqual([]);
+							const fetched = await fetch(
+								`http://127.0.0.1:${server.port}/workspaces.read_messages?includeBroadcasts=false`,
+								{
+									headers: {
+										Authorization: `Bearer ${server.token}`,
+										"X-Workspace-Id": workspaceId,
+										"X-Terminal-Id": terminalId,
+										"X-Queue-Reporter": JSON.stringify(question.target),
+									},
+								}
+							);
+							expect(fetched.ok).toBe(true);
+							expect((await fetched.json()).messages).toHaveLength(1);
+							// Simulate lost/aborted handoff: no transport receipt means still pending.
+							expect(
+								getDb()
+									.select()
+									.from(agentMessages)
+									.where(eq(agentMessages.inReplyTo, question.question.messageId))
+									.get()?.retrievedAt
+							).toBeNull();
+
+							const read = await client.callTool({
+								name: "read_messages",
+								arguments: { include_broadcasts: false },
+							});
+							expect(read.isError).not.toBe(true);
+							expect(
+								getDb()
+									.select()
+									.from(agentMessages)
+									.where(eq(agentMessages.inReplyTo, question.question.messageId))
+									.get()?.retrievedAt
+							).toBeTruthy();
+							getDb()
+								.update(agentSessions)
+								.set({ providerSessionId: "replacement-generation" })
+								.where(eq(agentSessions.terminalId, terminalId))
+								.run();
+							const stale = await client.callTool({
+								name: "set_status",
+								arguments: { phase: "done", status_text: "Must not replace reporter" },
+							});
+							expect(stale.isError).toBe(true);
+							expect(JSON.stringify(stale)).toContain("conversation changed");
+						}
 					} finally {
 						await client.close();
 					}
@@ -189,6 +273,29 @@ test.skipIf(process.platform !== "darwin")(
 				workDir: root,
 				projectIds: [repoId, folderId],
 			});
+			getDb()
+				.insert(terminalSessions)
+				.values({
+					id: "synthetic-xro-terminal",
+					workspaceId: xroId,
+					title: "Coordinator",
+					cwd: root,
+					sortOrder: 0,
+					updatedAt: new Date(),
+				})
+				.run();
+			getDb()
+				.insert(agentSessions)
+				.values({
+					terminalId: "synthetic-xro-terminal",
+					workspaceId: xroId,
+					entityKind: "coordinator",
+					provider: "claude",
+					providerSessionId: "coordinator-conversation",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.run();
 			const client = new Client({ name: "isolated-coordinator-investigator", version: "1" });
 			const transport = new StdioClientTransport({
 				command: electron,
@@ -229,7 +336,21 @@ test.skipIf(process.platform !== "darwin")(
 						},
 					}
 				);
-				expect(queue.items).toHaveLength(0);
+				expect(queue.items).toHaveLength(1);
+				expect(queue.items[0]?.target).toMatchObject({
+					type: "terminal",
+					entity: { kind: "coordinator", id: xroId },
+					terminalId: "synthetic-xro-terminal",
+					providerSessionId: "coordinator-conversation",
+				});
+				expect(queue.items[0]?.summary).toBe("Synthetic cross-repo decision");
+				expect(
+					getDb()
+						.select()
+						.from(crossRepoOrchestrators)
+						.where(eq(crossRepoOrchestrators.id, xroId))
+						.get()?.statusText
+				).toBe("Synthetic linked repo and folder");
 				evidence.push({
 					mode: "cross-repo",
 					linkedKinds: ["repo", "folder"],
@@ -240,7 +361,13 @@ test.skipIf(process.platform !== "darwin")(
 			} finally {
 				await client.close();
 			}
-			const out = resolve(import.meta.dir, "../../../.hermes/investigations/queue-e2e-2026-11-21");
+			const out =
+				process.env["SS_QUEUE_EVIDENCE_DIR"] ??
+				resolve(
+					import.meta.dir,
+					process.env["SS_QUEUE_MCP_EVIDENCE_DIR"] ??
+						"../../../.hermes/verification/queue-ownership-2026-11-21"
+				);
 			mkdirSync(out, { recursive: true });
 			writeFileSync(join(out, "mcp-processes.json"), JSON.stringify(evidence, null, 2));
 		} finally {

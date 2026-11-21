@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { z } from "zod";
 import {
 	ForbiddenError,
 	NotFoundError,
@@ -27,9 +28,12 @@ import {
 	sendMessageRequestSchema,
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
+import { workspaceReporter } from "../activity-queue/agent-source";
+import { queueEntities } from "../activity-queue/entities";
+import { reporterAdmissions } from "../activity-queue/reporter-admission";
 import { getDb } from "../db";
+import { agentSessions } from "../db/schema";
 import {
-	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
 	hermesConnections,
 	hermesSessionAdmissions,
@@ -54,10 +58,16 @@ import {
 	updateHermesTagDefinition,
 	upsertHermesTagDefinition,
 } from "../hermes/hermes-session-metadata";
+import {
+	type CrossRepoAccessScope,
+	crossRepoProjectIds,
+} from "../services/cross-repo-project-scope";
 import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-policy";
 import {
 	type CallerContext,
 	type SpawnFn,
+	acknowledgeQuestionAnswers,
+	authorizeCoordinatorDispatch,
 	createWorkspace,
 	dispatchAgent,
 	getWorkspace,
@@ -74,22 +84,37 @@ import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
-type CrossRepoAccessScope = "selected" | "all";
-
-function crossRepoProjectIds(orchestratorId: string, accessScope: CrossRepoAccessScope): string[] {
-	if (accessScope === "all") {
-		return getDb()
-			.select({ projectId: projects.id })
-			.from(projects)
-			.all()
-			.map((row) => row.projectId);
-	}
-	return getDb()
-		.select({ projectId: crossRepoOrchestratorProjects.projectId })
-		.from(crossRepoOrchestratorProjects)
-		.where(eq(crossRepoOrchestratorProjects.orchestratorId, orchestratorId))
-		.all()
-		.map((row) => row.projectId);
+function queueContextIdentity(entityId: string, terminalHeader: string | string[] | undefined) {
+	const terminalId = typeof terminalHeader === "string" ? terminalHeader : undefined;
+	const reporter = workspaceReporter(entityId, terminalId);
+	const base = { queueReporter: reporter, queueProtocol: 2 };
+	if (reporter || !terminalId) return base;
+	const entity = queueEntities().get(entityId);
+	const terminal = getDb()
+		.select()
+		.from(terminalSessions)
+		.where(eq(terminalSessions.id, terminalId))
+		.get();
+	const session = getDb()
+		.select()
+		.from(agentSessions)
+		.where(eq(agentSessions.terminalId, terminalId))
+		.get();
+	if (
+		!entity ||
+		terminal?.workspaceId !== entityId ||
+		(session &&
+			(session.workspaceId !== entityId ||
+				session.entityKind !== entity.entity.kind ||
+				session.providerSessionId))
+	)
+		return base;
+	// Return the original first-generation lease immediately so initialize/tool discovery
+	// cannot be delayed by hooks. Post-connect/first-tool admission retains all checks.
+	return {
+		...base,
+		queueAdmission: reporterAdmissions.issue(entity.entity, terminalId, session?.provider),
+	};
 }
 
 function workspaceAgentContext(row: {
@@ -295,6 +320,42 @@ function resolveCaller(
 	projectIdHint: string | null
 ): CallerContext | { error: string } {
 	const wsId = req.headers["x-workspace-id"];
+	const pinnedHeader = req.headers["x-queue-reporter"];
+	let pinned: ReturnType<typeof workspaceReporter> = null;
+	if (typeof pinnedHeader === "string") {
+		try {
+			const value = JSON.parse(pinnedHeader);
+			if (
+				value !== null &&
+				(!value ||
+					value.type !== "terminal" ||
+					typeof value.workspaceId !== "string" ||
+					typeof value.terminalId !== "string" ||
+					typeof value.provider !== "string" ||
+					typeof value.providerSessionId !== "string")
+			)
+				return { error: "invalid queue reporter" };
+			pinned = value;
+		} catch {
+			return { error: "invalid queue reporter" };
+		}
+		if (pinned) {
+			const live = workspaceReporter(pinned.workspaceId, pinned.terminalId);
+			if (
+				!live ||
+				live.provider !== pinned.provider ||
+				live.providerSessionId !== pinned.providerSessionId ||
+				req.headers["x-terminal-id"] !== live.terminalId ||
+				(req.headers["x-workspace-id"] ?? req.headers["x-cross-repo-orchestrator-id"]) !==
+					live.workspaceId
+			)
+				return {
+					error: "queue reporter conversation changed; restart MCP in the intended conversation",
+				};
+		}
+	}
+	const queueIdentityVerified = Boolean(pinned);
+
 	const xroId = req.headers["x-cross-repo-orchestrator-id"];
 
 	if (typeof xroId === "string" && xroId.length > 0) {
@@ -325,6 +386,13 @@ function resolveCaller(
 		}
 		return {
 			kind: "xro",
+			queueIdentityVerified,
+			terminalId:
+				pinnedHeader !== undefined && !pinned
+					? undefined
+					: typeof req.headers["x-terminal-id"] === "string"
+						? req.headers["x-terminal-id"]
+						: undefined,
 			xroId,
 			linkedProjectIds,
 			external: row.kind === "external",
@@ -350,7 +418,12 @@ function resolveCaller(
 		kind: "workspace",
 		workspaceId: wsId,
 		projectId: row.projectId,
-		...(typeof terminalId === "string" && terminalId ? { terminalId } : {}),
+		queueIdentityVerified,
+		...(pinnedHeader !== undefined && !pinned
+			? {}
+			: typeof terminalId === "string" && terminalId
+				? { terminalId }
+				: {}),
 	};
 }
 
@@ -554,6 +627,36 @@ async function handleRequest(
 
 	try {
 		switch (route) {
+			case "POST /context.admit": {
+				const parsed = z
+					.object({ token: z.string().min(1).max(200) })
+					.safeParse(await readJson(req, 1024));
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				const terminalId = req.headers["x-terminal-id"];
+				if ("error" in caller || typeof terminalId !== "string") {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				const entityId = caller.kind === "xro" ? caller.xroId : caller.workspaceId;
+				const result = reporterAdmissions.resolve(
+					parsed.data.token,
+					entityId,
+					terminalId,
+					workspaceReporter(entityId, terminalId)
+				);
+				respond(
+					res,
+					result.status === "pending" ? 202 : result.status === "admitted" ? 200 : 409,
+					requestId,
+					result
+				);
+				return;
+			}
+
 			case "GET /context.resolve": {
 				const cwd = url.searchParams.get("cwd") ?? "";
 				// Task tokens outrank manager tokens: a review/solve/quick-action
@@ -629,7 +732,10 @@ async function handleRequest(
 						.where(eq(workspaces.id, workspaceId))
 						.get();
 					if (workspace) {
-						respond(res, 200, requestId, workspaceAgentContext(workspace));
+						respond(res, 200, requestId, {
+							...workspaceAgentContext(workspace),
+							...queueContextIdentity(workspaceId, req.headers["x-terminal-id"]),
+						});
 						return;
 					}
 					// Coordinator terminal tabs use their cross-repo ID as workspaceId.
@@ -648,7 +754,10 @@ async function handleRequest(
 						)
 						.get();
 					if (coordinator) {
-						respond(res, 200, requestId, crossRepoContext(coordinator));
+						respond(res, 200, requestId, {
+							...crossRepoContext(coordinator),
+							...queueContextIdentity(workspaceId, req.headers["x-terminal-id"]),
+						});
 						return;
 					}
 					respond(res, 401, requestId, {
@@ -1130,19 +1239,39 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const dispatchScope = resolveScopedProjectId(
-					req,
-					res,
-					requestId,
-					parsed.data.projectId,
-					parsed.data.workspaceId
-				);
-				if (!dispatchScope) return;
-				const { projectId: dispatchProjectId, caller: dispatchCaller } = dispatchScope;
-				const ws = await getWorkspace({
-					projectId: dispatchProjectId,
-					workspaceId: parsed.data.workspaceId,
-				});
+				const coordinator = getDb()
+					.select()
+					.from(crossRepoOrchestrators)
+					.where(eq(crossRepoOrchestrators.id, parsed.data.workspaceId))
+					.get();
+				let dispatchProjectId: string | undefined;
+				let dispatchCaller: CallerContext;
+				let ws: { name: string; branch: string | null };
+				if (coordinator) {
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					authorizeCoordinatorDispatch(coordinator, parsed.data.projectId, caller);
+					dispatchCaller = caller;
+					ws = { name: coordinator.name, branch: null };
+				} else {
+					const scope = resolveScopedProjectId(
+						req,
+						res,
+						requestId,
+						parsed.data.projectId,
+						parsed.data.workspaceId
+					);
+					if (!scope) return;
+					dispatchProjectId = scope.projectId;
+					dispatchCaller = scope.caller;
+					ws = await getWorkspace({
+						projectId: scope.projectId,
+						workspaceId: parsed.data.workspaceId,
+					});
+				}
 				// Auto-approval, two independent opt-ins (remove_worktree is never
 				// auto-approved):
 				//  - external managers whose per-manager dispatch_policy is "auto"
@@ -1169,11 +1298,21 @@ async function handleRequest(
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
+				if (coordinator) {
+					// Confirmation is asynchronous: credentials and scope may have changed meanwhile.
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					dispatchCaller = caller;
+				}
 				const result = await dispatchAgent(
 					{ ...parsed.data, projectId: dispatchProjectId },
-					{ spawnFn: deps.spawnFn }
+					{ spawnFn: deps.spawnFn, caller: dispatchCaller }
 				);
-				await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
+				if (dispatchProjectId)
+					await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
 				respond(res, 200, requestId, result);
 				return;
 			}
@@ -1220,7 +1359,10 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
 				respond(res, 200, requestId, await setStatus(caller, parsed.data));
@@ -1236,7 +1378,10 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
 				respond(res, 200, requestId, await sendMessage(caller, parsed.data));
@@ -1254,10 +1399,39 @@ async function handleRequest(
 				}
 				const caller = resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
 					return;
 				}
-				respond(res, 200, requestId, await readMessages(caller, parsed.data));
+				respond(
+					res,
+					200,
+					requestId,
+					await readMessages({ ...caller, deferQueueRetrieval: true }, parsed.data)
+				);
+				return;
+			}
+
+			case "POST /workspaces.acknowledge_answers": {
+				const body = await readJson(req, 32_768);
+				const parsed = z
+					.object({ messageIds: z.array(z.string().min(1).max(200)).max(200) })
+					.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller || !caller.queueIdentityVerified) {
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message: "error" in caller ? caller.error : "Exact conversation identity is required",
+					});
+					return;
+				}
+				respond(res, 200, requestId, acknowledgeQuestionAnswers(caller, parsed.data.messageIds));
 				return;
 			}
 

@@ -1,0 +1,135 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-ownership.test.ts:
+(pass) claude/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [41.14ms]
+(pass) claude/workspace: closed/replaced question owner cannot receive or mutate [14.15ms]
+(pass) claude/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [54.87ms]
+(pass) claude/coordinator: closed/replaced question owner cannot receive or mutate [23.43ms]
+(pass) codex/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [69.58ms]
+(pass) codex/workspace: closed/replaced question owner cannot receive or mutate [27.40ms]
+(pass) codex/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [97.49ms]
+(pass) codex/coordinator: closed/replaced question owner cannot receive or mutate [39.89ms]
+(pass) report and turn receipt group atomically; stale member rejects all actions and Undo retains exact revisions [205.44ms]
+(pass) legacy question/report remains explicitly unavailable for safe reply and never binds to sibling [52.79ms]
+(pass) polymorphic session constraints reject nonexistent owners and cascade both real entity kinds [1.86ms]
+(pass) wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution [77.34ms]
+(pass) ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval [62.55ms]
+(pass) grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically [173.32ms]
+
+tests/agent-evidence-persistence.test.ts:
+(pass) claude: acknowledged failure stays handled through Stop, compaction and missing-turn replay [13.38ms]
+(pass) codex: acknowledged failure stays handled through Stop, compaction and missing-turn replay [12.11ms]
+
+tests/agent-event-transition.test.ts:
+(pass) claude > Stop and tool activity retain unresolved permission and actual request text [0.41ms]
+(pass) claude > new prompt explicitly continues without claiming permission was granted [0.12ms]
+(pass) claude > only a matching explicit permission outcome changes pending permission [0.08ms]
+(pass) claude > legacy replay keeps cleared attention cleared; a genuine later turn still appears
+(pass) claude > missing-turn prompt cannot clear newer work [0.09ms]
+(pass) codex > Stop and tool activity retain unresolved permission and actual request text
+(pass) codex > new prompt explicitly continues without claiming permission was granted
+(pass) codex > only a matching explicit permission outcome changes pending permission
+(pass) codex > legacy replay keeps cleared attention cleared; a genuine later turn still appears
+(pass) codex > missing-turn prompt cannot clear newer work
+(pass) stable event IDs reject replay and provider timestamps reject older events
+(pass) view-only resume and compaction preserve attention and fingerprint
+(pass) compaction cannot mutate completed work
+(pass) same-turn new text changes the exact revision fingerprint
+(pass) uncertain replay cannot invalidate an exact dismissal receipt [0.33ms]
+(pass) old v2 snapshot format retains its receipt unless new evidence arrives
+(pass) retained permission plus reply and error remain bounded without dropping either kind
+(pass) unseen event identity alone cannot order a missing-turn Stop after explicit continuation
+(pass) a distinct permission request replaces stale request text instead of relabeling it
+(pass) failure receipt and error survive generic Stop and compaction until a real continuation [0.39ms]
+(pass) unconfirmed permission outcome updates wording without reopening an exact receipt
+
+tests/activity-queue-navigation.test.ts:
+(pass) direct Queue navigation > leaves repos directly without an intermediate restoration or shell [0.76ms]
+(pass) direct Queue navigation > leaves tickets directly without an intermediate restoration or shell [0.09ms]
+(pass) direct Queue navigation > leaves prs directly without an intermediate restoration or shell [0.06ms]
+(pass) direct Queue navigation > leaves hermes directly without an intermediate restoration or shell [0.04ms]
+(pass) direct Queue navigation > Back returns to the selected Hermes conversation [0.08ms]
+(pass) direct Queue navigation > PR activation retains direct history from Hermes [0.19ms]
+(pass) Queue source targeting > workspace reporter target opens the exact reporting chat instead of the selected sibling [0.78ms]
+(pass) Queue source targeting > selects the exact tab and split pane, preserving the other terminal [0.38ms]
+(pass) Queue source targeting > reopens the exact review drawer without creating a pane terminal [0.12ms]
+(pass) Queue source targeting > missing terminal and changed provider session preserve active work [0.08ms]
+(pass) Queue source targeting > PR duplicate clicks reuse one in-flight review operation [0.26ms]
+(pass) Queue source targeting > PR failure leaves current workspace and unlocks retry [0.19ms]
+(pass) Queue source targeting > same repository name on a different provider is not navigated
+(pass) Queue source targeting > unavailable and Hermes recovery targets explain their limits [0.09ms]
+(pass) missing PR branches are resolved before creating a review workspace [0.08ms]
+(pass) missing live PTYs cannot be recreated by Queue navigation [0.12ms]
+(pass) terminal service errors retain the current workspace [0.02ms]
+(pass) closing the requested chat during inventory preflight cannot select its sibling [0.18ms]
+(pass) Queue marks terminals added during preflight before any destination activation [0.16ms]
+(pass) coordinator entity navigation never substitutes a linked workspace or creates a shell [0.12ms]
+(pass) coordinator chat navigation never substitutes a linked workspace or creates a shell [0.06ms]
+(pass) mismatched coordinator owner is rejected before navigation
+(pass) a dead unrelated sibling does not block the healthy exact reporter [0.23ms]
+(pass) conversation replacement during inventory is rejected before switching workspaces
+
+tests/queue-investigation-matrix.test.ts:
+(pass) claude/worktree/manual: exact direct continuation and sibling isolation [187.67ms]
+(pass) claude/folder/manual: exact direct continuation and sibling isolation [260.92ms]
+(pass) claude/repo-orchestrator/manual: exact direct continuation and sibling isolation [201.11ms]
+(pass) claude/cross-repo/manual: registered coordinator callback is accepted [37.16ms]
+(pass) claude/worktree/managed: exact direct continuation and sibling isolation [254.75ms]
+(pass) claude/folder/managed: exact direct continuation and sibling isolation [288.50ms]
+(pass) claude/repo-orchestrator/managed: exact direct continuation and sibling isolation [299.19ms]
+(pass) claude/cross-repo/managed: registered coordinator callback is accepted [49.82ms]
+(pass) claude: known reporter is preserved in navigation [162.09ms]
+(pass) claude: untagged prompt preserves report and exposes uncertain chat attention [118.65ms]
+(pass) claude: structured question preserves ownership and retires on reporter closure [229.36ms]
+(pass) claude: untagged replay cannot reopen explicitly cleared work [245.43ms]
+(pass) claude: managed sibling cannot clear a legacy ownerless manual report [131.95ms]
+(pass) codex/worktree/manual: exact direct continuation and sibling isolation [402.37ms]
+(pass) codex/folder/manual: exact direct continuation and sibling isolation [472.60ms]
+(pass) codex/repo-orchestrator/manual: exact direct continuation and sibling isolation [480.08ms]
+(pass) codex/cross-repo/manual: registered coordinator callback is accepted [84.76ms]
+(pass) codex/worktree/managed: exact direct continuation and sibling isolation [507.07ms]
+(pass) codex/folder/managed: exact direct continuation and sibling isolation [589.42ms]
+(pass) codex/repo-orchestrator/managed: exact direct continuation and sibling isolation [569.08ms]
+(pass) codex/cross-repo/managed: registered coordinator callback is accepted [90.15ms]
+(pass) codex: known reporter is preserved in navigation [278.91ms]
+(pass) codex: untagged prompt preserves report and exposes uncertain chat attention [205.39ms]
+(pass) codex: structured question preserves ownership and retires on reporter closure [396.99ms]
+(pass) codex: untagged replay cannot reopen explicitly cleared work [371.79ms]
+(pass) codex: managed sibling cannot clear a legacy ownerless manual report [216.38ms]
+
+tests/queue-ownership-migration.test.ts:
+(pass) 0067 preserves legacy sessions/messages and enforces polymorphic ownership with foreign keys enabled [32.17ms]
+
+tests/queue-investigation-mcp.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-7pJKaU%2Fcurrent-claude 200 request_id=f07c9f9b-6d87-4534-9d19-4af53f2b19be latency=4ms
+[control-plane] POST /workspaces.set_status 200 request_id=9bd33a0c-39f2-4ac8-a2f3-03f37e29c15b latency=17ms
+[control-plane] POST /workspaces.set_status 200 request_id=8fc35aae-b036-4805-944e-b6c49b609a18 latency=19ms
+[control-plane] POST /workspaces.send_message 200 request_id=a7167be8-ac0e-42fd-b64d-b61c48f735b3 latency=10ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=a1ee912a-333f-4645-8a42-a052f410046a latency=1ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=9fba9495-24a2-43c4-80bb-d84c18c1f08c latency=5ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-ruOjBS-N&includeBroadcasts=false 200 request_id=c87a9a35-12f3-4a64-937e-04f86cc90433 latency=5ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=d9970b1c-5edc-4f00-9b9a-1bde40a95e99 latency=4ms
+[control-plane] POST /workspaces.set_status 401 request_id=1a859756-ff76-41b1-991e-1a45aef585f0 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-7pJKaU%2Fcurrent-codex 200 request_id=9c43c731-21f2-444f-8cdf-3519a1ef49ca latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=ecf4b019-bdff-4b5f-ac8c-6c9bf206d75b latency=28ms
+[control-plane] POST /workspaces.set_status 200 request_id=247012e3-8644-4d57-9738-e58dd2b0c9c6 latency=16ms
+[control-plane] POST /workspaces.send_message 200 request_id=82fab196-e849-487d-8696-e197fb2b6edf latency=5ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=f232cc2b-06ec-4221-b043-582c2117f40c latency=1ms
+[control-plane] GET /workspaces.read_messages?includeBroadcasts=false 200 request_id=974648cb-62a8-4814-a51c-ee7a8bf38811 latency=5ms
+[control-plane] GET /workspaces.read_messages?projectId=proj-iT1xlvRk&includeBroadcasts=false 200 request_id=80440275-df94-47e0-ada2-ea3d4d0e05ba latency=4ms
+[control-plane] POST /workspaces.acknowledge_answers 200 request_id=0128a363-d377-404e-af97-05edb570c427 latency=5ms
+[control-plane] POST /workspaces.set_status 401 request_id=28d68959-4ab7-4b31-9963-a4f84b767aad latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-7pJKaU%2Fmissing-identity-claude 200 request_id=87d21c04-ab7c-412b-bf8c-764532014eed latency=0ms
+[control-plane] POST /workspaces.set_status 200 request_id=84a9394c-72f8-467b-b537-fd6a5a3a1fc7 latency=13ms
+[control-plane] POST /workspaces.set_status 200 request_id=b08fb598-3414-4d88-9fc4-b8b4ce4a6f79 latency=12ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-7pJKaU%2Fmissing-identity-codex 200 request_id=c8472f7d-3621-4e60-9bc7-9405cbe94511 latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=d00401ff-1e7b-4103-84a6-ec5acfa8730a latency=13ms
+[control-plane] POST /workspaces.set_status 200 request_id=a3116217-c189-4312-854a-dceb63bcc15a latency=12ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-mcp-investigation-7pJKaU 200 request_id=70cfc3a5-3603-4cb4-a576-2b98f8419dd4 latency=4ms
+[control-plane] POST /workspaces.set_status 200 request_id=7a71d234-544b-4c4a-84c6-85a36e9f0219 latency=20ms
+(pass) MCP current/legacy/missing identity and cross-repo linked folder reports [1725.24ms]
+
+ 89 pass
+ 0 fail
+ 509 expect() calls
+Ran 89 tests across 7 files. [10.04s]

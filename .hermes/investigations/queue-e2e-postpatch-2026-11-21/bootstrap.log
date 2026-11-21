@@ -1,0 +1,20 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-postpatch-bootstrap.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-zCQCRN 200 request_id=24166c3f-9c63-463f-b9ed-68e8e81ec58c latency=4ms
+[control-plane] POST /workspaces.set_status 200 request_id=df1f9cfb-59d1-4801-90a6-0ce8fd45025a latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-zCQCRN 200 request_id=d00ecf33-a228-4093-91c2-cae1482c4af7 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=a97ab0ed-8426-492c-b034-eda287d8473a latency=3ms
+[control-plane] POST /workspaces.set_status 401 request_id=bb61886f-5026-4ad8-b33d-dc6882c31bf7 latency=1ms
+(pass) MCP-before-hook claude: unbound process stays conservative; explicit fresh MCP pins current generation [477.80ms]
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-nQaBt8 200 request_id=7fbfc12f-7e70-4249-9f0c-acf7917203b4 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=ca2ec62d-bf2e-4950-bef7-250493b43ee0 latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-nQaBt8 200 request_id=1d0cb260-b8d0-4c72-936a-b324cf80f5fe latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=00c97764-7c2b-4390-af94-d7148015266a latency=4ms
+[control-plane] POST /workspaces.set_status 401 request_id=3e64fcec-c61a-47e3-b665-4a76a342d324 latency=1ms
+(pass) MCP-before-hook codex: unbound process stays conservative; explicit fresh MCP pins current generation [385.13ms]
+
+ 2 pass
+ 0 fail
+ 20 expect() calls
+Ran 2 tests across 1 file. [1014.00ms]
