@@ -34,31 +34,39 @@ export function QueueConversationReply({
 	refresh: () => Promise<unknown>;
 }) {
 	const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-	const [capability, setCapability] = useState<WorkspaceQueueReplyCapability>();
+	const capabilityKey = JSON.stringify([receipt(item), item.target]);
+	const [capabilityResult, setCapabilityResult] = useState<{
+		key: string;
+		value: WorkspaceQueueReplyCapability;
+	}>();
+	const capability = capabilityResult?.key === capabilityKey ? capabilityResult.value : undefined;
 	const [busy, setBusy] = useState(false);
 	const running = useRef(false);
 	const inputId = useId();
 
 	useEffect(() => {
 		let active = true;
-		setCapability(undefined);
+		setCapabilityResult(undefined);
 		if (actions && !item.question && ["agent-done", "agent-failed"].includes(item.situation))
 			actions
 				.capability(receipt(item))
 				.then((value) => {
-					if (active) setCapability(value);
+					if (active) setCapabilityResult({ key: capabilityKey, value });
 				})
 				.catch(() => {
 					if (active)
-						setCapability({
-							status: "unavailable",
-							reason: "Reply availability could not be checked. Open the conversation.",
+						setCapabilityResult({
+							key: capabilityKey,
+							value: {
+								status: "unavailable",
+								reason: "Reply availability could not be checked. Open the conversation.",
+							},
 						});
 				});
 		return () => {
 			active = false;
 		};
-	}, [actions, item]);
+	}, [actions, item, capabilityKey]);
 	if (item.question || !["agent-done", "agent-failed"].includes(item.situation) || !actions)
 		return null;
 	const draft = drafts[item.id] ?? {

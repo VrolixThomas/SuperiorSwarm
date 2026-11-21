@@ -175,3 +175,20 @@ test("two submissions before the first hook cannot attribute the second Enter to
 	});
 	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(true);
 });
+test("multiple uncorrelated submissions in one chunk remain unavailable", () => {
+	const f = fixture();
+	f.sessions.input("t", "first\rsecond\r");
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "first",
+		phase: "prompt",
+	});
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "first",
+		phase: "idle",
+	});
+	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(false);
+});

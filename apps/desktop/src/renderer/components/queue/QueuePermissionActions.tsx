@@ -26,29 +26,34 @@ export function QueuePermissionActions({
 	onOpen: () => void;
 	refresh: () => Promise<unknown>;
 }) {
-	const [capability, setCapability] = useState<QueuePermissionCapability>({
-		capability: "unavailable",
-		detail: "Checking this request…",
-	});
+	const key = JSON.stringify([item.id, item.revision, item.members, item.target, item.permission]);
+	const [result, setResult] = useState<{ key: string; value: QueuePermissionCapability }>();
+	const capability: QueuePermissionCapability =
+		result?.key === key
+			? result.value
+			: { capability: "unavailable", detail: "Checking this request…" };
 	useEffect(() => {
 		let active = true;
 		if (actions && item.permission)
 			actions
 				.capability({ id: item.id, revision: item.revision, members: item.members })
 				.then((value) => {
-					if (active) setCapability(value);
+					if (active) setResult({ key, value });
 				})
 				.catch(() => {
 					if (active)
-						setCapability({
-							capability: "unavailable",
-							detail: "Open the conversation to check this request.",
+						setResult({
+							key,
+							value: {
+								capability: "unavailable",
+								detail: "Open the conversation to check this request.",
+							},
 						});
 				});
 		return () => {
 			active = false;
 		};
-	}, [actions, item]);
+	}, [actions, item, key]);
 	if (!item.permission || !actions) return null;
 	return (
 		<QueuePermissionDecision

@@ -91,6 +91,7 @@ export class FileInputSessions {
 		const active = this.sessions.get(id);
 		if (active && data.length) {
 			active.inputDirty = true;
+			if ((String(data).match(/\r/g)?.length ?? 0) > 1) active.ambiguousInput = true;
 			active.inputVersion += data.length;
 			if (String(data).endsWith("\r")) {
 				if (active.submittedVersions.length >= 64) active.ambiguousInput = true;

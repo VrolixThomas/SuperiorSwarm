@@ -55,3 +55,16 @@ test("uncertain release blocks navigation instead of silently claiming native pr
 		})
 	).rejects.toThrow("Check the request");
 });
+test("unavailable after a live wait was observed cannot silently navigate with that wait held", async () => {
+	await expect(
+		releaseQueuePermissionForOpen(item, {
+			capability: async () => ({
+				capability: "hook-response",
+				state: "waiting",
+				requestId: "exact",
+				detail: "Waiting",
+			}),
+			decide: async () => ({ status: "unavailable", detail: "Inventory disconnected" }),
+		})
+	).rejects.toThrow("Inventory disconnected");
+});

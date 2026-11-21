@@ -26,5 +26,5 @@ export async function releaseQueuePermissionForOpen(
 		requestId: capability.requestId,
 		action: "open",
 	});
-	if (result.status !== "opened" && result.status !== "unavailable") throw Error(result.detail);
+	if (result.status !== "opened") throw Error(result.detail);
 }
