@@ -28,18 +28,21 @@ const navigationApi: QueueNavigationApi = {
 async function requireExistingTerminals(
 	workspaceId: string,
 	review: boolean,
-	api: QueueNavigationApi
+	api: QueueNavigationApi,
+	exactTerminalId?: string
 ): Promise<void> {
 	const reviewTerminal = useReviewModeStore.getState().terminals[workspaceId];
-	const ids = review
-		? reviewTerminal
-			? [reviewTerminal.tabId]
-			: []
-		: useTabStore
-				.getState()
-				.getTabsByWorkspace(workspaceId)
-				.filter((tab) => tab.kind === "terminal")
-				.map((tab) => tab.id);
+	const ids = exactTerminalId
+		? [exactTerminalId]
+		: review
+			? reviewTerminal
+				? [reviewTerminal.tabId]
+				: []
+			: useTabStore
+					.getState()
+					.getTabsByWorkspace(workspaceId)
+					.filter((tab) => tab.kind === "terminal")
+					.map((tab) => tab.id);
 	if (ids.length === 0) return;
 	let live: Awaited<ReturnType<DaemonAPI["listSessions"]>>;
 	try {
@@ -87,6 +90,26 @@ function requireOpenChat(workspaceId: string, terminalId: string, reviewWorkspac
 		throw new Error("This terminal is no longer open. Queue will not create a replacement shell.");
 	if (reviewWorkspace && review?.tabId !== terminalId)
 		throw new Error("This terminal is not attached to the review drawer.");
+}
+
+async function requireMatchingSession(
+	target: Extract<ActivityQueueTarget, { type: "terminal" }>,
+	api: QueueNavigationApi
+) {
+	const sessions = await api.agentSessions.list.query();
+	const session = sessions.find(
+		(s) => s.terminalId === target.terminalId && s.workspaceId === target.workspaceId
+	);
+	if (
+		!session ||
+		session.provider !== target.provider ||
+		(target.providerSessionId !== null && session.providerSessionId !== target.providerSessionId)
+	)
+		throw new Error("This terminal no longer matches the agent session that requested attention.");
+	if (session.state === "hibernated" || session.state === "hibernating")
+		throw new Error(
+			"This agent is asleep. Resume it explicitly from its workspace before opening this terminal."
+		);
 }
 
 /** Open is navigation only. There is deliberately no acknowledgment API in this helper. */
@@ -201,24 +224,10 @@ export async function openQueueTarget(
 		} else if (workspace) activateWorkspace(workspace);
 	};
 	if (target.type === "terminal") {
-		const sessions = await api.agentSessions.list.query();
-		const session = sessions.find(
-			(s) => s.terminalId === target.terminalId && s.workspaceId === target.workspaceId
-		);
-		if (
-			!session ||
-			session.provider !== target.provider ||
-			(target.providerSessionId !== null && session.providerSessionId !== target.providerSessionId)
-		)
-			throw new Error(
-				"This terminal no longer matches the agent session that requested attention."
-			);
-		if (session.state === "hibernated" || session.state === "hibernating")
-			throw new Error(
-				"This agent is asleep. Resume it explicitly from its workspace before opening this terminal."
-			);
+		await requireMatchingSession(target, api);
 		requireOpenChat(target.workspaceId, target.terminalId, isReview);
-		await requireExistingTerminals(entityId, isReview, api);
+		await requireExistingTerminals(entityId, isReview, api, target.terminalId);
+		await requireMatchingSession(target, api);
 		// The user may close the reporter while the inventory request is pending.
 		requireOpenChat(target.workspaceId, target.terminalId, isReview);
 		activate();

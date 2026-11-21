@@ -407,3 +407,46 @@ test("mismatched coordinator owner is rejected before navigation", async () => {
 	).rejects.toThrow("owner does not match");
 	expect(useTabStore.getState().activeWorkspaceId).toBeNull();
 });
+
+test("a dead unrelated sibling does not block the healthy exact reporter", async () => {
+	const { api, raw } = apiFixture();
+	const store = useTabStore.getState();
+	store.addTerminalTab("target", "/target", "Dead sibling", "terminal-1");
+	store.addTerminalTab("target", "/target", "Live reporter", "terminal-2");
+	store.setActiveWorkspace("current", "/current");
+	raw.daemon.listSessions.mockResolvedValue({
+		daemonSessions: [{ id: "terminal-2", cwd: "/target", pid: 2 }],
+		liveSessions: [],
+		callbackIds: [],
+	});
+	await openQueueTarget(terminalTarget, api);
+	expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe("terminal-2");
+	expect(useTabStore.getState().terminalCreateIntents).toEqual({
+		"terminal-1": "attach-existing-only",
+		"terminal-2": "attach-existing-only",
+	});
+});
+test("conversation replacement during inventory is rejected before switching workspaces", async () => {
+	const { api, raw, sessions } = apiFixture();
+	const store = useTabStore.getState();
+	store.addTerminalTab("target", "/target", "Reporter", "terminal-2");
+	store.setActiveWorkspace("current", "/current");
+	raw.daemon.listSessions.mockImplementationOnce(async () => {
+		sessions.mockResolvedValue([
+			{
+				terminalId: "terminal-2",
+				workspaceId: "target",
+				provider: "codex",
+				providerSessionId: "replacement",
+				state: "idle",
+			},
+		]);
+		return {
+			daemonSessions: [{ id: "terminal-2", cwd: "/target", pid: 2 }],
+			liveSessions: [],
+			callbackIds: [],
+		};
+	});
+	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("no longer matches");
+	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+});
