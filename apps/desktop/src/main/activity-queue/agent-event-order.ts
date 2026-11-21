@@ -1,4 +1,5 @@
-import type { AgentEvent } from "../../shared/agent-events";
+import type { AgentEvent, AgentEvidence, AgentPermission } from "../../shared/agent-events";
+import { validateAgentEvidence } from "../../shared/agent-evidence";
 
 export interface AgentEventSnapshot {
 	version: 2;
@@ -6,103 +7,143 @@ export interface AgentEventSnapshot {
 	rawEvent: string | null;
 	turnId: string | null;
 	retiredTurnIds: string[];
+	/** Compatibility only: bridge invocation time is never an ordering clock. */
 	producerTimestamp: number | null;
+	providerTimestamp?: number | null;
+	seenEventIds?: string[];
+	evidence?: AgentEvidence[];
+	permission?: AgentPermission | null;
+	ordering?: "identified" | "uncertain";
+	continuation?: "none" | "prompt" | "reported";
 }
 
 function readSnapshot(value: unknown): AgentEventSnapshot | null {
 	if (!value || typeof value !== "object") return null;
-	const row = value as Record<string, unknown>;
+	const row = value as AgentEventSnapshot;
 	if (
-		row["version"] !== 2 ||
-		!["active", "needs-input", "task-complete"].includes(String(row["alert"])) ||
-		!(row["turnId"] === null || typeof row["turnId"] === "string") ||
-		!Array.isArray(row["retiredTurnIds"]) ||
-		!row["retiredTurnIds"].every((id) => typeof id === "string") ||
-		!(
-			row["producerTimestamp"] === null ||
-			(typeof row["producerTimestamp"] === "number" && Number.isFinite(row["producerTimestamp"]))
-		)
+		row.version !== 2 ||
+		!["active", "needs-input", "task-complete"].includes(row.alert) ||
+		!(row.turnId === null || typeof row.turnId === "string") ||
+		!Array.isArray(row.retiredTurnIds) ||
+		!row.retiredTurnIds.every((id) => typeof id === "string")
 	)
 		return null;
-	return {
-		version: 2,
-		alert: row["alert"] as AgentEvent["alert"],
-		rawEvent: typeof row["rawEvent"] === "string" ? row["rawEvent"] : null,
-		turnId: row["turnId"],
-		retiredTurnIds: row["retiredTurnIds"],
-		producerTimestamp: row["producerTimestamp"],
-	};
+	return row;
 }
 
-/** Turn IDs establish identity, not ordering. Arrival time is never a producer clock.
- * Keep a bounded snapshot of retired identities; do not replay an event journal.
- * Legacy hooks without turn/time metadata can only use their arrival sequence.
+/** Stable turn/event identity and provider clocks are evidence. Invocation time is not.
+ * Untagged legacy traffic cannot silently clear attention or establish a fresh completion.
+ * Keep uncertainty visible until an identified prompt or explicit bound continuation arrives.
  */
 export function nextAgentEventSnapshot(
 	previous: unknown,
 	event: AgentEvent
 ): AgentEventSnapshot | null {
 	const before = readSnapshot(previous);
-	const producerTimestamp = event.producerTimestamp ?? null;
+	const providerTimestamp = event.providerTimestamp ?? null;
+	if (event.rawEvent?.startsWith("Subagent")) return null;
+	if (event.providerEventId && before?.seenEventIds?.includes(event.providerEventId)) return null;
 	if (
-		before?.producerTimestamp !== null &&
-		before?.producerTimestamp !== undefined &&
-		producerTimestamp !== null &&
-		producerTimestamp < before.producerTimestamp
+		providerTimestamp !== null &&
+		before?.providerTimestamp != null &&
+		providerTimestamp < before.providerTimestamp
 	)
 		return null;
-	if (event.rawEvent?.startsWith("Subagent")) return null;
 	if (event.turnId && before?.retiredTurnIds.includes(event.turnId)) return null;
-	// A prompt identifies the beginning of a turn, not a generic keep-alive.
-	// Its replay after tools or Stop must not clear a later report/input request.
+	const reported = event.rawEvent === "WorkspaceContinuation";
+	const prompt = event.rawEvent === "UserPromptSubmit";
+	const stable = Boolean(event.turnId || event.providerEventId || providerTimestamp !== null);
 	if (
-		event.rawEvent === "UserPromptSubmit" &&
+		prompt &&
 		event.turnId &&
 		before?.turnId === event.turnId &&
 		before.rawEvent !== "SessionStart"
 	)
 		return null;
-	if (
-		(event.rawEvent === "PreCompact" || event.rawEvent === "PostCompact") &&
-		before?.alert === "task-complete"
-	)
-		return null;
-	const turnId = event.turnId || before?.turnId || null;
+	if (event.rawEvent === "SessionStart" && event.sessionSource === "resume" && before)
+		return before;
+	if (["PreCompact", "PostCompact"].includes(event.rawEvent ?? "") && before) return before;
+	if (event.rawEvent === "SessionStart" && event.sessionSource === "compact" && before)
+		return before;
+	// A missing turn cannot be assigned to the most recently observed turn. In particular,
+	// it cannot clear a newer report merely because the bridge ran again later.
+	if (before && (!stable || (before.turnId && !event.turnId)) && !reported) {
+		return { ...before, ordering: "uncertain" };
+	}
 	let retired = before?.retiredTurnIds ?? [];
 	if (event.turnId && before?.turnId && event.turnId !== before.turnId) {
-		if (retired.includes(event.turnId)) return null;
-		// A new prompt establishes a new turn. A newer timed active observation can
-		// recover a missed prompt. A foreign Stop cannot establish turn ordering.
-		const timedActivity =
-			event.alert === "active" &&
-			producerTimestamp !== null &&
-			(before.producerTimestamp === null || producerTimestamp > before.producerTimestamp);
-		if (event.rawEvent !== "UserPromptSubmit" && !timedActivity) return null;
+		// New turn identity alone does not order a foreign Stop/tool against current work.
+		if (!prompt) return null;
 		retired = [...retired, before.turnId].slice(-128);
 	} else if (
-		event.turnId &&
-		before?.turnId === event.turnId &&
-		before.alert === "task-complete" &&
-		event.alert !== "task-complete" &&
-		event.rawEvent !== "UserPromptSubmit" &&
-		event.rawEvent !== "WorkspaceContinuation" &&
-		!(event.rawEvent === "SessionStart" && event.sessionSource === "resume")
+		before?.alert === "task-complete" &&
+		event.alert === "active" &&
+		!prompt &&
+		!reported
 	) {
-		// Tool/compaction hooks from a completed turn cannot make it active again.
 		return null;
 	}
+	let permission =
+		event.rawEvent === "PermissionRequest"
+			? (event.permission ?? { outcome: "pending" as const })
+			: (event.permission ?? before?.permission ?? null);
+	const continuation =
+		event.rawEvent === "PermissionRequest"
+			? "none"
+			: reported
+				? "reported"
+				: prompt
+					? "prompt"
+					: (before?.continuation ?? "none");
+	// Only an explicitly correlated outcome can resolve a pending request. Tool execution,
+	// tool failure, Stop, and an unrelated request ID provide no such proof.
 	if (
-		event.rawEvent === "SessionStart" &&
-		event.sessionSource === "compact" &&
-		before?.alert === "task-complete"
+		event.permission &&
+		event.permission.outcome !== "pending" &&
+		(!event.permission.requestId || event.permission.requestId !== before?.permission?.requestId)
+	) {
+		permission = before?.permission ?? null;
+	}
+	if (event.rawEvent === "PermissionRequest" && !permission) permission = { outcome: "pending" };
+	let alert = event.alert;
+	if (permission && permission.outcome !== "allowed" && continuation === "none")
+		alert = "needs-input";
+	// Generic tool activity is not an answer to an outstanding question/failure.
+	if (
+		before?.alert === "needs-input" &&
+		event.alert === "active" &&
+		!prompt &&
+		!reported &&
+		!(event.permission?.outcome === "allowed" && permission?.outcome === "allowed")
 	)
-		return null;
+		alert = "needs-input";
+	const incomingEvidence = validateAgentEvidence(event.evidence, event.agent, event.rawEvent ?? "");
+	const evidence = incomingEvidence.length ? incomingEvidence : (before?.evidence ?? []);
+	// Keep request text beside the eventual reply/error. Never overwrite unresolved context.
+	const retained =
+		permission && continuation === "none"
+			? (before?.evidence ?? []).filter((e) => e.kind === "permission")
+			: [];
 	return {
 		version: 2,
-		alert: event.alert,
+		alert,
 		rawEvent: event.rawEvent ?? null,
-		turnId,
-		retiredTurnIds: retired,
-		producerTimestamp: producerTimestamp ?? before?.producerTimestamp ?? null,
+		turnId: event.turnId || (reported ? null : before?.turnId) || null,
+		retiredTurnIds: reported && before?.turnId ? [...retired, before.turnId].slice(-128) : retired,
+		producerTimestamp: event.producerTimestamp ?? before?.producerTimestamp ?? null,
+		providerTimestamp: providerTimestamp ?? before?.providerTimestamp ?? null,
+		seenEventIds: event.providerEventId
+			? [...(before?.seenEventIds ?? []), event.providerEventId].slice(-128)
+			: (before?.seenEventIds ?? []),
+		evidence:
+			prompt || reported
+				? []
+				: [
+						...retained,
+						...evidence.filter((e) => !retained.some((r) => r.sourceField === e.sourceField)),
+					].slice(0, 4),
+		permission,
+		ordering: stable || reported ? "identified" : "uncertain",
+		continuation,
 	};
 }

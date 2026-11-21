@@ -8,6 +8,10 @@ interface HookDiagnostic {
 	trust: "review-in-provider" | "provider-controlled";
 	lastAcceptedEventAt: number | null;
 	lastAcceptedRawEvent: string | null;
+	/** Capabilities observed on the last callback, not installation-time promises. */
+	lastIdentity: "turn" | "event" | "provider-time" | "legacy-uncertain" | null;
+	lastEvidenceFields: string[];
+	lastPermissionOutcome: "pending" | "allowed" | "denied" | "cancelled" | null;
 }
 const diagnostics = new Map<string, HookDiagnostic>();
 function get(provider: string): HookDiagnostic {
@@ -19,6 +23,9 @@ function get(provider: string): HookDiagnostic {
 			trust: provider === "codex" ? "review-in-provider" : "provider-controlled",
 			lastAcceptedEventAt: null,
 			lastAcceptedRawEvent: null,
+			lastIdentity: null,
+			lastEvidenceFields: [],
+			lastPermissionOutcome: null,
 		}
 	);
 }
@@ -34,6 +41,15 @@ export function recordAcceptedHookEvent(event: AgentEvent): void {
 		...get(event.agent),
 		lastAcceptedEventAt: event.timestamp,
 		lastAcceptedRawEvent: event.rawEvent ?? null,
+		lastIdentity: event.turnId
+			? "turn"
+			: event.providerEventId
+				? "event"
+				: event.providerTimestamp
+					? "provider-time"
+					: "legacy-uncertain",
+		lastEvidenceFields: (event.evidence ?? []).map((e) => e.sourceField).slice(0, 4),
+		lastPermissionOutcome: event.permission?.outcome ?? null,
 	});
 }
 export function getHookDiagnostics(): HookDiagnostic[] {
