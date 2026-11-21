@@ -203,6 +203,7 @@ export class FileInputSessions {
 			!sameTerminalProcess(target.identity, current) ||
 			typeof text !== "string" ||
 			!text.trim() ||
+			/^[!/]/.test(text.trimStart()) ||
 			Buffer.byteLength(text) > 16000 ||
 			hasUnsafeTerminalText(text.replaceAll("\n", ""))
 		)

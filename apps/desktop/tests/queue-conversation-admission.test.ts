@@ -192,3 +192,11 @@ test("multiple uncorrelated submissions in one chunk remain unavailable", () => 
 	});
 	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(false);
 });
+test("provider slash commands and shell shortcuts are not ordinary Queue replies", () => {
+	for (const text of ["/resume other-chat", "  /clear", "!echo unsafe", "\n!pwd"]) {
+		const f = fixture();
+		const lease = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+		expect(f.sessions.insertConversation("t", "c", lease.generation, text)).toBe("rejected");
+		expect(f.writes).toHaveLength(0);
+	}
+});

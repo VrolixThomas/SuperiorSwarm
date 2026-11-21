@@ -103,6 +103,11 @@ function receipt(row: typeof activityQueueDeliveries.$inferSelect): WorkspaceQue
 export async function workspaceReply(
 	input: WorkspaceQueueReplyInput
 ): Promise<WorkspaceQueueReplyResult> {
+	if (/^[!/]/.test(input.content.trimStart()))
+		return {
+			status: "rejected",
+			reason: "Open the chat to run provider commands. Queue replies accept ordinary messages.",
+		};
 	if (
 		!input.requestId ||
 		input.requestId.length > 128 ||
