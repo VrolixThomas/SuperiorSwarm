@@ -1,17 +1,13 @@
 import "./preload-electron-mock";
 import { beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import {
-	observeValidatedAgentEvent,
-	questionSourceId,
-	workspaceSourceId,
-} from "../src/main/activity-queue/agent-source";
+import { questionSourceId, workspaceSourceId } from "../src/main/activity-queue/agent-source";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
 import { listWorkspaceQueue } from "../src/main/activity-queue/workspace-queue";
 import { getDb } from "../src/main/db";
-import { agentMessages, projects, terminalSessions, workspaces } from "../src/main/db/schema";
+import { projects, terminalSessions, workspaces } from "../src/main/db/schema";
 import { AgentSessionManager } from "../src/main/services/agent-session-manager";
-import { setStatus } from "../src/main/services/workspace-service";
+import { sendMessage, setStatus } from "../src/main/services/workspace-service";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import type { AgentEvent } from "../src/shared/agent-events";
 import { seedCrossRepoOrchestrator, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
@@ -114,12 +110,12 @@ for (const provider of ["claude", "codex"] as const) {
 					s.manager.handleAgentEvent(s.event("UserPromptSubmit", "first"));
 					s.manager.handleAgentEvent(s.event("Stop", "first"));
 					await setStatus(s.ctx, { phase: "blocked", needs: "Choose amber or blue" });
-					expect(await s.items()).toHaveLength(2);
+					expect(await s.items()).toHaveLength(1);
 					// Repeated reads are not acknowledgments.
-					expect(await s.items()).toHaveLength(2);
+					expect(await s.items()).toHaveLength(1);
 					s.manager.handleAgentEvent(s.event("SessionStart", undefined, s.sibling));
 					s.manager.handleAgentEvent(s.event("UserPromptSubmit", "sibling-turn", s.sibling));
-					expect(await s.items()).toHaveLength(2);
+					expect(await s.items()).toHaveLength(1);
 					s.manager.handleAgentEvent(s.event("UserPromptSubmit", "second"));
 					expect(await s.items()).toHaveLength(0);
 					s.manager.handleAgentEvent(s.event("Stop", "first"));
@@ -131,7 +127,7 @@ for (const provider of ["claude", "codex"] as const) {
 				}
 			});
 		}
-		test(`GAP ${provider}/cross-repo/${managed ? "managed" : "manual"}: registered coordinator callback is rejected`, async () => {
+		test(`${provider}/cross-repo/${managed ? "managed" : "manual"}: registered coordinator callback is accepted`, async () => {
 			const s = await scenario(provider, "cross-repo", managed);
 			try {
 				if (managed)
@@ -143,16 +139,16 @@ for (const provider of ["claude", "codex"] as const) {
 							providerSessionId: "isolated-coordinator",
 							skipPermissions: false,
 						})
-					).toThrow("FOREIGN KEY constraint failed");
-				expect(observeValidatedAgentEvent(s.event("SessionStart"))).toBe(false);
-				expect(s.manager.handleAgentEvent(s.event("Stop", "completed"))).toBeNull();
-				expect(await s.items()).toHaveLength(0);
+					).not.toThrow();
+				expect(s.manager.handleAgentEvent(s.event("SessionStart"))).not.toBeNull();
+				expect(s.manager.handleAgentEvent(s.event("Stop", "completed"))).not.toBeNull();
+				expect(await s.items()).toHaveLength(1);
 			} finally {
 				s.manager.dispose();
 			}
 		});
 	}
-	test(`GAP ${provider}: known reporter is discarded from navigation and workspace/chat duplicate`, async () => {
+	test(`${provider}: known reporter is preserved in navigation`, async () => {
 		const s = await scenario(provider, "worktree", false);
 		try {
 			s.manager.handleAgentEvent(s.event("SessionStart"));
@@ -166,8 +162,13 @@ for (const provider of ["claude", "codex"] as const) {
 					}
 				).reporter.terminalId
 			).toBe(s.terminalId);
-			expect(report?.target).toEqual({ type: "workspace", workspaceId: s.workspaceId });
-			expect(await s.items()).toHaveLength(2);
+			expect(report?.target).toMatchObject({
+				type: "terminal",
+				workspaceId: s.workspaceId,
+				terminalId: s.terminalId,
+				providerSessionId: `${s.terminalId}-conversation`,
+			});
+			expect(await s.items()).toHaveLength(1);
 			// Identity-aware report cleanup does work when the reporting chat closes.
 			s.inventory.ids = [s.sibling];
 			expect(await s.items()).toHaveLength(0);
@@ -175,50 +176,48 @@ for (const provider of ["claude", "codex"] as const) {
 			s.manager.dispose();
 		}
 	});
-	test(`GAP ${provider}: untagged accepted prompt clears chat but leaves owned workspace attention`, async () => {
+	test(`${provider}: untagged prompt preserves report and exposes uncertain chat attention`, async () => {
 		const s = await scenario(provider, "folder", false);
 		try {
 			s.manager.handleAgentEvent(s.event("SessionStart"));
-			s.manager.handleAgentEvent(s.event("Stop"));
+			s.manager.handleAgentEvent(s.event("Stop", "before"));
 			await setStatus(s.ctx, { phase: "blocked", needs: "Choose amber" });
 			expect(s.manager.handleAgentEvent(s.event("UserPromptSubmit"))).not.toBeNull();
-			expect((await s.items()).map((item) => item.id)).toEqual([workspaceSourceId(s.workspaceId)]);
+			expect((await s.items()).map((item) => item.id)).toContain(workspaceSourceId(s.workspaceId));
+			expect(
+				(await s.items()).some((item) =>
+					item.reasons.some((reason) => reason.code === "callback-order-uncertain")
+				)
+			).toBe(true);
 		} finally {
 			s.manager.dispose();
 		}
 	});
-	test(`GAP ${provider}: structured question has no terminal ownership and survives reporter closure`, async () => {
+	test(`${provider}: structured question preserves ownership and retires on reporter closure`, async () => {
 		const s = await scenario(provider, "worktree", false);
 		try {
 			s.manager.handleAgentEvent(s.event("SessionStart"));
-			const id = `question-${s.terminalId}`;
-			getDb()
-				.insert(agentMessages)
-				.values({
-					id,
-					projectId: s.projectId,
-					fromWorkspaceId: s.workspaceId,
-					kind: "question",
-					content: "Synthetic question: amber or blue?",
-					createdAt: new Date(),
-				})
-				.run();
+			const { messageId: id } = await sendMessage(s.ctx, {
+				kind: "question",
+				content: "Synthetic question: amber or blue?",
+			});
 			expect((await s.items())[0]?.id).toBe(questionSourceId(id));
 			// UI says to answer in the chat, but ordinary accepted chat input has no
 			// structured inReplyTo and therefore cannot resolve this question.
 			s.manager.handleAgentEvent(s.event("UserPromptSubmit", "answer-in-chat"));
 			expect((await s.items())[0]?.id).toBe(questionSourceId(id));
-			s.inventory.ids = [s.sibling];
-			expect((await s.items())[0]?.id).toBe(questionSourceId(id));
-			expect((await s.items())[0]?.target).toEqual({
-				type: "workspace",
+			expect((await s.items())[0]?.target).toMatchObject({
+				type: "terminal",
 				workspaceId: s.workspaceId,
+				terminalId: s.terminalId,
 			});
+			s.inventory.ids = [s.sibling];
+			expect(await s.items()).toHaveLength(0);
 		} finally {
 			s.manager.dispose();
 		}
 	});
-	test(`GAP ${provider}: legacy Stop without turn identity resurrects attention after explicit working`, async () => {
+	test(`${provider}: untagged replay cannot reopen explicitly cleared work`, async () => {
 		const s = await scenario(provider, "worktree", false);
 		try {
 			s.manager.handleAgentEvent(s.event("SessionStart"));
@@ -229,12 +228,15 @@ for (const provider of ["claude", "codex"] as const) {
 			expect(await s.items()).toHaveLength(0);
 			// A re-executed old bridge stamps a new wall clock, but no turn identity.
 			expect(s.manager.handleAgentEvent(s.event("Stop"))).not.toBeNull();
+			expect(await s.items()).toHaveLength(0);
+			s.manager.handleAgentEvent(s.event("UserPromptSubmit", "fresh"));
+			s.manager.handleAgentEvent(s.event("Stop", "fresh"));
 			expect(await s.items()).toHaveLength(1);
 		} finally {
 			s.manager.dispose();
 		}
 	});
-	test(`GAP ${provider}: managed sibling prompt can clear a legacy ownerless manual report`, async () => {
+	test(`${provider}: managed sibling cannot clear a legacy ownerless manual report`, async () => {
 		const s = await scenario(provider, "worktree", false);
 		try {
 			s.manager.handleAgentEvent(s.event("SessionStart"));
@@ -252,7 +254,7 @@ for (const provider of ["claude", "codex"] as const) {
 			);
 			expect((await s.items()).map((i) => i.id)).toContain(workspaceSourceId(s.workspaceId));
 			s.manager.handleAgentEvent(s.event("UserPromptSubmit", "unrelated-managed-work", s.sibling));
-			expect((await s.items()).map((i) => i.id)).not.toContain(workspaceSourceId(s.workspaceId));
+			expect((await s.items()).map((i) => i.id)).toContain(workspaceSourceId(s.workspaceId));
 		} finally {
 			s.manager.dispose();
 		}

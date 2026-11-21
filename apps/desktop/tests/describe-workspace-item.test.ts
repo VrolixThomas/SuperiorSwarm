@@ -74,7 +74,7 @@ test("an input request or question shows the actual question", () => {
 	expect(item.subject).toBe("Which branch should I use?");
 	expect(item.evidence).toEqual(["Which branch should I use?"]);
 	expect(item.why).toBe("Answer the question");
-	expect(item.nextAction).toContain("answer the agent’s question");
+	expect(item.nextAction).toContain("explicit correlated answer");
 	const blocked = describe("agent-workspace", "Choose Option A, Option B, or Option C.", "blocked");
 	expect(blocked.evidence).toEqual(["Choose Option A, Option B, or Option C."]);
 	expect(blocked.openLabel).toBe("Open workspace to respond");

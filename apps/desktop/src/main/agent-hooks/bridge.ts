@@ -1,3 +1,5 @@
+import { admitAgentEvidence } from "../../shared/agent-evidence";
+
 /** Self-contained script installed beside the shell launcher (no runtime packages). */
 export const HOOK_BRIDGE_SOURCE = String.raw`
 const http = require("node:http");
@@ -5,6 +7,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const producerTimestamp = Date.now();
+const admitAgentEvidence = ${admitAgentEvidence.toString()};
 try {
   const env = process.env;
   if (!env.AGENT_NOTIFY_TOKEN) process.exit(0);
@@ -26,7 +29,7 @@ try {
   // A child hook can carry its parent's session_id. Never classify it as parent work.
   if (!rawEvent || rawEvent.startsWith("Subagent") || field("agent_id")) process.exit(0);
   if (env.AGENT_NOTIFY_AGENT === "codex" && rawEvent === "Stop") process.stdout.write("{}\n");
-  const params = new URLSearchParams({
+  const params = {
     rawEvent,
     terminalId,
     providerSessionId: field("session_id") || field("sessionID"),
@@ -36,12 +39,21 @@ try {
     turnId: field("turn_id") || (env.AGENT_NOTIFY_AGENT === "claude" ? field("prompt_id") : ""),
     sessionSource: field("source"),
     producerTimestamp: String(producerTimestamp),
-  });
-  const request = http.get({ hostname: "127.0.0.1", port,
-    path: "/event?" + params.toString(), headers: { Authorization: "Bearer " + env.AGENT_NOTIFY_TOKEN } },
+    providerEventId: field("event_id"),
+    providerTimestamp: typeof payload.event_timestamp === "number" ? String(payload.event_timestamp) : "",
+    evidence: admitAgentEvidence(payload, env.AGENT_NOTIFY_AGENT || "unknown", rawEvent),
+    permission: rawEvent === "PermissionRequest" ? {
+      requestId: field("permission_request_id") || field("tool_use_id") || undefined,
+      outcome: "pending",
+    } : undefined,
+  };
+  const body = JSON.stringify(params);
+  const request = http.request({ method: "POST", hostname: "127.0.0.1", port,
+    path: "/event", headers: { Authorization: "Bearer " + env.AGENT_NOTIFY_TOKEN, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } },
     (response) => response.resume());
   request.setTimeout(1500, () => request.destroy());
   request.on("error", () => {});
+  request.end(body);
 } catch {
   // Hook telemetry must never fail the user's agent turn or print payload/secrets.
 }

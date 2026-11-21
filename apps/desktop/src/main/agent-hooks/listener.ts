@@ -1,6 +1,7 @@
 // src/main/agent-hooks/listener.ts
 import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
+import { validateAgentEvidence } from "../../shared/agent-evidence";
 import { log } from "../logger";
 
 function parseProducerTimestamp(value: string | null): number | undefined {
@@ -26,7 +27,7 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 	const handlers = new Set<EventHandler>();
 	let server: Server | null = null;
 
-	const httpServer = createServer((req, res) => {
+	const httpServer = createServer(async (req, res) => {
 		const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
 		if (url.pathname === "/health") {
@@ -60,6 +61,33 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			return;
 		}
 
+		let body: Record<string, unknown> = {};
+		if (req.method === "POST") {
+			try {
+				let size = 0;
+				const chunks: Buffer[] = [];
+				for await (const chunk of req) {
+					size += chunk.length;
+					if (size > 32768) {
+						res.writeHead(413);
+						res.end();
+						return;
+					}
+					chunks.push(Buffer.from(chunk));
+				}
+				const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+					throw new Error("invalid body");
+				body = parsed;
+				for (const [key, value] of Object.entries(body)) {
+					if (typeof value === "string") url.searchParams.set(key, value);
+				}
+			} catch {
+				res.writeHead(400);
+				res.end();
+				return;
+			}
+		}
 		const rawEvent = url.searchParams.get("rawEvent");
 		const terminalId =
 			url.searchParams.get("terminalId") ?? url.searchParams.get("sessionId") ?? "";
@@ -101,6 +129,21 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			turnId: url.searchParams.get("turnId") || undefined,
 			sessionSource: url.searchParams.get("sessionSource") || undefined,
 			producerTimestamp: parseProducerTimestamp(url.searchParams.get("producerTimestamp")),
+			providerTimestamp: parseProducerTimestamp(url.searchParams.get("providerTimestamp")),
+			providerEventId: url.searchParams.get("providerEventId")?.slice(0, 256) || undefined,
+			evidence: validateAgentEvidence(body["evidence"], agent, rawEvent),
+			// Registered hooks report requests, not decisions. Generic tool activity/Stop
+			// must never be promoted to an allowed/denied permission outcome.
+			permission:
+				rawEvent === "PermissionRequest"
+					? {
+							outcome: "pending",
+							requestId:
+								typeof (body["permission"] as { requestId?: unknown })?.requestId === "string"
+									? (body["permission"] as { requestId: string }).requestId.slice(0, 256)
+									: undefined,
+						}
+					: undefined,
 		};
 
 		for (const handler of handlers) {

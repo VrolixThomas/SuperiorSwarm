@@ -974,6 +974,9 @@ if (isWorkspaceAgentOrCrossRepo) {
 			const callerHeader = isCrossRepoMode
 				? {
 						"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
+						...(process.env.AGENT_NOTIFY_TERMINAL_ID
+							? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
+							: {}),
 						...(isExternalManagerMode && process.env.SUPERIORSWARM_MANAGER_TOKEN
 							? { "X-Manager-Token": process.env.SUPERIORSWARM_MANAGER_TOKEN }
 							: {}),
@@ -989,6 +992,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 				headers: {
 					Authorization: authHeader,
 					...callerHeader,
+					"X-Queue-Reporter": JSON.stringify(ctx.queueReporter ?? null),
 					...(body ? { "Content-Type": "application/json" } : {}),
 				},
 				body: body ? JSON.stringify(body) : undefined,
@@ -1000,6 +1004,16 @@ if (isWorkspaceAgentOrCrossRepo) {
 			} catch {
 				parsed = { raw: text };
 			}
+			if (res.ok && ["/workspaces.set_status", "/workspaces.send_message"].includes(path)) {
+				parsed.queue_identity = {
+					protocol: 1,
+					capability: ctx.queueReporter ? "exact-conversation" : "missing-owner",
+					detail: ctx.queueReporter
+						? "Bound to the conversation registered when this MCP process started."
+						: "Conversation identity was unavailable at MCP startup. Exact question replies are unavailable; restart MCP after the conversation is registered.",
+				};
+			}
+
 			if (!res.ok) {
 				return {
 					content: [{ type: "text", text: JSON.stringify({ status: res.status, ...parsed }) }],
