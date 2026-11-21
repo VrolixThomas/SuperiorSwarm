@@ -11,6 +11,7 @@ export type QueuePermissionState =
 export interface QueuePermissionCapability {
 	capability: "hook-response" | "unavailable";
 	requestId?: string;
+	allowOnce?: boolean;
 	state?: QueuePermissionState;
 	expiresAt?: number;
 	summary?: string;
