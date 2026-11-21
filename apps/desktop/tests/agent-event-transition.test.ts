@@ -93,7 +93,7 @@ for (const provider of ["claude", "codex"])
 			expect(denied?.attention?.kind).toBe("agent-input");
 			expect(denied?.attention?.permission?.outcome).toBe("denied");
 		});
-		test("legacy replay requires confirmation and a genuine later turn still appears", () => {
+		test("legacy replay keeps cleared attention cleared; a genuine later turn still appears", () => {
 			const stop = transition(null, event("Stop", { turnId: undefined }));
 			expect(stop?.attention?.ordering).toBe("uncertain");
 			expect(stop?.attention?.kind).toBe("agent-input");
@@ -106,8 +106,8 @@ for (const provider of ["claude", "codex"])
 				continued?.snapshot,
 				event("Stop", { turnId: undefined, producerTimestamp: 9999 })
 			);
-			expect(replay?.attention?.reason.code).toBe("callback-order-uncertain");
-			expect(replay?.attention?.kind).not.toBe("agent-ready");
+			expect(replay?.attention).toBeNull();
+			expect(replay?.snapshot.ordering).toBe("uncertain");
 			const prompt = transition(
 				replay?.snapshot,
 				event("UserPromptSubmit", { turnId: "genuine-new-turn" })
@@ -147,10 +147,15 @@ test("view-only resume and compaction preserve attention and fingerprint", () =>
 			evidence: admitAgentEvidence({ last_assistant_message: "Synthetic reply" }, "claude", "Stop"),
 		})
 	);
-	for (const rawEvent of ["SessionStart", "PreCompact", "PostCompact"])
+	for (const rawEvent of ["SessionStart"])
 		expect(
 			transition(stop?.snapshot, event(rawEvent, { sessionSource: "resume" }))?.fingerprint
 		).toBe(stop?.fingerprint);
+});
+test("compaction cannot mutate completed work", () => {
+	const stop = transition(null, event("Stop"));
+	for (const rawEvent of ["PreCompact", "PostCompact"])
+		expect(transition(stop?.snapshot, event(rawEvent))).toBeNull();
 });
 test("same-turn new text changes the exact revision fingerprint", () => {
 	const a = transition(

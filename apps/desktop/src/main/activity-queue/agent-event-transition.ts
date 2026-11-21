@@ -44,7 +44,7 @@ export function transitionAgentEvent(
 					: "Ready for next input";
 	const evidence = snapshot.evidence ?? [];
 	const attention: AgentAttention | null =
-		snapshot.alert === "active" && !uncertain
+		snapshot.alert === "active"
 			? null
 			: {
 					kind:
