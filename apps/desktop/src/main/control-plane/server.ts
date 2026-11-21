@@ -84,10 +84,7 @@ import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
-async function queueContextIdentity(
-	entityId: string,
-	terminalHeader: string | string[] | undefined
-) {
+function queueContextIdentity(entityId: string, terminalHeader: string | string[] | undefined) {
 	const terminalId = typeof terminalHeader === "string" ? terminalHeader : undefined;
 	const reporter = workspaceReporter(entityId, terminalId);
 	const base = { queueReporter: reporter, queueProtocol: 2 };
@@ -112,13 +109,12 @@ async function queueContextIdentity(
 				session.providerSessionId))
 	)
 		return base;
-	const queueAdmission = reporterAdmissions.issue(entity.entity, terminalId, session?.provider);
-	const admitted = await reporterAdmissions.wait(queueAdmission.token, entityId, terminalId, () =>
-		workspaceReporter(entityId, terminalId)
-	);
-	return admitted.status === "admitted"
-		? { ...base, queueReporter: admitted.reporter }
-		: { ...base, queueAdmission };
+	// Return the original first-generation lease immediately so initialize/tool discovery
+	// cannot be delayed by hooks. Post-connect/first-tool admission retains all checks.
+	return {
+		...base,
+		queueAdmission: reporterAdmissions.issue(entity.entity, terminalId, session?.provider),
+	};
 }
 
 function workspaceAgentContext(row: {
@@ -738,7 +734,7 @@ async function handleRequest(
 					if (workspace) {
 						respond(res, 200, requestId, {
 							...workspaceAgentContext(workspace),
-							...(await queueContextIdentity(workspaceId, req.headers["x-terminal-id"])),
+							...queueContextIdentity(workspaceId, req.headers["x-terminal-id"]),
 						});
 						return;
 					}
@@ -760,7 +756,7 @@ async function handleRequest(
 					if (coordinator) {
 						respond(res, 200, requestId, {
 							...crossRepoContext(coordinator),
-							...(await queueContextIdentity(workspaceId, req.headers["x-terminal-id"])),
+							...queueContextIdentity(workspaceId, req.headers["x-terminal-id"]),
 						});
 						return;
 					}

@@ -106,7 +106,15 @@ for (const provider of ["claude", "codex"] as const)
 		const trace: Record<string, unknown>[] = [];
 		try {
 			expect(manager.getSession(terminalId)).toBeNull();
+			const startupBegan = performance.now();
 			const [cold, waiting] = await Promise.all([connect(), connect()]);
+			const catalog = await cold.listTools();
+			const catalogReadyMs = performance.now() - startupBegan;
+			expect(catalog.tools.some((tool) => tool.name === "set_status")).toBe(true);
+			expect(manager.getSession(terminalId)).toBeNull();
+			// Tool discovery must be ready before any provider hook, without the former 5s wait.
+			expect(catalogReadyMs).toBeLessThan(2000);
+			trace.push({ phase: "catalog ready before first hook", catalogReadyMs });
 			const reportPromise = cold.callTool({
 				name: "set_status",
 				arguments: { phase: "blocked", needs: "Choose amber or blue" },
