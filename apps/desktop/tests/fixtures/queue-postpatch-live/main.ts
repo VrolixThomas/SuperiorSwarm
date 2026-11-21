@@ -147,7 +147,7 @@ async function run() {
 	// Observe the real MCP's first context response without changing it or its pinned identity.
 	writeFileSync(
 		join(root, "mcp-observer.mjs"),
-		`import fs from 'node:fs'; const original = globalThis.fetch; globalThis.fetch = async (...args) => { const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,mode:context.mode})+'\\n'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
+		`import fs from 'node:fs'; const original = globalThis.fetch; globalThis.fetch = async (...args) => { const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); const record = phase => fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({phase,at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,mode:context.mode})+'\\n'); record('context-response'); await new Promise(resolve=>setTimeout(resolve, ${Number(process.env["SS_QUEUE_CONTEXT_DELAY_MS"] ?? 0)})); record('context-released'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
 	);
 	mergeClaudeHooks(
 		join(root, "settings.json"),
