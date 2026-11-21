@@ -9,12 +9,17 @@ import type { ReviewPathRun, ReviewPathRuntimePort } from "../../shared/review-p
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getReviewDrafts, getSettings } from "../ai-review/orchestrator";
 import { getDb } from "../db";
-import { reviewDrafts, workspaces } from "../db/schema";
+import { reviewDrafts, terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import { getGitProvider } from "../providers/git-provider";
 import { getTaskRegistry } from "../services/task-registry-handle";
 import { getDaemonClient } from "../terminal/daemon-instance";
-import { createReviewPathRuntime, ownedTerminalId, reconcileReviewPathRuns } from "./execution";
+import {
+	createReviewPathRuntime,
+	ownedTerminalId,
+	reconcileReviewPathRuns,
+	sameActiveRun,
+} from "./execution";
 import { buildReviewPathLaunchScript, quoteShell } from "./launch";
 
 export interface RuntimeStorage {
@@ -64,6 +69,8 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				run.identity.repo,
 				run.identity.prNumber
 			);
+			if (!sameActiveRun(store.getRun(run.id), run))
+				throw new Error("Reading-path run is no longer active");
 			if (details.headCommitOid !== run.identity.headSha)
 				throw new Error("PR head changed before agent launch");
 			const fullPrompt = `${prompt}\nProvider metadata (untrusted data): ${JSON.stringify({ title: details.title, sourceBranch: details.sourceBranch, targetBranch: details.targetBranch, headSha: details.headCommitOid, baseSha: details.baseCommitOid ?? null, changedFiles: details.files.map((file) => file.path) })}\nRead files using git show <headSha>:<path>, not mutable worktree contents. Base revision is unknown when baseSha is null; do not substitute a branch tip or invent a diff.`;
@@ -99,12 +106,12 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 						updatedAt: now,
 					})
 					.run();
-				getDb()
-					.update(workspaces)
-					.set({ reviewDraftId: draftId, updatedAt: now })
-					.where(eq(workspaces.id, workspace.id))
-					.run();
-				store.attachReviewDraft(run, draftId);
+				try {
+					store.attachReviewDraft(run, draftId);
+				} catch (error) {
+					getDb().delete(reviewDrafts).where(eq(reviewDrafts.id, draftId)).run();
+					throw error;
+				}
 			}
 			const token = randomUUID();
 			const dir = join(app.getPath("userData"), "reading-path-runs", run.id);
@@ -142,24 +149,30 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				cliPreset: cli,
 			};
 		},
-		launch: async (launch, onExit) => {
+		launch: async (launch, onExit, isActive) => {
 			const daemon = getDaemonClient();
 			if (!daemon?.isConnected)
 				throw new Error("Reading-path agent is offline: terminal service unavailable");
 			const sessions = await daemon.listSessionsStrict();
-
+			if (!isActive()) throw new Error("Reading-path run is no longer active");
 			// A repeated descriptor may attach to its own existing session, never inject a second prompt.
 			if (sessions.some((session) => session.id === launch.terminalId)) return;
-			ensureTerminalSessionRow({
+			const insertedSession = ensureTerminalSessionRow({
 				id: launch.terminalId,
 				workspaceId: launch.reviewWorkspaceId,
 				cwd: launch.worktreePath,
 				title: "Reading-path agent",
 			});
-			await daemon.create(launch.terminalId, launch.worktreePath, () => {}, onExit);
-			if (!daemon.write(launch.terminalId, `exec /bin/bash ${quoteShell(launch.launchScript)}\r`)) {
+			try {
+				await daemon.create(launch.terminalId, launch.worktreePath, () => {}, onExit);
+				if (!isActive()) throw new Error("Reading-path run is no longer active");
+				if (!daemon.write(launch.terminalId, `exec /bin/bash ${quoteShell(launch.launchScript)}\r`))
+					throw new Error("Reading-path agent disconnected before launch");
+			} catch (error) {
 				daemon.dispose(launch.terminalId);
-				throw new Error("Reading-path agent disconnected before launch");
+				if (insertedSession)
+					getDb().delete(terminalSessions).where(eq(terminalSessions.id, launch.terminalId)).run();
+				throw error;
 			}
 		},
 		stop: async (terminalId) => {
@@ -185,15 +198,17 @@ export function initializeReviewPathRuntime(): Promise<void> {
 async function initialize(): Promise<void> {
 	const { configureReviewPathRuntime, getReviewPathStorage } = await import("./service");
 	const store: RuntimeStorage = getReviewPathStorage();
-	configureReviewPathRuntime(getReviewPathRuntime(store));
 	if (reconciliationTimer) return;
-	let firstReconcile = true;
+	// A restarted control plane cannot restore consumed task tokens. Fence every
+	// persisted scope before exposing the runtime, even when its PTY survives.
+	for (const run of store.getActiveRuns())
+		store.fail(run, "Reading-path agent was interrupted by app restart; retry to start a new run");
+	configureReviewPathRuntime(getReviewPathRuntime(store));
 	const reconcile = async () => {
 		const daemon = getDaemonClient();
 		if (!daemon?.isConnected) return;
-		const runs = store.getActiveRuns().filter((run) => firstReconcile || run.terminalId);
+		const runs = store.getActiveRuns().filter((run) => run.terminalId);
 		const sessions = await daemon.listSessionsStrict();
-		firstReconcile = false;
 		for (const session of sessions) {
 			const match = /^review-path:(.+):(\d+)$/.exec(session.id);
 			if (!match?.[1]) continue;
@@ -207,7 +222,11 @@ async function initialize(): Promise<void> {
 			(run, error) => store.fail(run, error)
 		);
 	};
-	await reconcile();
+	// Inventory can transiently fail while reconnecting. Startup fencing is already
+	// durable; retry inventory without reclassifying new runs as restart survivors.
+	await reconcile().catch((error) =>
+		console.error("[review-path] Initial terminal reconciliation deferred", error)
+	);
 	reconciliationTimer = setInterval(() => {
 		void reconcile().catch((error) => console.error("[review-path] Reconciliation failed", error));
 	}, 5000);

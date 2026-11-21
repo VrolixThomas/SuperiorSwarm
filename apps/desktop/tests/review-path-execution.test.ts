@@ -100,6 +100,9 @@ describe("owned reading path execution", () => {
 		expect(h.prompts[0]).toContain(run.identity.headSha);
 		expect(h.prompts[0]).toContain('"questionId":"q1"');
 		expect(h.prompts[0]).toContain('"side":"LEFT"');
+		expect(h.prompts[0]).toContain("First call get_review_path");
+		expect(h.prompts[0]).toContain("run.conversationId");
+		expect(h.prompts[0]).toContain("matching headSha");
 		await h.runtime.cancelQuestion({ run: qrun });
 		expect(h.stopped).toEqual(["review-path:ask-1:1"]);
 	});

@@ -401,7 +401,19 @@ export function useLiveReviewPath(identity: ReviewPathIdentity | undefined) {
 		}, 1500);
 		return () => clearInterval(timer);
 	}, [controller]);
-	return { state, controller };
+	const lifecycle = useRef({ controller, mounted: true });
+	lifecycle.current.controller = controller;
+	useEffect(() => {
+		lifecycle.current.mounted = true;
+		return () => {
+			lifecycle.current.mounted = false;
+		};
+	}, []);
+	const isCurrent = useCallback(
+		() => lifecycle.current.mounted && lifecycle.current.controller === controller,
+		[controller]
+	);
+	return { state, controller, isCurrent };
 }
 export interface ReviewPathSourceOptions {
 	fixture?: boolean;
@@ -430,7 +442,9 @@ export function useReviewPath(
 					headSha: details.headCommitOid,
 				}
 			: undefined);
-	const { state, controller } = useLiveReviewPath(options.fixture ? undefined : identity);
+	const { state, controller, isCurrent } = useLiveReviewPath(
+		options.fixture ? undefined : identity
+	);
 	const lastOptions = useRef<{ agentId: string; alsoReview: boolean } | undefined>(undefined);
 	const start = useCallback(
 		(settings: { agentId: string; alsoReview: boolean }) => {
@@ -441,10 +455,10 @@ export function useReviewPath(
 					settings.alsoReview
 				)
 				.then((result) => {
-					if (result?.launch) options.onLaunch?.(result.launch);
+					if (result?.launch && isCurrent()) options.onLaunch?.(result.launch);
 				});
 		},
-		[controller, options.onLaunch]
+		[controller, options.onLaunch, isCurrent]
 	);
 	if (options.fixture) return fixture;
 	const path = state.snapshot?.path ?? null;

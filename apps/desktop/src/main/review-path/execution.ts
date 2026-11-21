@@ -18,7 +18,11 @@ export interface ReviewPathExecutionDeps {
 		agentId?: string,
 		alsoReview?: boolean
 	) => Promise<OwnedReviewPathLaunch>;
-	launch: (launch: OwnedReviewPathLaunch, onExit: (code: number) => void) => Promise<void>;
+	launch: (
+		launch: OwnedReviewPathLaunch,
+		onExit: (code: number) => void,
+		isActive: () => boolean
+	) => Promise<void>;
 	stop: (terminalId: string) => Promise<void>;
 }
 export function ownedTerminalId(run: ReviewPathRun): string {
@@ -56,10 +60,19 @@ export function createReviewPathRuntime(deps: ReviewPathExecutionDeps): ReviewPa
 				const launch = await deps.prepare(run, prompt, agentId, alsoReview);
 				if (launch.terminalId !== id) throw new Error("Unexpected reading-path terminal ownership");
 				if (!active(run)) throw new Error("Reading-path run is no longer active");
-				await deps.launch(launch, (code) => {
-					if (active(run)) deps.fail(run, `Agent exited before recording a result (exit ${code})`);
-				});
-				if (!active(run)) await deps.stop(id);
+				await deps.launch(
+					launch,
+					(code) => {
+						if (active(run))
+							deps.fail(run, `Agent exited before recording a result (exit ${code})`);
+					},
+					() => active(run)
+				);
+				if (!active(run)) {
+					await deps.stop(id);
+					if (deps.getRun(run.id)?.state !== "completed")
+						throw new Error("Reading-path run is no longer active");
+				}
 				return launch;
 			} catch (error) {
 				if (active(run)) deps.fail(run, error instanceof Error ? error.message : String(error));

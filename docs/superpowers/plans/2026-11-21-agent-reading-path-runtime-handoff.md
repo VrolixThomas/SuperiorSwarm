@@ -1,40 +1,58 @@
 # Lane B runtime handoff
 
-Base frontend: `163c7059`. Shared contract dependency: A's `963c0b56`, cherry-picked here as equivalent `120bf0ec`; integrate only one copy. A owns storage/service/schema/router/MCP. This lane adds no migrations or router registration.
+Base frontend `163c7059`. Initial B implementation: `15af833e`, `2b78db36`; earlier handoff commits `247216eb`, `e63ee394`.
 
-Implementation commits: `15af833e` and `2b78db36`; initial handoff `247216eb`.
+A dependencies integrated for assembled validation: `963c0b56` → `3e71b80e` → `3064b315` → `213fba2f`. Local equivalents are `120bf0ec`, `e549160e`, `44e01b18`, `99d9c7af`. Integrate each dependency once. The new B follow-up changes only B runtime/adapters/tests and this handoff; no A schema, router, capability, or storage code changed.
 
-## Integration
+Provider deployment also needs C's verified file-manifest commit `00174a1e7bf1791802f818a7021d79e8fb26b1e2` on `be9631d7`. C was not cherry-picked here; the assembled test supplies explicit complete/incomplete provider doubles to A's real validator.
 
-- Call `initializeReviewPathRuntime()` from `main/review-path/runtime.ts` after DB, task registry, daemon and providers initialize, before accepting mapping requests. It installs the port through A's `configureReviewPathRuntime` and reconciles durable runs against terminal inventory. Missing processes become explicit failures; no restart prompt is injected into any terminal.
-- Runtime expects A's service exports `getReviewPathStorage`, `configureReviewPathRuntime`, `getReviewPathApplication`. Store methods: `getRun`, `getActiveRuns`, `fail`, `attachReviewDraft`. TaskMode must include `review-path`.
-- `alsoReview` creates an existing-schema local review draft, links it to the workspace, and binds it through `attachReviewDraft` before token registration. A must finish/fail/cancel/supersede that draft with the mapping. MCP tools `add_review_finding`/`set_review_summary` are strictly local; no provider posting is invoked.
-- Parent UI: pass full `identity` (or workspaceId plus exact details head) into `useReviewPath`, and full `identity` into `useAskAgent`. Both accept `onLaunch`. Attach the returned **existing terminalId**, reviewWorkspaceId and worktreePath. Do not call `launchReviewTerminal` or write launchScript again: main already launched the owned PTY. A's shared launch result needs these optional descriptor fields plus cliPreset.
-- Ask returns `status`, `error`, `questions`, and `cancel(questionId)` in addition to messages/send/available. Parent owns final UI error/pending/cancel presentation.
-- Existing `auto-trigger.ts` invokes mapping before legacy automatic review. `pr-poller.ts` reconciles eligible existing requests on successful polls after the DB transaction, keeping first-provider bootstrap silent. C confirmed no poller collision.
+## Integration contract
+
+- Call `initializeReviewPathRuntime()` after DB, task registry, daemon and providers initialize, before accepting mapping/Ask requests. It installs the port using A's service.
+- Startup fails all persisted running mapping/question scopes as interrupted, even if their PTY survived. Old capabilities are revoked. No prompt is sent. Manual Retry creates a new scope; durable auto-claims prevent silently relaunching a failed/cancelled head. Transient terminal inventory failure defers cleanup without repeating startup fencing against new runs.
+- Runtime validates the registered review workspace and current exact provider head, writes private prompt files, registers task mode `review-path`, creates an owned terminal, and returns its attachment descriptor.
+- Parent UI: pass full `identity` (or workspaceId plus exact details head) into `useReviewPath`; pass full `identity` into `useAskAgent`. Both accept `onLaunch`. Attach the returned **existing terminalId**, reviewWorkspaceId and worktreePath. Do not call `launchReviewTerminal` or write launchScript again: main already launched the owned PTY. Both hooks now suppress delayed attachment after identity change or unmount.
+- Ask returns `status`, `error`, `questions`, and `cancel(questionId)` alongside messages/send/available. Parent owns final presentation. Only the current conversation and full run/head identity are displayed; answers inherit their correlated question anchor. An older failure cannot mask a newer pending question.
+- `alsoReview` creates an existing-schema local review draft and binds it with A's `attachReviewDraft` before task registration. A owns draft completion/failure/cancellation with the mapping. Findings and summaries stay local.
+- Existing `auto-trigger.ts` invokes mapping before legacy automatic review. `pr-poller.ts` reconciles eligible existing requests after successful poll transactions while preserving first-provider bootstrap silence. C confirmed no poller collision.
+
+## Follow-up defects reproduced and fixed
+
+1. Surviving startup PTYs left durable scopes running with unusable task bootstrap. Startup now interrupts both mapping and Ask scopes independently of terminal inventory.
+2. Cancellation during the awaited provider metadata read created an orphan `in_progress` review draft. The runtime rechecks the durable scope before side effects; storage owns workspace binding, and failed binding removes the new draft.
+3. Cancellation during terminal inventory could still send a late launch prompt. Runtime checks its active scope after inventory and after terminal creation.
+4. Cancellation during terminal creation left a persisted empty terminal. Failed pre-prompt launch disposes only its own terminal and removes only the session row it inserted.
+5. Late Map/Ask callbacks could attach an old-head terminal after switching identity or unmounting. Hook delivery is now guarded by current controller and mount lifetime.
+6. Ask exposed historical conversations and errors. It now selects current-conversation questions by full run identity, preserves correlated anchors, and evaluates the latest question's failure separately from pending history.
+7. Follow-up prompts lacked conversation instructions. Ask now calls `get_review_path` first and restricts history to the exact run conversation and head; ambiguous or unavailable context remains explicit.
 
 ## Source routing for parent CLAUDE.md
 
-- Mapping/Ask launches: `main/review-path/execution.ts` fences duplicate/pending launches and cancellation; `runtime.ts` validates the registered review workspace and exact provider head, writes private prompt files, registers scoped MCP task context, creates an owned daemon terminal, and returns its attachment descriptor.
-- Launch terminal IDs are deterministic `review-path:<run id>:<run version>`. Stop never accepts unrelated persisted terminal IDs. The launch shell uses `exec` so agent exit also ends the owned PTY; reconciliation compensates for renderer attachment replacing terminal callbacks.
-- Prompt/tool contract: `main/review-path/prompt.ts`; only fixed executable/flags become shell syntax in `launch.ts`. PR metadata is data; immutable `git show` reads are required and unknown base revisions remain unknown.
-- Backend path/Ask polling and stale-response fencing: `renderer/lib/review-path-source.ts`. Fixture registry remains explicit opt-in only. Conversations are keyed by full workspace/provider/repo/PR/head identity; no synthetic offline agent answer is created.
-- Settings: `review-path-settings-store.ts` imports legacy browser settings through server's import-once method and thereafter treats backend values as authoritative. Failed saves expose errors and do not persist pretend success.
-- Auto-map: `auto-map.ts` is the injected policy; `auto-map-runtime.ts` uses A's durable automatic claim and existing automatic-review ledger. Existing workspaces are reused without resetting a live review worktree. Unsupported/unlinked/authored/closed/unknown-head PRs do not auto-map.
+- `main/review-path/execution.ts`: duplicate launch ownership, active-scope checks, cancellation and ordinary inventory reconciliation.
+- `main/review-path/runtime.ts`: startup interruption, production provider/DB/task-token/terminal connection. Terminal IDs are `review-path:<run id>:<run version>`; Stop cannot select unrelated terminals. `exec` ends the owned PTY when its agent exits; polling compensates for renderer attachment replacing terminal callbacks.
+- `main/review-path/prompt.ts` and `launch.ts`: exact MCP contract, scoped conversation history, immutable `git show` instructions, fixed executable/flags, shell-quoted prompt-file paths. Unknown base revisions remain unknown.
+- `renderer/lib/review-path-source.ts`: durable polling, late-read sequence fencing, exact-identity controller cache and guarded launch delivery. Fixture registry remains explicit opt-in.
+- `panel/useAskAgent.ts`: current conversation/head selection, question/answer correlation and error/pending behavior.
+- `review-path-settings-store.ts`: legacy import-once through the backend and authoritative backend updates; failed reads/saves expose errors without claiming success.
+- `auto-map.ts` / `auto-map-runtime.ts`: injected trigger policy, durable claim and existing review ledger coordination; only an actual matching local draft counts as an automatic code review. Existing review worktrees are reused without resetting a live session.
 
-## Verification
+## Verification matrix
 
-Logs: `/tmp/agent-reading-runtime-validation/`.
+Logs: `/tmp/agent-reading-runtime-validation/assembled-*`.
 
-- 73 tests pass across 16 targeted files, including existing path/model/settings/rail/panel/workspace/poller/auto-review regressions. The shell test executes fake Codex and Claude binaries in a temporary directory; it verifies exact prompt bytes and scoped task token without invoking a real provider.
-- New tests cover duplicate starts, cancellation during preparation, wrong question identity, offline failures, unrelated terminal rejection, late poll fencing, full identity mismatches, restart reconciliation, completed-run exit, duplicate auto triggers and server-authoritative legacy settings migration.
-- Scoped Biome: 21 files pass. `git diff --check` passes.
-- Production build attempted and blocked by the intentionally absent A `main/review-path/service.ts` dependency. Main TypeScript additions are the absent service and `review-path` TaskMode. Renderer/test checks additionally require A's AppRouter registration. Existing global diagnostics remain; no clean global type-check is claimed. Integrated build/types must run after A lands.
-- Graphify is unavailable (`No module named graphify`, also reported by normal commit hook). No graph, global MCP config, dependency package, lockfile or parent/sibling worktree changed.
-- No real provider prompts, provider writes, comments, review submissions, merges or external messages were used for testing.
+| Check | Result | Evidence/limits |
+|---|---|---|
+| Targeted A+B regressions | Pass | 95 reported tests across 24 entry files; isolated wrappers additionally execute their component/native checks. |
+| Actual storage/router/capability/runtime integration | Pass | Real migrations, SQLite storage, production runtime, tRPC, authenticated HTTP task bootstrap and registered MCP tools; temporary Git repo, provider doubles and fake daemon only. Covers partial mapping, local findings, scoped answer, cancellation races, retry, head supersession, offline Ask and incomplete metadata. |
+| Codex/Claude prompt-file launch | Pass | Temporary fake executables verify exact prompt bytes, task token, descriptor and safe quoting; no real provider prompt. |
+| React stale launch delivery | Pass | Actual hooks with isolated RPC: changed head and unmount cannot attach late Map/Ask terminals. |
+| Production build | Pass | Electron main/preload/renderer build succeeds with A dependencies. |
+| TypeScript delta | Pass relative to baseline | Normalized main 52→52, renderer 63→63, test 119→119 unique diagnostic sets; zero added diagnostics. Global type checks remain red on existing errors. |
+| Scoped Biome / diff check | Pass | Nine changed TS/TSX files; no fixes outstanding. |
+| Parent UI assembly / C live providers | Unverified here | Parent owns final identity/attachment/error-control glue and C integration; target these in the requested independent verification phase. |
+| Live CLI/provider smoke | Not run | No real agent prompts, comments, review submissions, merges, or external writes during testing. |
+| Graphify | Unavailable | Normal hooks report `No module named graphify`; no hooks bypassed. |
 
-## Remaining integration checks
+No new B blocker remains. Dependencies were integrated only in this isolated worktree. No global MCP configuration, package/lockfile, parent/sibling worktree, push, or merge changed.
 
-A must confirm durable MCP capability behavior across app/control-plane restart; ephemeral consumed task tokens cannot authorize a fresh connection by themselves. Auto claims should preserve user cancellation and prevent automatic relaunch loops. Parent/integration must exercise the real assembled application with isolated DB/provider/runner doubles after A and B are combined. Main runtime and renderer tests here are independently injected, not an end-to-end claim for the unassembled lanes.
-
-Self-review: accuracy 4/5 (isolated evidence, no live-provider test); completeness 3/5 (A integration and restart capability verification still pending); clarity 4/5 (explicit APIs/dependencies, parent owns UI glue); actionability 4/5 (committable code and tests, build awaits A); conciseness 4/5 (focused modules, handoff necessarily detailed). Overall 3.8/5. Highest-value next check is integrated A+B execution with durable MCP capabilities and renderer terminal attachment.
+Self-review: accuracy 4/5 (real local integration evidence, no live CLI test); completeness 4/5 (B scope complete; parent UI/C assembly independent); clarity 4/5 (source/API routing explicit); actionability 4/5 (isolated reproduction and exact dependencies); conciseness 4/5 (integration test is intentionally broad). Overall 4.0/5. Next verification priority: parent assembled UI and complete provider manifests, using isolated runners before any separately authorized live prompt.
