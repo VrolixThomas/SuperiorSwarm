@@ -29,3 +29,23 @@ export function isQuestionAnswer(question: AgentMessage, answer: AgentMessage): 
 		(recipient.entity?.id ?? recipient.workspaceId) === (owner.entity?.id ?? owner.workspaceId)
 	);
 }
+
+/** A continuation may expose only the exact answer already bound to the reporting chat. */
+export function isAnswerContinuation(
+	question: AgentMessage,
+	answer: AgentMessage,
+	target: import("../../shared/queue-answer-continuation").QueueAnswerTarget
+): boolean {
+	if (!isQuestionAnswer(question, answer) || !question.reporter || !answer.recipient) return false;
+	const recipient = answer.recipient;
+	return (
+		recipient.type === "terminal" &&
+		target.entity !== undefined &&
+		recipient.workspaceId === target.workspaceId &&
+		recipient.terminalId === target.terminalId &&
+		recipient.provider === target.provider &&
+		recipient.providerSessionId === target.providerSessionId &&
+		(recipient.entity?.kind ?? "workspace") === target.entity.kind &&
+		(recipient.entity?.id ?? recipient.workspaceId) === target.entity.id
+	);
+}
