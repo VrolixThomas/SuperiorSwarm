@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceQueueItem } from "../../shared/activity-queue";
-import { focusQueueDestination, openQueueTarget } from "../lib/activity-queue-navigation";
+import { focusQueueDestination } from "../lib/activity-queue-navigation";
+import { openQueueItem } from "../lib/queue-item-open";
 import {
 	nextPendingItem,
 	pendingQueueItems,
@@ -40,7 +41,7 @@ export function useQueueNavigation() {
 			}
 			if (item.stale)
 				throw new Error("This activity could not be confirmed. Refresh and try again.");
-			const destination = await openQueueTarget(item.target);
+			const destination = await openQueueItem(item);
 			useQueueNavigationStore.getState().select(item, rows);
 			useQueueNavigationStore.getState().closePeek(false);
 			focusQueueDestination(destination);
