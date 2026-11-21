@@ -1,0 +1,64 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-question-reply.test.tsx:
+(pass) correlated answer uses displayed message, owner and revision; saved is not retrieved or resumed [12.81ms]
+(pass) transport error preserves input; stale revision refuses send until explicitly reviewed [10.24ms]
+(pass) backend conflict preserves the pending answer and does not claim delivery [2.48ms]
+(pass) refresh failure after saved cannot reenable duplicate delivery [2.56ms]
+(pass) drafts remain associated with their question when selecting another item [1.38ms]
+(pass) persisted saved answer remains readable after remount without claiming task execution [0.94ms]
+(pass) recipient uses human names once and keeps binding identifiers in collapsed technical details [3.06ms]
+(pass) coordinator recipient names its own chat rather than a linked project [0.57ms]
+
+tests/queue-view.test.tsx:
+(pass) Open only navigates; Done sends displayed revision and Undo restores it [17.16ms]
+(pass) conflict refreshes same item without advancing or opening another [7.25ms]
+(pass) Later then Bring back use exact revisions and keyboard options [12.54ms]
+(pass) selection survives refresh and typing never runs quick actions [6.08ms]
+(pass) new revision closes the Later menu instead of acting on unseen activity [4.19ms]
+(pass) loading, empty and fetch errors offer honest recovery states [0.89ms]
+(pass) unavailable permission items remain readable but cannot be handled [6.36ms]
+(pass) keyboard focus follows the next row after Done [9.43ms]
+(pass) Later keeps category counts tied to pending items [10.52ms]
+(pass) Later does not offer an Undo receipt for a different previously completed item [8.50ms]
+(pass) selected item keeps its source and next action visible [1.75ms]
+(pass) narrow details action exposes full context and returns keyboard focus [6.47ms]
+(pass) canonical grouped actions preserve every displayed member receipt including Undo [10.80ms]
+(pass) provider request evidence keeps provenance and does not claim permission execution [1.69ms]
+(pass) handling an item from narrow details returns focus to the visible next row [5.28ms]
+(pass) unconfirmed permission outcome is shown as unknown without invented success [1.48ms]
+(pass) an in-flight answer blocks other queue actions and preserves its draft on failure [9.57ms]
+(pass) question, reply and command error evidence preserve multiline plain text [1.33ms]
+
+tests/queue-permission-open.test.ts:
+(pass) explicit permission Open releases exact displayed receipt without deciding [0.19ms]
+(pass) expired/unsupported/non-permission Open performs no decision [0.13ms]
+(pass) uncertain release blocks navigation instead of silently claiming native prompt [0.04ms]
+(pass) unavailable after a live wait was observed cannot silently navigate with that wait held
+
+tests/queue-jump.test.tsx:
+(pass) peek owns focus, suppresses letter actions during typing, restores terminal focus on Escape [3.36ms]
+(pass) refresh never adopts changed occurrence; explicit selection accepts latest receipt [6.14ms]
+(pass) peek limits rows, excludes Later, does not navigate or acknowledge on viewing or refresh [3.25ms]
+(pass) Tab and Shift Tab wrap within peek [1.59ms]
+(pass) queue bar is buttons only: terminal letter input never dismisses activity [0.51ms]
+
+tests/queue-permission-actions.test.tsx:
+(pass) changed permission occurrence never exposes preceding request's controls during capability fetch [2.47ms]
+
+tests/queue-conversation-reply-ui.test.tsx:
+(pass) reply submits displayed full group once and labels only terminal admission [4.54ms]
+(pass) transport error check uses identical request/content and preserves draft [5.92ms]
+(pass) group member or exact conversation replacement cannot rebase a typed reply [4.60ms]
+(pass) definite unavailable permits editing and an explicit new attempt without automatic send [4.63ms]
+
+tests/queue-permission-decision.test.tsx:
+(pass) view/hover do nothing; double click carries all exact receipts only once [2.46ms]
+(pass) unsupported capabilities expose Open only [0.21ms]
+(pass) response loss cannot retry [0.44ms]
+(pass) explicit Open releases wait before navigation [0.22ms]
+
+ 44 pass
+ 0 fail
+ 177 expect() calls
+Ran 44 tests across 7 files. [321.00ms]

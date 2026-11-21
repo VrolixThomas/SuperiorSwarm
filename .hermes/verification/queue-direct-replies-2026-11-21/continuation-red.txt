@@ -1,0 +1,53 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-conversation-replies.test.ts:
+(pass) actual persisted daemon admission admits once; repeated/concurrent/reconnected requests cannot duplicate [39.54ms]
+(pass) busy, hibernated, legacy daemon, stale source and provider replacement never submit [33.22ms]
+(pass) busy transition at atomic daemon boundary rejects without delivery [12.83ms]
+(pass) a later occurrence during admission survives, and its old receipt is rejected [20.99ms]
+(pass) lost daemon response uses committed receipt and never resubmits [12.81ms]
+(pass) crash before receipt remains uncertain and blocks retry with any request ID [15.26ms]
+(pass) a definitely rejected request remains immutable while an explicit fresh attempt may retry [19.67ms]
+(pass) a newly appearing structured question at admission blocks ordinary free-form input [13.21ms]
+(pass) claude worktree: exact delivery preserves sibling, identity and later occurrence [34.00ms]
+(pass) claude folder: exact delivery preserves sibling, identity and later occurrence [32.43ms]
+(pass) claude orchestrator: exact delivery preserves sibling, identity and later occurrence [33.83ms]
+(pass) claude coordinator: exact delivery preserves sibling, identity and later occurrence [51.46ms]
+(pass) codex worktree: exact delivery preserves sibling, identity and later occurrence [38.15ms]
+(pass) codex folder: exact delivery preserves sibling, identity and later occurrence [38.18ms]
+(pass) codex orchestrator: exact delivery preserves sibling, identity and later occurrence [38.05ms]
+(pass) codex coordinator: exact delivery preserves sibling, identity and later occurrence [40.90ms]
+(pass) a newly grouped same-conversation receipt cannot be omitted at daemon admission [16.48ms]
+286 |  await setStatus({kind:"workspace",workspaceId,projectId,terminalId:"owner"},{phase:"blocked",needs:"A genuinely later report"});
+287 |  const manager=new AgentSessionManager({daemonClient:daemon as unknown as DaemonClient,processController:{inspectForeground:async()=>({status:"agent"}),terminateForeground:async()=>({ok:false})},getSettings:()=>({enabled:false,idleMinutes:5,keepOrchestratorsAwake:true})});
+288 |  try{
+289 |  const event={terminalId:"owner",sessionId:"owner",workspaceId,providerSessionId:"owner-chat",agent:"codex",alert:"active" as const,rawEvent:"UserPromptSubmit",timestamp:Date.now(),turnId:"delayed-submission",cwd:"/tmp"};
+290 |  expect(manager.handleAgentEvent(event)).not.toBeNull();
+291 |  expect(getDb().select().from(workspaces).where(eq(workspaces.id,workspaceId)).get()?.needs).toBe("A genuinely later report");
+                                                                                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "A genuinely later report"
+Received: null
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/tests/queue-conversation-replies.test.ts:291:94)
+(fail) admitted: report after handoff survives delayed provider prompt without upgrading delivery [66.08ms]
+286 |  await setStatus({kind:"workspace",workspaceId,projectId,terminalId:"owner"},{phase:"blocked",needs:"A genuinely later report"});
+287 |  const manager=new AgentSessionManager({daemonClient:daemon as unknown as DaemonClient,processController:{inspectForeground:async()=>({status:"agent"}),terminateForeground:async()=>({ok:false})},getSettings:()=>({enabled:false,idleMinutes:5,keepOrchestratorsAwake:true})});
+288 |  try{
+289 |  const event={terminalId:"owner",sessionId:"owner",workspaceId,providerSessionId:"owner-chat",agent:"codex",alert:"active" as const,rawEvent:"UserPromptSubmit",timestamp:Date.now(),turnId:"delayed-submission",cwd:"/tmp"};
+290 |  expect(manager.handleAgentEvent(event)).not.toBeNull();
+291 |  expect(getDb().select().from(workspaces).where(eq(workspaces.id,workspaceId)).get()?.needs).toBe("A genuinely later report");
+                                                                                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "A genuinely later report"
+Received: null
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/tests/queue-conversation-replies.test.ts:291:94)
+(fail) uncertain: report after handoff survives delayed provider prompt without upgrading delivery [33.11ms]
+
+ 17 pass
+ 2 fail
+ 125 expect() calls
+Ran 19 tests across 1 file. [650.00ms]
