@@ -49,6 +49,14 @@ const required = (key: string) => {
 };
 const root = required("SS_QUEUE_FIXTURE_ROOT");
 const desktop = required("SS_QUEUE_SOURCE_DESKTOP");
+const checkedHead = execFileSync("git", ["-C", desktop, "rev-parse", "HEAD"], {
+	encoding: "utf8",
+}).trim();
+const stagingHeadAtLaunch = execFileSync(
+	"git",
+	["-C", desktop, "rev-parse", "integration/queue-remediation-2026-11-21"],
+	{ encoding: "utf8" }
+).trim();
 const evidence = join(desktop, "../../.hermes/investigations/queue-e2e-postpatch-2026-11-21");
 app.setPath("userData", join(root, "profile"));
 app.setPath("sessionData", join(root, "profile"));
@@ -225,15 +233,6 @@ async function run() {
 			for (const managed of [false, true]) {
 				const name = `${provider}-${kind}-${managed ? "dispatch" : "manual"}`;
 				if (selected && !name.includes(selected)) continue;
-				// Production dispatch service's coordinator support is tested independently; no surrogate workspace.
-				if (kind === "coordinator" && managed) {
-					results.push({
-						name,
-						status: "unverified-production-dispatch",
-						reason: "Dispatch service coordinator acceptance is under independent review",
-					});
-					continue;
-				}
 				step = name;
 				const id = name;
 				const terminal = `terminal-${name}`;
@@ -380,6 +379,7 @@ async function run() {
 					writeFileSync(script, content);
 					daemon.write(terminal, `sh ${quote(script)}\r`);
 				};
+				if (!managed) assert.equal(manager.getSession(terminal), null);
 				if (managed)
 					await dispatchAgent(
 						{ workspaceId: id, cliPreset: provider, skipPermissions: false, prompt },
@@ -412,6 +412,7 @@ async function run() {
 				const first = JSON.parse(readFileSync(resultPath, "utf8"));
 				assert.equal(first.code, 0);
 				assert.equal(first.question, true);
+				assert.equal(manager.getSession(terminal)?.managed, managed);
 				const own = async () =>
 					(await listWorkspaceQueue()).items.filter((i) => i.context.workspaceId === id);
 				await until(async () => (await own()).length > 0);
@@ -504,7 +505,7 @@ async function run() {
 				});
 				writeFileSync(
 					join(evidence, "native-live-results.json"),
-					JSON.stringify({ root, results, trace }, null, 2)
+					JSON.stringify({ checkedHead, stagingHeadAtLaunch, root, results, trace }, null, 2)
 				);
 			}
 	writeFileSync(join(root, "result.json"), JSON.stringify({ passed: true }));
@@ -512,7 +513,7 @@ async function run() {
 async function finish(code: number) {
 	writeFileSync(
 		join(evidence, "native-live-results.json"),
-		JSON.stringify({ root, step, results, trace }, null, 2)
+		JSON.stringify({ checkedHead, stagingHeadAtLaunch, root, step, results, trace }, null, 2)
 	);
 	listener.stop();
 	await control?.stop();

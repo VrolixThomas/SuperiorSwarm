@@ -4,7 +4,8 @@ const { spawn } = require("node:child_process");
 const readline = require("node:readline");
 const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const launch = process.argv.slice(3);
-let session = config.sessionId;
+const sessionFlag = launch.indexOf("--session-id");
+let session = sessionFlag >= 0 ? launch[sessionFlag + 1] : config.sessionId;
 let turn = 0;
 const rl = readline.createInterface({ input: process.stdin });
 async function run(prompt) {
