@@ -39,15 +39,15 @@ test("canonical pending excludes Later and acknowledged rows", () => {
 	).toEqual(["2", "3"]);
 });
 test("next stops at end and does not skip shifted successor after current resolves", () => {
-	const rows = [row("1"), row("2"), row("3")];
-	const session = bindQueueSession(rows[1]!, rows);
+	const rows = [row("1"), row("2"), row("3")] as const;
+	const session = bindQueueSession(rows[1], rows);
 	expect(nextPendingItem(rows, null)?.id).toBe("1");
 	expect(nextPendingItem(rows, session)?.id).toBe("3");
-	expect(nextPendingItem([rows[0]!, rows[2]!], session)?.id).toBe("3");
-	expect(nextPendingItem(rows, bindQueueSession(rows[2]!, rows))).toBeNull();
-	expect(nextPendingItem([rows[0]!], session)).toBeNull();
+	expect(nextPendingItem([rows[0], rows[2]], session)?.id).toBe("3");
+	expect(nextPendingItem(rows, bindQueueSession(rows[2], rows))).toBeNull();
+	expect(nextPendingItem([rows[0]], session)).toBeNull();
 	expect(nextPendingItem([row("1", 2)], session)).toBeNull();
-	expect(nextPendingItem([row("2.5"), rows[2]!], session)?.id).toBe("2.5");
+	expect(nextPendingItem([row("2.5"), rows[2]], session)?.id).toBe("2.5");
 });
 test("new occurrence and grouped receipt change require explicit selection", () => {
 	const item = { ...row("1"), members: [{ id: "report", revision: 2 }] };
@@ -71,6 +71,9 @@ test("destination matches exact entity chat provider and conversation", () => {
 		providerSessionId: "conversation",
 	};
 	expect(matchesQueueDestination(item, visible)).toBe(true);
+	expect(
+		matchesQueueDestination({ ...item, target: { type: "workspace", workspaceId: "ws" } }, visible)
+	).toBe(false);
 	for (const change of [
 		{ terminalId: "sibling" },
 		{ provider: "claude" },

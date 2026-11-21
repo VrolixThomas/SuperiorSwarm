@@ -23,11 +23,13 @@ export function QueueQuestionReply({
 	available,
 	answer,
 	refresh,
+	inputId = "queue-question-answer",
 }: {
 	item: WorkspaceQueueItem;
 	available: boolean;
 	answer?: AnswerQuestion;
 	refresh: () => Promise<unknown>;
+	inputId?: string;
 }) {
 	const [drafts, setDrafts] = useState<Record<string, Draft>>({});
 	const [busy, setBusy] = useState(false);
@@ -166,11 +168,11 @@ export function QueueQuestionReply({
 								"The exact recipient could not be verified. Sending an answer from here is unavailable."}
 						</p>
 					)}
-					<label className="block" htmlFor="queue-question-answer">
+					<label className="block" htmlFor={inputId}>
 						Your answer
 					</label>
 					<textarea
-						id="queue-question-answer"
+						id={inputId}
 						value={draft.content}
 						disabled={busy}
 						maxLength={16000}

@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type {
 	WorkspaceQueueItem,
 	WorkspaceQueueRevisionInput,
 } from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
 import { trpc } from "../../trpc/client";
+import { QueueItemActions } from "./QueueItemActions";
 import { queueButton } from "./QueuePanel";
 import { QueueQuestionReply } from "./QueueQuestionReply";
 
@@ -29,6 +30,7 @@ export function QueueCompactActions({
 	const undoDone = trpc.activityQueue.undoDone.useMutation();
 	const answer = trpc.activityQueue.workspaceAnswer.useMutation();
 	const lock = useRef(false);
+	const answerInputId = useId();
 	const [busy, setBusy] = useState(false);
 	const [options, setOptions] = useState<ReturnType<typeof laterOptions>>([]);
 	const [message, setMessage] = useState<string | null>(null);
@@ -97,8 +99,15 @@ export function QueueCompactActions({
 			)}
 			<div hidden={!expanded} className="max-h-[35vh] overflow-y-auto">
 				{children}
+				<QueueItemActions
+					item={item}
+					disabled={disabled || busy}
+					refresh={refresh}
+					onOpen={onOpen}
+				/>
 				{item.question && (
 					<QueueQuestionReply
+						inputId={answerInputId}
 						item={item}
 						available={!disabled && !busy}
 						answer={async (input) => {

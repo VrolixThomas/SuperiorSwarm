@@ -90,11 +90,12 @@ export function matchesQueueDestination(
 			target.providerSessionId === visible.providerSessionId
 		);
 	return (
-		(target.type === "workspace" &&
+		!visible.terminalId &&
+		((target.type === "workspace" &&
 			visible.entity.kind === "workspace" &&
 			target.workspaceId === visible.entity.id) ||
-		(target.type === "coordinator" &&
-			visible.entity.kind === "coordinator" &&
-			target.coordinatorId === visible.entity.id)
+			(target.type === "coordinator" &&
+				visible.entity.kind === "coordinator" &&
+				target.coordinatorId === visible.entity.id))
 	);
 }

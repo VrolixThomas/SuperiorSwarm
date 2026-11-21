@@ -8,6 +8,7 @@ import {
 	queueOccurrenceKey,
 	queueSessionStatus,
 } from "../../lib/queue-navigation-session";
+import { QueueLinkedWorkContext } from "./QueueLinkedWorkContext";
 import { queueButton } from "./QueuePanel";
 import { QueueRow } from "./QueueRow";
 
@@ -165,7 +166,7 @@ export function QueuePeek({
 					</button>
 				</header>
 				<div className="flex min-h-0 flex-col overflow-y-auto min-[1100px]:flex-row">
-					<div className="min-w-0 flex-1 overflow-x-auto">
+					<div className="min-w-0 shrink-0 overflow-x-auto min-[1100px]:flex-1">
 						<div className="min-w-[460px]">
 							{rows.map((item, index) => (
 								<QueueRow
@@ -206,6 +207,7 @@ export function QueuePeek({
 											: "Current activity unavailable."}
 								</output>
 							)}
+							<QueueLinkedWorkContext items={selected.context.linkedWork} />
 							{actions(selected, !canAct)}
 						</div>
 					)}

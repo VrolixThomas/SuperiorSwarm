@@ -11,7 +11,7 @@ import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
 import { QueueBar } from "./queue/QueueBar";
 import { QueueView } from "./queue/QueueView";
-import { QueueWorkspacePending } from "./queue/QueueWorkspacePending";
+import { QueueWorkspaceHeader } from "./queue/QueueWorkspaceHeader";
 import { ReviewModeShell } from "./review-mode/ReviewModeShell";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
@@ -85,7 +85,12 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 					<QueueBar entity={queueEntity} />
 					{queueEntity && (
 						<div className="shrink-0">
-							<QueueWorkspacePending entity={queueEntity} />
+							<QueueWorkspaceHeader
+								key={`${queueEntity.kind}:${queueEntity.id}`}
+								entity={queueEntity}
+								title={wsQuery.data?.name ?? coordinatorQuery.data?.name ?? "Workspace"}
+								projectName={projectQuery.data?.name}
+							/>
 						</div>
 					)}
 					<div className="min-h-0 flex-1">
@@ -123,8 +128,13 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
 			<QueueBar entity={queueEntity} />
 			{queueEntity && (
-				<div className="app-drag flex shrink-0 items-center justify-end border-b border-[var(--border-subtle)] px-3">
-					<QueueWorkspacePending entity={queueEntity} />
+				<div className="shrink-0">
+					<QueueWorkspaceHeader
+						key={`${queueEntity.kind}:${queueEntity.id}`}
+						entity={queueEntity}
+						title={wsQuery.data?.name ?? coordinatorQuery.data?.name ?? "Workspace"}
+						projectName={projectQuery.data?.name}
+					/>
 				</div>
 			)}
 			{/* Branch indicator bar */}
