@@ -233,7 +233,9 @@ test("retained permission plus reply and error remain bounded without dropping e
 	expect(
 		stop?.snapshot.evidence?.reduce((total, entry) => total + entry.text.length, 0)
 	).toBeLessThanOrEqual(4096);
-	expect(stop?.snapshot.evidence?.some((e) => e.kind === "reply")).toBe(true);
+	expect(stop?.snapshot.evidence?.some((e) => e.sourceField === "last_assistant_message")).toBe(
+		true
+	);
 	expect(stop?.snapshot.evidence?.some((e) => e.kind === "permission")).toBe(true);
 	expect(stop?.snapshot.evidence?.some((e) => e.kind === "error")).toBe(true);
 });

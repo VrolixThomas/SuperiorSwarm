@@ -61,3 +61,21 @@ test("listener admission reconstructs provenance and rejects forged/unknown fiel
 	expect(evidence[0]?.provider).toBe("claude");
 	expect(evidence[0]?.rawEvent).toBe("Stop");
 });
+
+test("Claude StopFailure admits rendered error and error_details with error provenance", () => {
+	const entries = admitAgentEvidence(
+		{
+			error: "rate_limit",
+			error_details: "Synthetic 429 details",
+			last_assistant_message: "Synthetic rendered error",
+		},
+		"claude",
+		"StopFailure"
+	);
+	expect(entries.every((entry) => entry.kind === "error")).toBe(true);
+	expect(
+		entries.some(
+			(entry) => entry.sourceField === "error_details" && entry.text === "Synthetic 429 details"
+		)
+	).toBe(true);
+});

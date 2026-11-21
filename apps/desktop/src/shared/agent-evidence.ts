@@ -13,10 +13,10 @@ export function admitAgentEvidence(
 	const row = payload as Record<string, unknown>;
 	const fields: [string, AgentEvidence["kind"]][] = [];
 	if (["Stop", "Interrupt", "StopFailure"].includes(rawEvent)) {
-		fields.push(["last_assistant_message", "reply"]);
+		fields.push(["last_assistant_message", rawEvent === "StopFailure" ? "error" : "reply"]);
 	}
 	if (["StopFailure", "PostToolUseFailure"].includes(rawEvent)) {
-		fields.push(["error", "error"], ["error_message", "error"]);
+		fields.push(["error_details", "error"], ["error", "error"], ["error_message", "error"]);
 	}
 	if (rawEvent === "PermissionRequest") {
 		fields.push(
