@@ -30,7 +30,7 @@ export function transitionAgentEvent(
 	const continuation = snapshot.continuation ?? "none";
 	const permission = snapshot.permission ?? null;
 	const needsPermission = permission && permission.outcome !== "allowed" && continuation === "none";
-	const failed = snapshot.rawEvent === "StopFailure";
+	const failed = snapshot.failure ?? snapshot.rawEvent === "StopFailure";
 	const uncertain = ordering === "uncertain";
 	const label = needsPermission
 		? permission.outcome === "pending"
@@ -78,7 +78,7 @@ export function transitionAgentEvent(
 		JSON.stringify([
 			value.alert,
 			value.turnId,
-			value.rawEvent === "StopFailure",
+			value.failure ?? value.rawEvent === "StopFailure",
 			value.evidence ?? [],
 			value.permission ?? null,
 			value.continuation ?? "none",

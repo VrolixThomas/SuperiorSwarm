@@ -15,6 +15,8 @@ export interface AgentEventSnapshot {
 	permission?: AgentPermission | null;
 	ordering?: "identified" | "uncertain";
 	continuation?: "none" | "prompt" | "reported";
+	/** Failure is turn state, not merely the most recent callback name. */
+	failure?: boolean;
 }
 
 function readSnapshot(value: unknown): AgentEventSnapshot | null {
@@ -104,7 +106,13 @@ export function nextAgentEventSnapshot(
 		permission = before?.permission ?? null;
 	}
 	if (event.rawEvent === "PermissionRequest" && !permission) permission = { outcome: "pending" };
-	let alert = event.alert;
+	const failure =
+		!prompt &&
+		!reported &&
+		Boolean(
+			event.rawEvent === "StopFailure" || before?.failure || before?.rawEvent === "StopFailure"
+		);
+	let alert = failure ? ("needs-input" as const) : event.alert;
 	if (permission && permission.outcome !== "allowed" && continuation === "none")
 		alert = "needs-input";
 	// Generic tool activity is not an answer to an outstanding question/failure.
@@ -123,8 +131,10 @@ export function nextAgentEventSnapshot(
 			: (before?.evidence ?? []);
 	// Keep request text beside the eventual reply/error. Never overwrite unresolved context.
 	const retained =
-		permission && continuation === "none" && event.rawEvent !== "PermissionRequest"
-			? (before?.evidence ?? []).filter((e) => e.kind === "permission")
+		(failure || (permission && continuation === "none")) && event.rawEvent !== "PermissionRequest"
+			? (before?.evidence ?? []).filter(
+					(e) => e.kind === "permission" || (failure && e.kind === "error")
+				)
 			: [];
 	return {
 		version: 2,
@@ -153,5 +163,6 @@ export function nextAgentEventSnapshot(
 		permission,
 		ordering: stable || reported ? "identified" : "uncertain",
 		continuation,
+		failure,
 	};
 }

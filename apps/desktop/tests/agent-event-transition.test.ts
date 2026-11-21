@@ -291,3 +291,25 @@ test("a distinct permission request replaces stale request text instead of relab
 	);
 	expect(missing?.attention?.evidence).toEqual([]);
 });
+
+test("failure receipt and error survive generic Stop and compaction until a real continuation", () => {
+	const failed = transition(
+		null,
+		event("StopFailure", {
+			evidence: admitAgentEvidence({ error: "Synthetic failure" }, "claude", "StopFailure"),
+		})
+	);
+	const stopped = transition(failed?.snapshot, event("Stop"));
+	expect(stopped?.attention?.kind).toBe("agent-input");
+	expect(stopped?.attention?.reason.code).toBe("turn-failed");
+	expect(stopped?.attention?.evidence[0]?.text).toBe("Synthetic failure");
+	expect(stopped?.fingerprint).toBe(failed?.fingerprint);
+	expect(stopped?.preserveRevision).toBe(true);
+	expect(transition(stopped?.snapshot, event("PostCompact"))).toBeNull();
+	const continued = transition(stopped?.snapshot, event("UserPromptSubmit", { turnId: "turn-2" }));
+	expect(continued?.attention).toBeNull();
+	expect(continued?.snapshot.failure).toBe(false);
+	expect(
+		transition(continued?.snapshot, event("Stop", { turnId: "turn-2" }))?.attention?.kind
+	).toBe("agent-ready");
+});
