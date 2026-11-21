@@ -1,4 +1,5 @@
 const entry = process.argv[2];
+if (!entry || !process.argv[3]) throw Error("Entry and output directory required");
 const result = await Bun.build({
 	entrypoints: [entry],
 	outdir: process.argv[3],

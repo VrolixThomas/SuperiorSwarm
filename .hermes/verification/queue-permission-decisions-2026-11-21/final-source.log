@@ -1,0 +1,159 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-agent-source.test.ts:
+(pass) idle shell is not ready; explicit blocked and done are durable and working resolves [18.95ms]
+(pass) answers resolve only their exact question; opening and reconciling do not handle [4.89ms]
+(pass) two terminals remain independent; Stop means next input and active clears only that session [19.79ms]
+(pass) codex: direct chat input clears dispatched attention and identical later completion returns [42.17ms]
+(pass) claude: direct chat input clears dispatched attention and identical later completion returns [37.97ms]
+(pass) direct input in a sibling chat and background tool activity leave dispatched reports pending [9.84ms]
+(pass) a prompt produced before a newer workspace report cannot clear it on delayed delivery [16.83ms]
+(pass) typing and waking to read do not resolve session attention before a provider continuation [8.82ms]
+(pass) ordinary chat input does not invent an answer; only a reply delivered to the asker resolves the question [6.81ms]
+(pass) missing/mismatched identities never create or clear attention [4.35ms]
+(pass) unique provider identity is accepted, ambiguous provider identity is rejected [12.90ms]
+(pass) newly persisted generic idle session is not treated as turn completion; deletion resolves [9.91ms]
+(pass) router checks authoritative revision before handling; exact terminal works without workspace hint [209.85ms]
+(pass) restart bootstrap recovers explicit persisted needs-input but not generic idle [258.63ms]
+(pass) repeated turns reappear while duplicate and out-of-order events preserve current state [19.68ms]
+(pass) workspace navigation lookup exposes authoritative path and review identity [2.26ms]
+(pass) codex: 55 turns through listener, manager and durable queue survive approvals, compaction and restart [1108.66ms]
+(pass) claude: 55 turns through listener, manager and durable queue survive approvals, compaction and restart [497.33ms]
+(pass) fresh explicit generation start can reuse a terminal; delayed old generation cannot reclaim it [4.55ms]
+(pass) bridge invocation time cannot recover a missed prompt or invent the next turn [5.79ms]
+(pass) failure retains unresolved permission and reopens its revised evidence [4.77ms]
+(pass) codex: a direct reply clears the exact manual chat's bound workspace report [24.59ms]
+(pass) claude: a direct reply clears the exact manual chat's bound workspace report [14.76ms]
+(pass) working status clears its chat's old turn, rejects replay, and allows the next completion [13.73ms]
+(pass) working status without a valid reporter cannot clear arbitrary chats [4.25ms]
+(pass) replacement retires even a registered generation that never emitted its first callback [2.94ms]
+
+tests/agent-evidence-persistence.test.ts:
+(pass) claude: acknowledged failure stays handled through Stop, compaction and missing-turn replay [10.08ms]
+(pass) codex: acknowledged failure stays handled through Stop, compaction and missing-turn replay [8.72ms]
+
+tests/queue-permission-runtime.test.ts:
+(pass) claude/worktree: admitted exact source request responds without clearing attention [21.95ms]
+(pass) claude/worktree: replacement while inventory awaits refuses original decision [16.18ms]
+(pass) claude/worktree: sibling cannot decide owner; closing owner releases only its wait [344.71ms]
+(pass) claude/folder: admitted exact source request responds without clearing attention [42.63ms]
+(pass) claude/folder: replacement while inventory awaits refuses original decision [23.85ms]
+(pass) claude/folder: sibling cannot decide owner; closing owner releases only its wait [356.45ms]
+(pass) claude/orchestrator: admitted exact source request responds without clearing attention [53.88ms]
+(pass) claude/orchestrator: replacement while inventory awaits refuses original decision [27.41ms]
+(pass) claude/orchestrator: sibling cannot decide owner; closing owner releases only its wait [377.47ms]
+(pass) claude/coordinator: admitted exact source request responds without clearing attention [78.65ms]
+(pass) claude/coordinator: replacement while inventory awaits refuses original decision [44.72ms]
+(pass) claude/coordinator: sibling cannot decide owner; closing owner releases only its wait [425.26ms]
+(pass) codex/worktree: admitted exact source request responds without clearing attention [116.77ms]
+(pass) codex/worktree: replacement while inventory awaits refuses original decision [60.76ms]
+(pass) codex/worktree: sibling cannot decide owner; closing owner releases only its wait [444.01ms]
+(pass) codex/folder: admitted exact source request responds without clearing attention [126.36ms]
+(pass) codex/folder: replacement while inventory awaits refuses original decision [69.70ms]
+(pass) codex/folder: sibling cannot decide owner; closing owner releases only its wait [469.02ms]
+(pass) codex/orchestrator: admitted exact source request responds without clearing attention [147.97ms]
+(pass) codex/orchestrator: replacement while inventory awaits refuses original decision [82.97ms]
+(pass) codex/orchestrator: sibling cannot decide owner; closing owner releases only its wait [467.05ms]
+(pass) codex/coordinator: admitted exact source request responds without clearing attention [205.78ms]
+(pass) codex/coordinator: replacement while inventory awaits refuses original decision [115.16ms]
+(pass) codex/coordinator: sibling cannot decide owner; closing owner releases only its wait [548.39ms]
+(pass) visible/unknown terminals never hold a hook; navigating to a pending request releases without deciding or clearing [124.85ms]
+(pass) claude fresh background dispatch establishes exact hidden generation without renderer mount [72.48ms]
+(pass) codex fresh background dispatch establishes exact hidden generation without renderer mount [73.23ms]
+(pass) claude cold background dispatch admits only its first validated provider conversation [89.76ms]
+(pass) codex cold background dispatch admits only its first validated provider conversation [94.19ms]
+
+tests/queue-permission-summary.test.ts:
+(pass) action preview bounds and redacts quoted credentials without forwarding arbitrary tool input [0.52ms]
+(pass) complete known arguments can be reviewed, unknown or long ones cannot
+(pass) Allow requires a complete nonempty tool name
+
+tests/queue-permissions.test.ts:
+(pass) permission request lifecycle (transport stand-ins) > exact waiting request sends once; stdout receipt is not execution [0.15ms]
+(pass) permission request lifecycle (transport stand-ins) > specific deny response
+(pass) permission request lifecycle (transport stand-ins) > specific open response [0.10ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects revision
+(pass) permission request lifecycle (transport stand-ins) > rejects members
+(pass) permission request lifecycle (transport stand-ins) > rejects sibling
+(pass) permission request lifecycle (transport stand-ins) > rejects generation
+(pass) permission request lifecycle (transport stand-ins) > rejects expiry
+(pass) permission request lifecycle (transport stand-ins) > rejects disconnect
+(pass) permission request lifecycle (transport stand-ins) > concurrent ambiguous requests cancel both; replay cannot rebind [0.17ms]
+(pass) permission request lifecycle (transport stand-ins) > lost response stays uncertain without retry [0.02ms]
+(pass) permission request lifecycle (transport stand-ins) > legacy/provider unsupported requests have Open fallback
+(pass) incomplete action summary blocks Allow server-side but preserves Deny
+(pass) resolved request retention is bounded without a 512/4096 lifetime exhaustion [25.65ms]
+(pass) replacement cancels eagerly without a queue observer [301.07ms]
+(pass) periodic monitors avoid expensive process inspection but decisions recheck exactly [302.53ms]
+
+tests/queue-permission-transport.test.ts:
+(pass) native Node HTTP and real bridge subprocess: both provider stand-ins, allow/deny/Open/timeout/cancel [1015.31ms]
+
+tests/queue-permission-decision.test.tsx:
+(pass) view/hover do nothing; double click carries all exact receipts only once [10.84ms]
+(pass) unsupported capabilities expose Open only [0.82ms]
+(pass) response loss cannot retry [1.44ms]
+(pass) explicit Open releases wait before navigation [1.43ms]
+
+tests/agent-hooks/listener.test.ts:
+(pass) AgentAlertListener > returns 200 and maps rawEvent via agent registry [0.58ms]
+(pass) AgentAlertListener > returns 400 for missing rawEvent param [0.20ms]
+(pass) AgentAlertListener > returns 204 for unknown agent (silently ignored) [0.17ms]
+(pass) AgentAlertListener > returns 204 when agent mapper returns null (unrecognised event) [0.14ms]
+(pass) AgentAlertListener > returns 404 for unknown paths [0.12ms]
+(pass) AgentAlertListener > emits AgentEvent on valid request [0.15ms]
+(pass) AgentAlertListener > getPort returns the bound port
+(pass) AgentAlertListener > returns 200 with app identifier on /health [0.16ms]
+(pass) AgentAlertListener > /shutdown requires POST method [2.83ms]
+(pass) AgentAlertListener authentication > rejects missing tokens and accepts the configured bearer token [2.40ms]
+(pass) reclaimPort > reclaims port from a stale SuperiorSwarm listener [207.36ms]
+(pass) reclaimPort > completes without error when port is free (connection refused) [1.22ms]
+(pass) EADDRINUSE fallback > fallback listener binds to a different port
+(pass) EADDRINUSE fallback > fallback listener still serves requests [0.82ms]
+(pass) bounded POST evidence is sanitized and cannot forge a permission decision [7.67ms]
+
+tests/agent-hooks/bridge.test.ts:
+(pass) generated launcher parses top-level identities and sends authenticated turn metadata [337.76ms]
+
+tests/agent-hooks/evidence.test.ts:
+(pass) admits actual reply with provenance without importing prompts or tools
+(pass) bounds and sanitizes provider text before transport/storage [0.59ms]
+(pass) listener admission reconstructs provenance and rejects forged/unknown fields
+(pass) Claude StopFailure admits rendered error and error_details with error provenance [0.10ms]
+
+tests/agent-hooks/claude.test.ts:
+(pass) claudeConfig.mapEvent > maps UserPromptSubmit to active
+(pass) claudeConfig.mapEvent > maps PostToolUse to active
+(pass) claudeConfig.mapEvent > maps Stop to task-complete
+(pass) claudeConfig.mapEvent > maps PermissionRequest to needs-input
+(pass) claudeConfig.mapEvent > returns null for unknown events
+(pass) mergeClaudeHooks > creates settings.json if it does not exist [0.40ms]
+(pass) mergeClaudeHooks > preserves existing non-hook settings [0.40ms]
+(pass) mergeClaudeHooks > replaces old agent-notify hooks on re-run [0.24ms]
+
+tests/agent-hooks/opencode.test.ts:
+(pass) OpenCode lifecycle plugin > generates valid JavaScript with authenticated per-session events [0.34ms]
+
+tests/agent-hooks/gemini.test.ts:
+(pass) geminiConfig.mapEvent > maps BeforeAgent to active
+(pass) geminiConfig.mapEvent > maps AfterAgent to task-complete
+(pass) geminiConfig.mapEvent > maps AfterTool to active
+(pass) geminiConfig.mapEvent > returns null for unknown events
+(pass) mergeGeminiHooks > creates settings.json if it does not exist [0.31ms]
+(pass) mergeGeminiHooks > preserves existing settings [0.31ms]
+(pass) mergeGeminiHooks > replaces old hooks on re-run [0.26ms]
+
+tests/agent-hooks/codex.test.ts:
+(pass) codexConfig.mapEvent > maps SessionStart to active [0.60ms]
+(pass) codexConfig.mapEvent > maps per-turn activity, approvals and compaction without treating subagent stop as parent
+(pass) codexConfig.mapEvent > maps Stop to task-complete
+(pass) codexConfig.mapEvent > returns null for unknown events
+(pass) mergeCodexHooks > creates hooks.json if it does not exist [0.31ms]
+(pass) mergeCodexHooks > preserves malformed settings instead of silently overwriting them [0.30ms]
+(pass) mergeCodexHooks > preserves existing settings [0.21ms]
+(pass) mergeCodexHooks > replaces old hooks on re-run [0.27ms]
+
+ 125 pass
+ 0 fail
+ 11177 expect() calls
+Ran 125 tests across 14 files. [9.95s]

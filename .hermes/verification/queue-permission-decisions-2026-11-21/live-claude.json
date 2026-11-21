@@ -1,0 +1,220 @@
+{
+  "layer": "Actual authenticated CLI print/exec + native Node HTTP + current bridge + exact synthetic MCP operation; isolated lifecycle resolver (not production DB/GUI)",
+  "provider": "claude",
+  "version": "2.1.327",
+  "cases": [
+    {
+      "provider": "claude",
+      "action": "allow-once",
+      "actualOperation": true,
+      "decision": {
+        "status": "sent",
+        "detail": "Decision sent to the waiting hook. Provider acceptance and action outcome remain unknown."
+      },
+      "receipt": "delivered-to-hook",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "8ff602bf-2268-48df-9846-a1ea632c7562"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "8ff602bf-2268-48df-9846-a1ea632c7562",
+          "turn": "004215c4-7fc4-403c-ae5c-344a3353fd57"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "8ff602bf-2268-48df-9846-a1ea632c7562",
+          "turn": "004215c4-7fc4-403c-ae5c-344a3353fd57",
+          "request": "18acb8b3-8ef7-45d0-a1d5-836810335768"
+        },
+        {
+          "event": "Stop",
+          "session": "8ff602bf-2268-48df-9846-a1ea632c7562",
+          "turn": "004215c4-7fc4-403c-ae5c-344a3353fd57"
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "action": "deny",
+      "actualOperation": false,
+      "decision": {
+        "status": "sent",
+        "detail": "Decision sent to the waiting hook. Provider acceptance and action outcome remain unknown."
+      },
+      "receipt": "delivered-to-hook",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "a7b1030c-bdf3-45f1-8b08-0bef23eb273c"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "a7b1030c-bdf3-45f1-8b08-0bef23eb273c",
+          "turn": "60613208-487a-4d97-ace1-8245a3ffe06d"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "a7b1030c-bdf3-45f1-8b08-0bef23eb273c",
+          "turn": "60613208-487a-4d97-ace1-8245a3ffe06d",
+          "request": "fd149cac-9ee6-41e7-81eb-889e4cdfeefe"
+        },
+        {
+          "event": "Stop",
+          "session": "a7b1030c-bdf3-45f1-8b08-0bef23eb273c",
+          "turn": "60613208-487a-4d97-ace1-8245a3ffe06d"
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "action": "open",
+      "actualOperation": false,
+      "decision": {
+        "status": "opened",
+        "detail": "Released to the provider's native permission flow without deciding."
+      },
+      "receipt": "cancelled",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "3599c113-de95-427d-bdc3-7ad7d5a906c2"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "3599c113-de95-427d-bdc3-7ad7d5a906c2",
+          "turn": "7e111403-a16c-46c3-a2b7-77b70e8fb738"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "3599c113-de95-427d-bdc3-7ad7d5a906c2",
+          "turn": "7e111403-a16c-46c3-a2b7-77b70e8fb738",
+          "request": "4b86419b-8c15-4364-b824-97cd7cb3946b"
+        },
+        {
+          "event": "Stop",
+          "session": "3599c113-de95-427d-bdc3-7ad7d5a906c2",
+          "turn": "7e111403-a16c-46c3-a2b7-77b70e8fb738"
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "action": "timeout",
+      "actualOperation": false,
+      "decision": null,
+      "receipt": "expired",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "8839047c-722f-44d8-a539-370d1cebc153"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "8839047c-722f-44d8-a539-370d1cebc153",
+          "turn": "8ad56983-2889-4701-b02c-69a937a249b8"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "8839047c-722f-44d8-a539-370d1cebc153",
+          "turn": "8ad56983-2889-4701-b02c-69a937a249b8",
+          "request": "beec9ed1-0e1c-4bc9-854c-0613b924896c"
+        },
+        {
+          "event": "Stop",
+          "session": "8839047c-722f-44d8-a539-370d1cebc153",
+          "turn": "8ad56983-2889-4701-b02c-69a937a249b8"
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "action": "cancel",
+      "actualOperation": false,
+      "decision": null,
+      "receipt": "cancelled",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "30cfda40-5e49-43ad-83a6-1cc8a71f5016"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "30cfda40-5e49-43ad-83a6-1cc8a71f5016",
+          "turn": "ee70a158-04c4-4484-a80d-96d47792acb7"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "30cfda40-5e49-43ad-83a6-1cc8a71f5016",
+          "turn": "ee70a158-04c4-4484-a80d-96d47792acb7",
+          "request": "2aa42a87-44ec-45b1-8822-006e6857b3f9"
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "action": "stale",
+      "actualOperation": false,
+      "decision": {
+        "status": "conflict",
+        "detail": "The request, conversation or queue revision changed. Refresh and review the current request."
+      },
+      "receipt": "cancelled",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "eecdb910-5752-4555-b7f5-511713eec98f"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "eecdb910-5752-4555-b7f5-511713eec98f",
+          "turn": "e41d35aa-37ee-4736-aa5c-da3b8766df1c"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "eecdb910-5752-4555-b7f5-511713eec98f",
+          "turn": "e41d35aa-37ee-4736-aa5c-da3b8766df1c",
+          "request": "d299323b-88b1-4c85-ac40-7bf871e5d721"
+        },
+        {
+          "event": "Stop",
+          "session": "eecdb910-5752-4555-b7f5-511713eec98f",
+          "turn": "e41d35aa-37ee-4736-aa5c-da3b8766df1c"
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "action": "loss",
+      "actualOperation": false,
+      "decision": {
+        "status": "sent",
+        "detail": "Decision sent to the waiting hook. Provider acceptance and action outcome remain unknown."
+      },
+      "receipt": "uncertain",
+      "events": [
+        {
+          "event": "SessionStart",
+          "session": "543af17a-815f-4fe9-ad7b-9aa54ef6f69e"
+        },
+        {
+          "event": "UserPromptSubmit",
+          "session": "543af17a-815f-4fe9-ad7b-9aa54ef6f69e",
+          "turn": "93db0476-1e7e-43cf-8f31-1014101721ed"
+        },
+        {
+          "event": "PermissionRequest",
+          "session": "543af17a-815f-4fe9-ad7b-9aa54ef6f69e",
+          "turn": "93db0476-1e7e-43cf-8f31-1014101721ed",
+          "request": "ff5af306-eb1d-409e-bbb6-e938c27a3f61"
+        },
+        {
+          "event": "Stop",
+          "session": "543af17a-815f-4fe9-ad7b-9aa54ef6f69e",
+          "turn": "93db0476-1e7e-43cf-8f31-1014101721ed"
+        }
+      ]
+    }
+  ]
+}
