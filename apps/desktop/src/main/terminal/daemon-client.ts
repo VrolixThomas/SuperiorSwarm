@@ -101,6 +101,10 @@ export class DaemonClient {
 	private fileSubmitCapable = false;
 	private queueReplyCapable = false;
 	private queueResumeCapable = false;
+	private queueAnswerCapable = false;
+	get supportsQueueAnswer(): boolean {
+		return this.isConnected && this.queueAnswerCapable;
+	}
 	private sleepGuards = new Map<string, string>();
 	get supportsQueueResume(): boolean {
 		return this.isConnected && this.queueResumeCapable;
@@ -494,6 +498,7 @@ export class DaemonClient {
 			this.fileSubmitCapable = false;
 			this.queueReplyCapable = false;
 			this.queueResumeCapable = false;
+			this.queueAnswerCapable = false;
 			this.sleepGuards.clear();
 			this.snapshotCapable = false;
 			for (const resolve of this.fileRequests.values()) resolve(null);
@@ -537,6 +542,7 @@ export class DaemonClient {
 		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
 		this.queueReplyCapable = ready.capabilities?.includes("queue-reply-v1") === true;
 		this.queueResumeCapable = ready.capabilities?.includes("queue-resume-v1") === true;
+		this.queueAnswerCapable = ready.capabilities?.includes("queue-answer-v1") === true;
 		this.snapshotCapable = ready.capabilities?.includes(TERMINAL_SNAPSHOT_CAPABILITY) === true;
 		this.binaryInputSupported =
 			(ready.protocolVersion === 2 || ready.protocolVersion === DAEMON_PROTOCOL_VERSION) &&

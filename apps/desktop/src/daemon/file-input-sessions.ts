@@ -241,6 +241,7 @@ export class FileInputSessions {
 		} catch {
 			return false;
 		}
+		if (!session.launch && descriptor.initialPrompt === false) session.submittedVersions.shift();
 		session.launch = {
 			descriptor: structuredClone(descriptor),
 			providerSessionId,

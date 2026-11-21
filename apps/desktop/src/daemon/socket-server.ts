@@ -69,6 +69,7 @@ export class SocketServer {
 				"file-submit-v1",
 				"queue-reply-v1",
 				"queue-resume-v1",
+				"queue-answer-v1",
 				BINARY_INPUT_CAPABILITY,
 				TERMINAL_SNAPSHOT_CAPABILITY,
 			],

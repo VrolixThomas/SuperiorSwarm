@@ -14,6 +14,7 @@ export interface QueueLaunchDescriptor {
 	provider: "claude" | "codex";
 	/** Policy/configuration arguments from a trusted app launch, excluding prompt and selectors. */
 	args: string[];
+	initialPrompt?: boolean;
 }
 const valueFlags: Record<QueueLaunchDescriptor["provider"], Set<string>> = {
 	claude: new Set([
@@ -55,6 +56,7 @@ export function validQueueLaunch(value: unknown): value is QueueLaunchDescriptor
 	if (!value || typeof value !== "object") return false;
 	const d = value as QueueLaunchDescriptor;
 	if (
+		(d.initialPrompt !== undefined && typeof d.initialPrompt !== "boolean") ||
 		!["claude", "codex"].includes(d.provider) ||
 		!Array.isArray(d.args) ||
 		d.args.length > 128 ||
@@ -100,13 +102,19 @@ export function queueResumeArgs(
 }
 export function defaultQueueLaunch(
 	provider: string,
-	skipPermissions: boolean
+	skipPermissions: boolean,
+	initialPrompt?: boolean
 ): QueueLaunchDescriptor | undefined {
 	if (provider === "claude")
-		return { provider, args: skipPermissions ? ["--dangerously-skip-permissions"] : [] };
+		return {
+			provider,
+			...(initialPrompt === undefined ? {} : { initialPrompt }),
+			args: skipPermissions ? ["--dangerously-skip-permissions"] : [],
+		};
 	if (provider === "codex")
 		return {
 			provider,
+			...(initialPrompt === undefined ? {} : { initialPrompt }),
 			args: [
 				"--no-daemon",
 				...(skipPermissions

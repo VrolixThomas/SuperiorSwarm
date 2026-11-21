@@ -38,6 +38,8 @@ function problem(item: WorkspaceQueueItem, questionId?: string): string | null {
 			: item.question || !["agent-done", "agent-failed"].includes(item.situation))
 	)
 		return "This conversation needs a different action. Open it before continuing.";
+	if (questionId && !getDaemonClient()?.supportsQueueAnswer)
+		return "Open this chat to continue. Saved-answer continuation is unavailable in this terminal.";
 	const session = getDb()
 		.select()
 		.from(agentSessions)

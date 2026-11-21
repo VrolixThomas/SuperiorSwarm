@@ -58,7 +58,7 @@ async function fixture() {
 				return { ok: true };
 			},
 		},
-		getSettings: () => ({ enabled: false, idleMinutes: 1, keepOrchestratorsAwake: true }),
+		getSettings: () => ({ enabled: false, idleMinutes: 5, keepOrchestratorsAwake: true }),
 	});
 	managers.push(manager);
 	manager.registerManagedSession({
@@ -126,4 +126,104 @@ test("legacy fallback requires explicit absence of descriptor, never transport a
 	f.setTarget("legacy");
 	expect((await f.manager.wake(f.id))?.state).toBe("running");
 	expect(f.writes).toHaveLength(1);
+});
+
+test("known app launch cannot lose policy through explicit missing or old daemon metadata", async () => {
+	for (const capable of [true, false]) {
+		const f = await fixture();
+		f.setTarget("legacy");
+		f.daemon.supportsQueueResume = capable;
+		getDb()
+			.update(agentSessions)
+			.set({ queueLaunchKnown: true })
+			.where(eq(agentSessions.terminalId, f.id))
+			.run();
+		expect((await f.manager.wake(f.id))?.state).toBe("hibernated");
+		await expect(f.manager.beforeTerminalInput(f.id)).rejects.toThrow();
+		expect(f.writes).toEqual([]);
+	}
+});
+test("own app chat registration does not steal or demote a managed dispatch target", async () => {
+	const f = await fixture();
+	const original = f.manager.getSession(f.id);
+	if (!original) throw Error("Missing fixture");
+	const own = crypto.randomUUID();
+	getDb()
+		.insert(terminalSessions)
+		.values({
+			id: own,
+			workspaceId: original.workspaceId,
+			cwd: "/tmp",
+			title: "own",
+			sortOrder: 1,
+			updatedAt: new Date(),
+		})
+		.run();
+	f.manager.registerOwnedSession({
+		terminalId: own,
+		workspaceId: original.workspaceId,
+		provider: "claude",
+		providerSessionId: crypto.randomUUID(),
+		skipPermissions: false,
+	});
+	expect(f.manager.getSession(own)?.managed).toBe(false);
+	expect(f.manager.getSession(f.id)?.managed).toBe(true);
+});
+
+test("pending app policy binds only after its launchId and is consumed after successful registration", async () => {
+	const f = await fixture();
+	const row = f.manager.getSession(f.id);
+	if (!row) throw Error("Missing owner");
+	let registrations = 0;
+	Object.assign(f.daemon, {
+		queueRegisterLaunch: async () => {
+			registrations++;
+			return true;
+		},
+	});
+	const launchId = crypto.randomUUID();
+	expect(
+		await f.manager.registerQueueLaunch(f.id, { provider: "claude", args: [] }, launchId)
+	).toBe(false);
+	const base = {
+		terminalId: f.id,
+		sessionId: f.id,
+		workspaceId: row.workspaceId,
+		agent: "claude",
+		providerSessionId: row.providerSessionId!,
+		cwd: "/tmp",
+		timestamp: Date.now(),
+	};
+	expect(
+		f.manager.handleAgentEvent({
+			...base,
+			rawEvent: "SessionStart",
+			alert: "active",
+			launchId: crypto.randomUUID(),
+		})
+	).not.toBeNull();
+	await Promise.resolve();
+	expect(registrations).toBe(0);
+	expect(
+		f.manager.handleAgentEvent({
+			...base,
+			timestamp: Date.now() + 1,
+			rawEvent: "UserPromptSubmit",
+			alert: "active",
+			turnId: "trusted-turn",
+			launchId,
+		})
+	).not.toBeNull();
+	await Promise.resolve();
+	expect(registrations).toBe(1);
+	f.manager.handleAgentEvent({
+		...base,
+		timestamp: Date.now() + 2,
+		rawEvent: "Stop",
+		alert: "task-complete",
+		turnId: "trusted-turn",
+		launchId,
+	});
+	await Promise.resolve();
+	expect(registrations).toBe(1);
 });

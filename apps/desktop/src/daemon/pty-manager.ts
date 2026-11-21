@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import * as pty from "node-pty";
 import { MAX_SCROLLBACK_CHARS } from "../shared/daemon-protocol";
 import type { QueueLaunchOwner } from "../shared/queue-resume";
+import type { TerminalProcessIdentity } from "../shared/terminal-files";
 
 const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
 class SpawnedProcessError extends Error {}
@@ -54,6 +55,17 @@ function resolveEnv(extra?: Record<string, string>): Record<string, string> {
 }
 
 export class PtyManager {
+	constructor(
+		private readonly backend: {
+			spawn?: typeof pty.spawn;
+			inspect?: (pid: number) => TerminalProcessIdentity | null;
+			replay?: () => TerminalReplayBuffer;
+		} = {}
+	) {}
+	private spawnProcess: typeof pty.spawn = (...args) => (this.backend.spawn ?? pty.spawn)(...args);
+	private inspectProcess = (pid: number) =>
+		(this.backend.inspect ?? readTerminalProcessIdentity)(pid);
+
 	private terminals = new Map<string, TerminalEntry>();
 	readonly fileInputs = new FileInputSessions();
 
@@ -71,7 +83,7 @@ export class PtyManager {
 
 		const resolvedCwd = cwd ?? homedir();
 		const shell = resolveShell();
-		const ptyProcess = pty.spawn(shell, ["-l"], {
+		const ptyProcess = this.spawnProcess(shell, ["-l"], {
 			name: "xterm-256color",
 			cols: 80,
 			rows: 24,
@@ -88,7 +100,7 @@ export class PtyManager {
 			pty: ptyProcess,
 			cwd: resolvedCwd,
 			buffer: "",
-			replay: new TerminalReplayBuffer(),
+			replay: this.backend.replay?.() ?? new TerminalReplayBuffer(),
 			dirty: false,
 			dataListeners: new Map([[clientId, onData]]),
 			exitListeners: new Map([[clientId, onExit]]),
@@ -103,7 +115,7 @@ export class PtyManager {
 			shell,
 			() => ptyProcess.process ?? "",
 			(data) => ptyProcess.write(data),
-			process.platform === "darwin" ? () => readTerminalProcessIdentity(ptyProcess.pid) : undefined
+			process.platform === "darwin" ? () => this.inspectProcess(ptyProcess.pid) : undefined
 		);
 	}
 
@@ -159,7 +171,7 @@ export class PtyManager {
 		kind: "shell" | "provider"
 	): TerminalEntry {
 		if (this.terminals.get(id) !== previous) throw Error("Terminal generation changed");
-		const process = pty.spawn(executable, args, {
+		const process = this.spawnProcess(executable, args, {
 			name: "xterm-256color",
 			cols: previous.cols,
 			rows: previous.rows,
@@ -174,7 +186,7 @@ export class PtyManager {
 				id,
 				() => process.process ?? "",
 				(data) => process.write(data),
-				() => readTerminalProcessIdentity(process.pid)
+				() => this.inspectProcess(process.pid)
 			);
 			if (kind === "provider") this.fileInputs.trustedLaunchProcess(id, process.pid);
 			return next;

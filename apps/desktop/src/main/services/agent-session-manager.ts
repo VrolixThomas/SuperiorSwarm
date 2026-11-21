@@ -39,6 +39,7 @@ export interface RegisterManagedAgentInput {
 	skipPermissions: boolean;
 	queueLaunch?: QueueLaunchDescriptor;
 	queueLaunchId?: string;
+	managed?: boolean;
 }
 
 interface AgentSessionManagerOptions {
@@ -120,12 +121,18 @@ export class AgentSessionManager {
 		launchId?: string
 	): Promise<boolean> {
 		const session = this.getSession(terminalId);
+		if (!session || session.provider !== descriptor.provider) return false;
 		if (
-			!session?.managed ||
-			session.provider !== descriptor.provider ||
-			!validQueueLaunch(descriptor)
+			launchId !== undefined &&
+			!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(launchId)
 		)
 			return false;
+		getDb()
+			.update(agentSessions)
+			.set({ queueLaunchKnown: true })
+			.where(eq(agentSessions.terminalId, terminalId))
+			.run();
+		if (!validQueueLaunch(descriptor)) return false;
 		const persisted = getDb()
 			.select()
 			.from(agentSessions)
@@ -151,7 +158,6 @@ export class AgentSessionManager {
 			launch.authorized = true;
 		}
 		if (
-			!current.managed ||
 			current.workspaceId !== launch.workspaceId ||
 			getDb()
 				.select()
@@ -194,7 +200,11 @@ export class AgentSessionManager {
 		this.followUpPollMs = options.followUpPollMs ?? DEFAULT_FOLLOW_UP_POLL_MS;
 	}
 
+	registerOwnedSession(input: RegisterManagedAgentInput): AgentSessionInfo {
+		return this.registerManagedSession({ ...input, managed: false });
+	}
 	registerManagedSession(input: RegisterManagedAgentInput): AgentSessionInfo {
+		const managed = input.managed ?? true;
 		const entity = queueEntities().get(input.workspaceId);
 		if (!entity) throw new Error("Unknown or ambiguous agent entity");
 		const db = getDb();
@@ -203,16 +213,17 @@ export class AgentSessionManager {
 			// `managed` identifies the one dispatch target that orchestrator
 			// follow-ups may wake. Older app-owned terminals remain tracked but
 			// are deliberately demoted so workspace wakeups never rely on recency.
-			tx.update(agentSessions)
-				.set({ managed: false, updatedAt: now })
-				.where(
-					and(
-						eq(agentSessions.workspaceId, input.workspaceId),
-						eq(agentSessions.managed, true),
-						ne(agentSessions.terminalId, input.terminalId)
+			if (managed)
+				tx.update(agentSessions)
+					.set({ managed: false, updatedAt: now })
+					.where(
+						and(
+							eq(agentSessions.workspaceId, input.workspaceId),
+							eq(agentSessions.managed, true),
+							ne(agentSessions.terminalId, input.terminalId)
+						)
 					)
-				)
-				.run();
+					.run();
 			tx.insert(agentSessions)
 				.values({
 					terminalId: input.terminalId,
@@ -221,7 +232,8 @@ export class AgentSessionManager {
 					provider: input.provider,
 					providerSessionId: input.providerSessionId,
 					state: "running",
-					managed: true,
+					managed,
+					queueLaunchKnown: false,
 					keepRunning: false,
 					skipPermissions: input.skipPermissions,
 					lastEventAt: now,
@@ -239,7 +251,8 @@ export class AgentSessionManager {
 						provider: input.provider,
 						providerSessionId: input.providerSessionId,
 						state: "running",
-						managed: true,
+						managed,
+						queueLaunchKnown: false,
 						skipPermissions: input.skipPermissions,
 						lastEventAt: now,
 						idleSince: null,
@@ -322,6 +335,14 @@ export class AgentSessionManager {
 		const managed = !generationChanged && (existing?.managed ?? false);
 		const skipPermissions = !generationChanged && (existing?.skipPermissions ?? false);
 		const db = getDb();
+		const queueLaunchKnown =
+			!generationChanged &&
+			(db
+				.select()
+				.from(agentSessions)
+				.where(eq(agentSessions.terminalId, resolved.terminalId))
+				.get()?.queueLaunchKnown ??
+				false);
 		db.insert(agentSessions)
 			.values({
 				terminalId: resolved.terminalId,
@@ -331,6 +352,7 @@ export class AgentSessionManager {
 				providerSessionId,
 				state,
 				managed,
+				queueLaunchKnown,
 				keepRunning: existing?.keepRunning ?? false,
 				skipPermissions,
 				lastEventAt: now,
@@ -348,6 +370,7 @@ export class AgentSessionManager {
 					provider: event.agent,
 					providerSessionId,
 					managed,
+					queueLaunchKnown,
 					skipPermissions,
 					state,
 					lastEventAt: now,
@@ -539,6 +562,17 @@ export class AgentSessionManager {
 					lastError: "Terminal shell is no longer available",
 				});
 			}
+			const knownLaunch = getDb()
+				.select()
+				.from(agentSessions)
+				.where(eq(agentSessions.terminalId, terminalId))
+				.get()?.queueLaunchKnown;
+			if (knownLaunch && !this.options.daemonClient.supportsQueueResume) {
+				structuredAttempt = true;
+				throw Error(
+					"This chat's original launch settings are unavailable. Reopen it from provider history."
+				);
+			}
 			if (this.options.daemonClient.supportsQueueResume) {
 				structuredAttempt = true;
 				const lease = await this.options.daemonClient.queueResumeTarget(
@@ -576,6 +610,10 @@ export class AgentSessionManager {
 					return this.getSession(terminalId);
 				}
 			}
+			if (knownLaunch)
+				throw Error(
+					"This chat's original launch settings are unavailable. Reopen it from provider history."
+				);
 			structuredAttempt = false;
 			const command = buildAgentResumeCommand(session, prompt);
 			this.updateState(terminalId, "resuming", { lastError: null });
