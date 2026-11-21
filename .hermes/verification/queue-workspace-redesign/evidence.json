@@ -1,0 +1,58 @@
+{
+  "contract": "Workspace-only first release: 72px Queue-first nav, 42px rows, 420px detail panel at >=1100px; Open navigates only, Later/Done/Undo exact revision; external source exclusion and visible error/partial states. Based on docs/superpowers/plans/2026-11-18-queue-redesign.md with user-scoped first slice.",
+  "targetViewports": [
+    "800x600",
+    "1440x900"
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Native Chromium asserts visible keyboard focus >=2px and uses arrow selection, Enter Open, E Done, Z Undo, H/1 Later, B Bring back. Semantic buttons with names, aria-current selection, tab/pressed states, live status/error output. No positional animations; existing token contrast visually inspected."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Native assertions and inspected screenshots at 800x600 and1440x900: row height42, no horizontal document overflow, detail panel hidden below1100, narrow action bar available. Long workspace names truncate in rows and wrap in panel."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Held confirmed-inventory promise before initial load; native screenshot queue-loading.png shows progress with stable navigation."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "Handled three items by repeated keyboard actions; native screenshot queue-empty.png shows Nothing needs you, zero badge and actionable Undo."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "Injected isolated IPC failure then retried successfully; queue-error.png shows specific error and Refresh remains available."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Disconnected isolated daemon; last confirmed items remain, warning visible, mutations disabled; queue-partial.png. Reconnected and recovered."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Real SQLite/tRPC Done+Undo and Later+Bring back round trips pass; toast notices verified, stale revision conflict preserves selection. Post-removal focus test exercises actual activeElement."
+    },
+    "permission": {
+      "status": "pass",
+      "evidence": "Fixture includes real structured PermissionRequest source, rendered as input item. Open-only decision action; no Allow/Deny/approval controls; covered in native list and React tests."
+    }
+  },
+  "renderedEvidence": [
+    {
+      "viewport": "800x600",
+      "artifact": "queue-800x600.png",
+      "observation": "Inspected narrow layout: rail visible, 42px rows, selected key hints, bottom controls; detail panel hidden; no overlap/overflow."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "queue-1440x900.png",
+      "observation": "Inspected wide layout: project/subject/reason/age columns,420px context panel, Queue-first rail and Settings last; only workspace items despite stored PR fixture."
+    }
+  ],
+  "limitations": [
+    "Native fixture uses production QueueView/NavRail/query/mutations and isolated SQLite/PTYs, not authenticated providers or full production app data. No live provider compatibility claims.",
+    "Replies/permission decisions stay in the chat. Tickets, PRs, hooks, own-ticket/PR feedback, jump/peek and broader coordinator backend support remain later slices.",
+    "Existing repository type errors unchanged; graphify module unavailable."
+  ]
+}
