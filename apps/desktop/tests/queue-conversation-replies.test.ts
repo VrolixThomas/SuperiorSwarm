@@ -194,3 +194,45 @@ test("crash before receipt remains uncertain and blocks retry with any request I
 	expect((await workspaceReply(input("new"))).status).toBe("conflict");
 	expect(writes).toBe(1);
 });
+test("a definitely rejected request remains immutable while an explicit fresh attempt may retry", async () => {
+	beforeAdmission = () =>
+		getDb()
+			.update(agentSessions)
+			.set({ state: "running" })
+			.where(eq(agentSessions.terminalId, "owner"))
+			.run();
+	expect((await workspaceReply(input())).status).toBe("rejected");
+	beforeAdmission = () => {};
+	getDb()
+		.update(agentSessions)
+		.set({ state: "idle" })
+		.where(eq(agentSessions.terminalId, "owner"))
+		.run();
+	expect((await workspaceReply(input())).status).toBe("rejected");
+	expect((await workspaceReply(input("explicit-retry"))).status).toBe("admitted");
+	expect(writes).toBe(1);
+});
+test("a newly appearing structured question at admission blocks ordinary free-form input", async () => {
+	beforeAdmission = () => {
+		const source = getDb()
+			.select()
+			.from(activityQueueSources)
+			.where(eq(activityQueueSources.sourceId, item.id))
+			.get()!;
+		getDb()
+			.insert(activityQueueSources)
+			.values({
+				...source,
+				sourceId: "new-question",
+				sourceType: "agent-question",
+				candidate: {
+					...source.candidate!,
+					kind: "agent-input",
+					reasons: [{ code: "question", label: "Question" }],
+				},
+			})
+			.run();
+	};
+	expect((await workspaceReply(input())).status).toBe("rejected");
+	expect(writes).toBe(0);
+});

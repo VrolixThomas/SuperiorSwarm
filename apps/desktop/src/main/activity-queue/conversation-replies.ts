@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type {
 	WorkspaceQueueItem,
 	WorkspaceQueueReplyCapability,
@@ -39,7 +39,10 @@ function problem(item: WorkspaceQueueItem): string | null {
 		return "The conversation was replaced. Refresh the queue.";
 	if (session.state === "hibernated")
 		return "Safe atomic resume is unavailable for this terminal service. Open this exact conversation to resume it; no reply was sent.";
-	if (!["idle", "error"].includes(session.state))
+	if (
+		!["idle", "error"].includes(session.state) &&
+		!(session.state === "needs-input" && item.situation === "agent-failed")
+	)
 		return "The conversation is busy or awaiting input. Open it before continuing.";
 	if (!getDaemonClient()?.supportsQueueReply)
 		return "This terminal service does not support safe Queue replies. Open the conversation.";
@@ -61,7 +64,8 @@ export async function workspaceReplyCapability(
 	const lease = await getDaemonClient()?.queueReplyTarget(
 		t.terminalId,
 		t.provider,
-		t.providerSessionId!
+		t.providerSessionId!,
+		false
 	);
 	if (!lease?.supported)
 		return {
@@ -120,7 +124,12 @@ export async function workspaceReply(
 		db
 			.select()
 			.from(activityQueueDeliveries)
-			.where(eq(activityQueueDeliveries.occurrenceKey, occurrenceKey))
+			.where(
+				and(
+					eq(activityQueueDeliveries.occurrenceKey, occurrenceKey),
+					ne(activityQueueDeliveries.state, "rejected")
+				)
+			)
 			.get()
 	)
 		return {

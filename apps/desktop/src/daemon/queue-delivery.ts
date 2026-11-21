@@ -38,18 +38,20 @@ export class QueueDeliveryAdmission {
 			)
 			.run(requestId);
 		if (!claimed.changes) return "uncertain";
-		return this.db.transaction(() => {
-			let result: Delivery = "rejected";
-			if (Date.now() - row.created_at < 30000 && this.current(row, terminalId)) result = write();
-			this.db
-				.prepare("UPDATE activity_queue_deliveries SET state = ? WHERE request_id = ?")
-				.run(result, requestId);
-			if (result === "admitted")
+		return this.db
+			.transaction(() => {
+				let result: Delivery = "rejected";
+				if (Date.now() - row.created_at < 30000 && this.current(row, terminalId)) result = write();
 				this.db
-					.prepare("UPDATE agent_sessions SET state = 'running' WHERE terminal_id = ?")
-					.run(terminalId);
-			return result;
-		})();
+					.prepare("UPDATE activity_queue_deliveries SET state = ? WHERE request_id = ?")
+					.run(result, requestId);
+				if (result === "admitted")
+					this.db
+						.prepare("UPDATE agent_sessions SET state = 'running' WHERE terminal_id = ?")
+						.run(terminalId);
+				return result;
+			})
+			.immediate();
 	}
 	private current(row: Intent, terminalId: string): boolean {
 		const target = JSON.parse(row.target) as ActivityQueueTarget;
@@ -82,10 +84,11 @@ export class QueueDeliveryAdmission {
 			target.entity.id !== target.workspaceId ||
 			session.provider !== target.provider ||
 			session.provider_session_id !== target.providerSessionId ||
-			!["idle", "error"].includes(String(session.state))
+			!["idle", "error", "needs-input"].includes(String(session.state))
 		)
 			return false;
 		const members = JSON.parse(row.members) as { id: string; revision: number }[];
+		let failed = false;
 		for (const member of members) {
 			const source = this.db
 				.prepare("SELECT * FROM activity_queue_sources WHERE source_id = ?")
@@ -107,7 +110,9 @@ export class QueueDeliveryAdmission {
 				return false;
 			const candidate = JSON.parse(String(source.candidate));
 			if (JSON.stringify(candidate.target) !== JSON.stringify(target)) return false;
+			if (candidate.reasons?.some((r: { code: string }) => r.code === "turn-failed")) failed = true;
 		}
+		if (session.state === "needs-input" && !failed) return false;
 		// A newly observed permission/question must also prevent sending to an unrelated input prompt.
 		const sources = this.db
 			.prepare("SELECT candidate FROM activity_queue_sources WHERE candidate IS NOT NULL")

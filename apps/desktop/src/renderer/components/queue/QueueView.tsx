@@ -15,6 +15,7 @@ import {
 	queueKeysAreTyping,
 } from "../../lib/queue-model";
 import { useActivityQueueStore } from "../../stores/activity-queue-store";
+import { useQueueNavigationStore } from "../../stores/queue-navigation-store";
 import { trpc } from "../../trpc/client";
 import { QueuePanel, queueButton } from "./QueuePanel";
 import type { AnswerQuestion } from "./QueueQuestionReply";
@@ -669,6 +670,7 @@ export function QueueView() {
 			refresh={refresh}
 			open={async (item) => {
 				const dest = await openQueueTarget(item.target);
+				useQueueNavigationStore.getState().select(item, pending.data?.items ?? []);
 				useActivityQueueStore.setState({ open: false });
 				focusQueueDestination(dest);
 			}}

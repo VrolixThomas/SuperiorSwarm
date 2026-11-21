@@ -1,4 +1,5 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { ActivityQueueCandidate } from "../../shared/activity-queue";
 
 /** One atomic current projection and receipt per source; inactive baselines are retained. */
@@ -26,14 +27,24 @@ export const activityQueueSnoozes = sqliteTable("activity_queue_snoozes", {
 });
 
 /** Durable intent precedes PTY admission. Uncertainty never permits automatic resubmission. */
-export const activityQueueDeliveries = sqliteTable("activity_queue_deliveries", {
-	requestId: text("request_id").primaryKey(),
-	occurrenceKey: text("occurrence_key").notNull().unique(),
-	fingerprint: text("fingerprint").notNull(),
-	target: text("target", { mode: "json" })
-		.$type<import("../../shared/activity-queue").ActivityQueueTarget>()
-		.notNull(),
-	members: text("members", { mode: "json" }).$type<{ id: string; revision: number }[]>().notNull(),
-	state: text("state", { enum: ["reserved", "uncertain", "admitted", "rejected"] }).notNull(),
-	createdAt: integer("created_at").notNull(),
-});
+export const activityQueueDeliveries = sqliteTable(
+	"activity_queue_deliveries",
+	{
+		requestId: text("request_id").primaryKey(),
+		occurrenceKey: text("occurrence_key").notNull(),
+		fingerprint: text("fingerprint").notNull(),
+		target: text("target", { mode: "json" })
+			.$type<import("../../shared/activity-queue").ActivityQueueTarget>()
+			.notNull(),
+		members: text("members", { mode: "json" })
+			.$type<{ id: string; revision: number }[]>()
+			.notNull(),
+		state: text("state", { enum: ["reserved", "uncertain", "admitted", "rejected"] }).notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [
+		uniqueIndex("activity_queue_deliveries_active_occurrence")
+			.on(table.occurrenceKey)
+			.where(sql`${table.state} <> 'rejected'`),
+	]
+);

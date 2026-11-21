@@ -70,7 +70,10 @@ async function fixture() {
 		root.render(
 			<QueueConversationReply item={item} available actions={actions} refresh={async () => {}} />
 		);
-	await act(render);
+	await act(async () => {
+		render();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
 	const type = async (text: string) =>
 		act(() => {
 			const el = document.querySelector("textarea")!;
@@ -80,7 +83,14 @@ async function fixture() {
 			);
 			el.dispatchEvent(new browser.Event("input", { bubbles: true }));
 		});
-	const click = async () => act(() => document.querySelector("button")!.click());
+	const click = async () =>
+		act(async () => {
+			document
+				.querySelectorAll("button")
+				.item(document.querySelectorAll("button").length - 1)!
+				.click();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
 	return {
 		calls,
 		type,
@@ -90,7 +100,10 @@ async function fixture() {
 		},
 		render: async (value: WorkspaceQueueItem) => {
 			item = value;
-			await act(render);
+			await act(async () => {
+				render();
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			});
 		},
 	};
 }
@@ -130,4 +143,17 @@ test("group member or exact conversation replacement cannot rebase a typed reply
 	expect(f.calls).toHaveLength(0);
 	expect(document.body.textContent).toContain("occurrence changed");
 	expect(document.querySelector("textarea")?.value).toBe("old occurrence");
+});
+test("definite unavailable permits editing and an explicit new attempt without automatic send", async () => {
+	const f = await fixture();
+	f.setResult({ status: "unavailable", reason: "Temporarily unavailable" });
+	await f.type("first");
+	await f.click();
+	expect(f.calls).toHaveLength(1);
+	expect(document.querySelector("textarea")?.disabled).toBe(false);
+	await f.type("revised");
+	await f.click();
+	expect(f.calls).toHaveLength(2);
+	expect(f.calls[0]?.requestId).not.toBe(f.calls[1]?.requestId);
+	expect(f.calls[1]?.content).toBe("revised");
 });

@@ -115,13 +115,15 @@ export class DaemonClient {
 	async queueReplyTarget(
 		id: string,
 		provider: string,
-		providerSessionId: string
+		providerSessionId: string,
+		reserve = true
 	): Promise<DaemonFileTarget | null> {
 		if (!this.supportsQueueReply || this.pendingInputTerminals.has(id)) return null;
 		return (
 			(
 				await this.fileRequest({
 					type: "queue-target",
+					reserve,
 					id,
 					provider,
 					providerSessionId,

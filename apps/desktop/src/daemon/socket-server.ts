@@ -210,7 +210,8 @@ export class SocketServer {
 						msg.id,
 						clientId,
 						msg.provider,
-						msg.providerSessionId
+						msg.providerSessionId,
+						msg.reserve !== false
 					),
 				});
 				break;

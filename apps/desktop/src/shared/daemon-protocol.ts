@@ -51,6 +51,7 @@ export type ClientMessage =
 			requestId: string;
 			provider: string;
 			providerSessionId: string;
+			reserve?: boolean;
 	  }
 	| {
 			type: "queue-input";

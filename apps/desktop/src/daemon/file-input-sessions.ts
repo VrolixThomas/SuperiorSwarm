@@ -151,7 +151,8 @@ export class FileInputSessions {
 		id: string,
 		client: string,
 		provider: string,
-		providerSessionId: string
+		providerSessionId: string,
+		reserve = true
 	): FileInputTarget | null {
 		const session = this.sessions.get(id);
 		if (!session?.clients.has(client)) return null;
@@ -171,7 +172,12 @@ export class FileInputSessions {
 					(name(identity.executable) === "claude" || nativeClaude(identity.executable))) ||
 					(provider === "codex" && name(identity.executable) === "codex")),
 		};
-		session.clients.set(client, { ...target, identity: identity ?? undefined, conversation: true });
+		if (reserve)
+			session.clients.set(client, {
+				...target,
+				identity: identity ?? undefined,
+				conversation: true,
+			});
 		return target;
 	}
 	insertConversation(

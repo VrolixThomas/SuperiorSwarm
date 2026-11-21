@@ -128,3 +128,13 @@ test("only a fresh correlated completed turn restores admission, other conversat
 	f.replace({ ...claude, startedAt: "replacement" });
 	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(false);
 });
+test("read-only capability polling cannot replace an in-flight admission lease", () => {
+	const f = fixture();
+	const lease = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+	f.sessions.conversationTarget("t", "c", "claude", "chat", false);
+	f.sessions.conversationTarget("t", "c", "claude", "chat", false);
+	expect(f.sessions.insertConversation("t", "c", lease.generation, "exactly once")).toBe(
+		"admitted"
+	);
+	expect(f.writes).toHaveLength(1);
+});

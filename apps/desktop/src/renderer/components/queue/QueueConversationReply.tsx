@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type {
 	WorkspaceQueueItem,
 	WorkspaceQueueReplyCapability,
@@ -37,6 +37,7 @@ export function QueueConversationReply({
 	const [capability, setCapability] = useState<WorkspaceQueueReplyCapability>();
 	const [busy, setBusy] = useState(false);
 	const running = useRef(false);
+	const inputId = useId();
 
 	useEffect(() => {
 		let active = true;
@@ -95,7 +96,11 @@ export function QueueConversationReply({
 					"Delivery is uncertain. Check delivery with the same request, or open the chat. Do not resend.",
 			};
 		}
-		update({ requestId, result });
+		update({
+			requestId:
+				result.status === "admitted" || result.status === "uncertain" ? requestId : undefined,
+			result,
+		});
 		try {
 			await refresh();
 		} catch {}
@@ -104,11 +109,11 @@ export function QueueConversationReply({
 	};
 	return (
 		<section aria-label="Reply to conversation" className="my-4 space-y-2">
-			<label className="block text-[12px]" htmlFor={`queue-reply-${item.id}`}>
+			<label className="block text-[12px]" htmlFor={`queue-reply-${inputId}`}>
 				Reply to {item.context.terminalTitle ?? item.context.workspaceName}
 			</label>
 			<textarea
-				id={`queue-reply-${item.id}`}
+				id={`queue-reply-${inputId}`}
 				value={draft.content}
 				disabled={busy || locked}
 				onChange={(e) => update({ content: e.target.value })}
@@ -116,9 +121,27 @@ export function QueueConversationReply({
 				rows={3}
 			/>
 			{changed && (
-				<p role="alert">
-					This occurrence changed. Your draft is preserved; open the chat before replying.
-				</p>
+				<div>
+					<p role="alert">
+						This occurrence changed. Your draft is preserved; review the current update before
+						replying.
+					</p>
+					<button
+						type="button"
+						disabled={busy}
+						onClick={() =>
+							update({
+								content: "",
+								receipt: receipt(item),
+								target: JSON.stringify(item.target),
+								requestId: undefined,
+								result: undefined,
+							})
+						}
+					>
+						Start reply to current update
+					</button>
+				</div>
 			)}
 			<p className="text-[11px] text-[var(--text-tertiary)]">
 				{capability?.status === "unavailable"
