@@ -109,6 +109,16 @@ export function QueuePanel({
 							{project.path}
 						</p>
 					))}
+					{!!item.providerEvidence?.length && (
+						<details className="text-[10px] text-[var(--text-tertiary)]">
+							<summary className="cursor-pointer">Source details</summary>
+							{item.providerEvidence.map((value, index) => (
+								<p key={`${value.sourceField}-${index}`} className="mt-1 break-words">
+									{value.provider}: {value.rawEvent} / {value.sourceField}
+								</p>
+							))}
+						</details>
+					)}
 					{item.context.identityCapability === "missing-owner" && (
 						<p>Reporting conversation is unknown. No sibling chat is assumed to own this item.</p>
 					)}
@@ -155,7 +165,7 @@ export function QueuePanel({
 										key={`${value.sourceField}-${index}`}
 										className="mt-1 break-words text-[10px] text-[var(--text-tertiary)]"
 									>
-										{value.provider} · {value.kind} · {value.rawEvent} / {value.sourceField}
+										{value.provider} · {value.kind}
 										{value.truncated ? " · Truncated excerpt" : ""}
 										{value.redacted ? " · Sensitive text redacted" : ""}
 									</p>
@@ -171,8 +181,7 @@ export function QueuePanel({
 					)}
 					{item.ordering === "uncertain" && (
 						<p className="text-[11px] text-[var(--text-tertiary)]">
-							This event has incomplete ordering information. Confirm its current state in the exact
-							chat.
+							The timing of this update could not be confirmed. Check its current state in the chat.
 						</p>
 					)}
 				</div>

@@ -43,6 +43,7 @@ export function QueueQuestionReply({
 		setDrafts((all) => ({ ...all, [item.id]: { ...draft, ...patch } }));
 	const changed = draft.revision !== item.revision || draft.questionId !== question.messageId;
 	const saved = draft.saved || question.answer?.delivery;
+	const savedContent = question.answer?.content ?? draft.content;
 	const canReply = available && question.replyCapability === "mcp-inbox" && !!answer && !saved;
 	const target = item.target.type === "terminal" ? item.target : null;
 	const submit = async () => {
@@ -67,8 +68,7 @@ export function QueueQuestionReply({
 				return;
 			}
 			update({
-				saved:
-					result.detail || "Saved to the agent inbox. The agent has not retrieved this answer yet.",
+				saved: result.detail || "Saved. The agent has not read this answer yet.",
 				error: undefined,
 			});
 			// Refresh failure cannot undo a saved reply or make the send button available again.
@@ -110,17 +110,18 @@ export function QueueQuestionReply({
 			</p>
 			{saved ? (
 				<output className="block space-y-2">
-					{draft.content && (
-						<p className="whitespace-pre-wrap break-words">Your answer: {draft.content}</p>
+					{savedContent && (
+						<p className="whitespace-pre-wrap break-words">Your answer: {savedContent}</p>
 					)}
 					<p>
 						{question.answer?.delivery === "retrieved"
 							? "Retrieved by the reporting agent."
-							: "Saved to the agent inbox. Not yet retrieved by the agent."}
+							: "Saved. The agent has not read this answer yet."}
 					</p>
 					<p className="text-[var(--text-secondary)]">
-						Saving an answer does not resume the task. If the agent is idle, open its exact chat and
-						ask it to read its MCP inbox. Ordinary chat input is not a correlated answer.
+						Saving an answer does not resume the task. If the agent is idle, open this chat and ask
+						it to check its messages. Ordinary chat input does not submit an answer to this
+						question.
 					</p>
 				</output>
 			) : (
@@ -128,7 +129,7 @@ export function QueueQuestionReply({
 					{question.replyCapability === "unavailable" && (
 						<p>
 							{question.unavailableReason ??
-								"The exact recipient could not be verified. A correlated reply is unavailable."}
+								"The exact recipient could not be verified. Sending an answer from here is unavailable."}
 						</p>
 					)}
 					<label className="block" htmlFor="queue-question-answer">
@@ -176,11 +177,11 @@ export function QueueQuestionReply({
 						onClick={() => void submit()}
 						className={`rounded-md border border-[var(--border)] px-3 py-2 disabled:opacity-40 ${queueFocus}`}
 					>
-						{busy ? "Saving answer…" : "Send correlated answer"}
+						{busy ? "Saving answer…" : "Send answer"}
 					</button>
 					<p className="text-[11px] text-[var(--text-tertiary)]">
-						Saves a reply linked to this question in the reporting agent’s MCP inbox. It does not
-						type into or wake a terminal.
+						Saves an answer linked to this question for the reporting agent. It does not type into
+						or wake a chat.
 					</p>
 				</>
 			)}

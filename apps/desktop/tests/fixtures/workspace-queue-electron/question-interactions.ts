@@ -42,7 +42,7 @@ export async function checkQuestionInteractions(
 		.set({ content: "Updated question: restore the exact reporting conversation?" })
 		.where(eq(agentMessages.id, questionId))
 		.run();
-	await click("Send correlated answer");
+	await click("Send answer");
 	await until(() => js<boolean>("document.body.textContent.includes('Your draft is preserved')"));
 	if (
 		!(await js<boolean>(
@@ -54,13 +54,30 @@ export async function checkQuestionInteractions(
 		.capturePage()
 		.then((c) => writeFileSync(join(root, "queue-question-conflict.png"), c.toPNG()));
 	await click("Use reviewed question revision");
-	await click("Send correlated answer");
+	await click("Send answer");
 	await until(() =>
-		js<boolean>("document.body.textContent.includes('Not yet retrieved by the agent')")
+		js<boolean>("document.body.textContent.includes('has not read this answer yet')")
 	);
 	await contents
 		.capturePage()
 		.then((c) => writeFileSync(join(root, "queue-question-saved.png"), c.toPNG()));
+	// Open is view-only, and returning remounts the form with the persisted saved answer.
+	await js(
+		"[...document.querySelectorAll('[aria-label=\"Queue item details\"] button')].find(button=>button.textContent.startsWith('Open question')).click()"
+	);
+	await until(() =>
+		js<boolean>("!!document.querySelector('[data-terminal-id=\"terminal-w1\"] textarea')")
+	);
+	if ((await listWorkspaceQueue()).totalPending !== 3)
+		throw Error("Opening saved question consumed the answer");
+	await click("Queue 3");
+	await until(() => js<boolean>("!!document.querySelector('[data-queue-row]')"));
+	await click("Details / reply");
+	await until(() =>
+		js<boolean>(
+			"document.body.textContent.includes('Your answer: Use the exact reporting conversation')&&document.body.textContent.includes('has not read this answer yet')"
+		)
+	);
 	const saved = (await listWorkspaceQueue()).items.find(
 		(i) => i.question?.messageId === questionId
 	);

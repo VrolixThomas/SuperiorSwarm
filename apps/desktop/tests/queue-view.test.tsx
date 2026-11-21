@@ -430,7 +430,11 @@ test("provider request evidence keeps provenance and does not claim permission e
 	expect(panel?.textContent).toContain("Truncated excerpt");
 	expect(panel?.textContent).toContain("Sensitive text redacted");
 	expect(panel?.textContent).toContain("does not confirm that the requested action ran");
-	expect(panel?.textContent).toContain("incomplete ordering information");
+	expect(panel?.textContent).toContain("timing of this update could not be confirmed");
+	expect(panel?.querySelector("details")?.open).toBe(false);
+	expect(panel?.querySelector("details")?.textContent).toContain(
+		"PermissionRequest / permission_prompt"
+	);
 });
 
 test("handling an item from narrow details returns focus to the visible next row", async () => {

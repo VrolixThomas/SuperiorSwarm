@@ -110,11 +110,11 @@ test("correlated answer uses displayed message, owner and revision; saved is not
 	const f = await mount();
 	await type("Blue");
 	expect(document.body.textContent).toContain("conversation-2");
-	await click("Send correlated answer");
+	await click("Send answer");
 	expect(f.calls).toEqual([
 		{ id: "question-item", revision: 7, questionId: "question-42", content: "Blue" },
 	]);
-	expect(document.body.textContent).toContain("Not yet retrieved");
+	expect(document.body.textContent).toContain("has not read this answer yet");
 	expect(document.body.textContent).toContain("does not resume the task");
 	expect(document.querySelector("textarea")).toBeNull();
 });
@@ -122,35 +122,35 @@ test("transport error preserves input; stale revision refuses send until explici
 	const f = await mount();
 	f.result(Error("Inbox unavailable"));
 	await type("Amber");
-	await click("Send correlated answer");
+	await click("Send answer");
 	expect(document.querySelector("textarea")?.value).toBe("Amber");
 	expect(document.body.textContent).toContain("Inbox unavailable");
 	await f.update({ ...item, revision: 8 });
-	await click("Send correlated answer");
+	await click("Send answer");
 	expect(f.calls).toHaveLength(1);
 	expect(document.body.textContent).toContain("Your draft is preserved");
 	await click("Use reviewed question revision");
 	f.result({ status: "saved", messageId: "a", delivery: "saved", detail: "Saved" });
-	await click("Send correlated answer");
+	await click("Send answer");
 	expect(f.calls[1]?.revision).toBe(8);
 });
 test("backend conflict preserves the pending answer and does not claim delivery", async () => {
 	const f = await mount();
 	f.result({ status: "conflict" });
 	await type("Blue");
-	await click("Send correlated answer");
+	await click("Send answer");
 	expect(document.querySelector("textarea")?.value).toBe("Blue");
 	expect(document.body.textContent).toContain("question changed");
-	expect(document.body.textContent).not.toContain("Not yet retrieved");
+	expect(document.body.textContent).not.toContain("has not read this answer yet");
 });
 test("refresh failure after saved cannot reenable duplicate delivery", async () => {
 	const f = await mount();
 	f.refreshError();
 	await type("Blue");
-	await click("Send correlated answer");
+	await click("Send answer");
 	expect(f.calls).toHaveLength(1);
 	expect(document.querySelector("textarea")).toBeNull();
-	expect(document.body.textContent).toContain("Not yet retrieved");
+	expect(document.body.textContent).toContain("has not read this answer yet");
 });
 test("drafts remain associated with their question when selecting another item", async () => {
 	const f = await mount();
@@ -163,4 +163,20 @@ test("drafts remain associated with their question when selecting another item",
 	expect(document.querySelector("textarea")?.value).toBe("");
 	await f.update(item);
 	expect(document.querySelector("textarea")?.value).toBe("For original only");
+});
+
+test("persisted saved answer remains readable after remount without claiming task execution", async () => {
+	const f = await mount();
+	await f.update({
+		...item,
+		question: {
+			messageId: "question-42",
+			replyCapability: "mcp-inbox",
+			answer: { messageId: "answer-42", delivery: "saved", content: "Previously saved answer" },
+		},
+	});
+	expect(document.body.textContent).toContain("Your answer: Previously saved answer");
+	expect(document.body.textContent).toContain("has not read this answer yet");
+	expect(document.querySelector("textarea")).toBeNull();
+	expect(f.calls).toHaveLength(0);
 });
