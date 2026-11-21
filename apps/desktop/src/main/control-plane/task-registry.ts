@@ -42,7 +42,7 @@ export class TaskRegistry {
 		// Delete before the expiry check so an expired token is also consumed
 		// (no replay — a second call with the same token always returns null).
 		this.store.delete(token);
-		if (entry.expiresAt < this.now()) return null;
+		if (entry.expiresAt <= this.now()) return null;
 		const { expiresAt: _, ...rest } = entry;
 		return rest;
 	}

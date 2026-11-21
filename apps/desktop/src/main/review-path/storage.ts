@@ -34,6 +34,8 @@ import {
 
 type Db = ReturnType<typeof getDb>;
 interface Document extends ReviewPathSnapshot {
+	/** Durable provider-observation fence, defaulting to zero for older documents. */
+	metadataGeneration?: number;
 	changedFiles: string[];
 	nextVersion: number;
 	autoClaims: Record<string, string>;
@@ -106,23 +108,67 @@ export class ReviewPathStorage {
 	peek(identity: ReviewPathIdentity): ReviewPathSnapshot {
 		return this.snapshot(this.load(identity));
 	}
+	/** Reserve before awaiting provider metadata, across all application/storage instances. */
+	reserveMetadata(identity: ReviewPathIdentity): number {
+		return this.transaction(identity, (doc) => this.advanceMetadata(doc));
+	}
+	private advanceMetadata(doc: Document) {
+		doc.metadataGeneration = (doc.metadataGeneration ?? 0) + 1;
+		return doc.metadataGeneration;
+	}
+	/** Compare and apply in one SQLite transaction; rejected observations cannot revoke runs. */
+	acceptMetadata(
+		requested: ReviewPathIdentity,
+		resolved: ReviewPathIdentity,
+		generation: number
+	): boolean {
+		reviewPathIdentitySchema.parse(resolved);
+		if (reviewPathKey(requested) !== reviewPathKey(resolved))
+			throw new Error("Resolved review path scope mismatch");
+		return this.transaction(requested, (doc) => {
+			if (doc.metadataGeneration !== generation) return false;
+			this.head(doc, resolved);
+			this.advanceMetadata(doc);
+			return true;
+		});
+	}
 	private preserveUserContext(
 		previous: ReviewPath | null,
 		entries: ReviewPathEntry[],
 		changedFiles: string[]
 	) {
+		const preserveEntry = (id: string) => {
+			const old = previous?.entries.find((e) => e.id === id);
+			if (!old) throw new Error("Unknown user context entry");
+			let entry = entries.find((e) => e.id === id);
+			if (entry && entry.title !== old.title)
+				throw new Error("Agent cannot overwrite user context entry");
+			if (!entry) {
+				entry = { id, title: old.title, steps: [] };
+				entries.push(entry);
+			}
+			return entry;
+		};
 		for (const oldEntry of previous?.entries ?? [])
 			for (const step of oldEntry.steps) {
-				if (step.kind !== "context" || step.addedBy !== "user" || changedFiles.includes(step.path))
-					continue;
-				if (entries.flatMap((e) => e.steps).some((s) => s.id === step.id || s.path === step.path))
-					continue;
-				let entry = entries.find((e) => e.id === oldEntry.id);
-				if (!entry) {
-					entry = { id: oldEntry.id, title: oldEntry.title, steps: [] };
-					entries.push(entry);
+				if (step.kind !== "context" || step.addedBy !== "user") continue;
+				if (changedFiles.includes(step.path))
+					throw new Error("User context is now changed; remove it before remapping");
+				for (const entry of entries)
+					for (const candidate of entry.steps) {
+						if (candidate.id === step.id || candidate.path === step.path) {
+							if (entry.id !== oldEntry.id || JSON.stringify(candidate) !== JSON.stringify(step))
+								throw new Error("Agent cannot overwrite or move user context");
+						}
+						if (candidate.kind === "changed" && candidate.tests.some((t) => t.path === step.path))
+							throw new Error("Agent cannot replace user context with a test");
+					}
+				const entry = preserveEntry(oldEntry.id);
+				for (const id of step.alsoIn ?? []) preserveEntry(id);
+				if (!entry.steps.some((s) => s.id === step.id)) {
+					// Retain the user's position within its entry when an agent omits it.
+					entry.steps.splice(Math.min(oldEntry.steps.indexOf(step), entry.steps.length), 0, step);
 				}
-				entry.steps.push(step);
 			}
 	}
 	private invalidate(doc: Document) {
@@ -136,6 +182,7 @@ export class ReviewPathStorage {
 	}
 	private head(doc: Document, identity: ReviewPathIdentity) {
 		if (doc.identity.headSha !== identity.headSha) {
+			this.advanceMetadata(doc);
 			this.invalidate(doc);
 			doc.identity = identity;
 			if (doc.path) {
@@ -204,6 +251,7 @@ export class ReviewPathStorage {
 			const claimed = options.auto && doc.autoClaims[identity.headSha];
 			const previous = claimed && doc.runs.find((r) => r.id === claimed);
 			if (previous) return previous;
+			this.advanceMetadata(doc);
 			this.invalidate(doc);
 			doc.changedFiles = changedFiles;
 			doc.conversationId = randomUUID();
@@ -338,8 +386,9 @@ export class ReviewPathStorage {
 	}
 	removeUserContext(identity: ReviewPathIdentity, stepId: string) {
 		return this.transaction(identity, (doc) => {
-			if (doc.identity.headSha !== identity.headSha || doc.path?.headSha !== identity.headSha)
-				throw new Error("Stale path");
+			// A user may discard retained context from a stale path before remapping,
+			// including when that file has become changed in the current revision.
+			if (doc.identity.headSha !== identity.headSha || !doc.path) throw new Error("Stale path");
 			for (const entry of doc.path.entries)
 				entry.steps = entry.steps.filter((s) => !(s.id === stepId && s.kind === "context"));
 			doc.pathVersion++;
@@ -364,6 +413,7 @@ export class ReviewPathStorage {
 				if (!run) throw new Error("Missing question run");
 				return { run, question: existing };
 			}
+			this.advanceMetadata(doc);
 			const run: ReviewPathRun = {
 				identity,
 				id: randomUUID(),
