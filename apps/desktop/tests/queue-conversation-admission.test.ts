@@ -200,6 +200,16 @@ test("provider slash commands and shell shortcuts are not ordinary Queue replies
 		expect(f.writes).toHaveLength(0);
 	}
 });
+test("unknown lifecycle phases cannot establish composer readiness", () => {
+	const f = fixture();
+	f.sessions.input("t", "next\r");
+	const state = { provider: "claude", providerSessionId: "chat", turnId: "next" };
+	f.sessions.conversationState("t", { ...state, phase: "prompt" });
+	f.sessions.conversationState("t", { ...state, phase: "unknown" as "idle" });
+	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(false);
+	f.sessions.conversationState("t", { ...state, phase: "idle" });
+	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(true);
+});
 
 test("daemon also rejects overlong replies before any terminal write", () => {
 	const f = fixture();
