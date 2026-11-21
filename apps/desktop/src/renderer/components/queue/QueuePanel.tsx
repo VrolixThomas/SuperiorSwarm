@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import type { WorkspaceQueueItem } from "../../../shared/activity-queue";
 import { queueAge } from "../../lib/activity-queue-view";
+import { type AnswerQuestion, QueueQuestionReply } from "./QueueQuestionReply";
 import { queueFocus } from "./QueueRow";
 export const queueButton = `rounded-md px-3 py-2 text-[12px] transition-colors hover:bg-[var(--bg-elevated)] disabled:opacity-40 ${queueFocus}`;
 export function QueuePanel({
@@ -11,6 +13,10 @@ export function QueuePanel({
 	snooze,
 	done,
 	bringBack,
+	expanded,
+	close,
+	answer,
+	refresh,
 }: {
 	item: WorkspaceQueueItem;
 	later: boolean;
@@ -20,13 +26,53 @@ export function QueuePanel({
 	snooze: () => void;
 	done: () => void;
 	bringBack: () => void;
+	expanded?: boolean;
+	close?: () => void;
+	answer?: AnswerQuestion;
+	refresh: () => Promise<unknown>;
 }) {
+	const closeButton = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		if (expanded) closeButton.current?.focus();
+	}, [expanded]);
 	return (
 		<aside
 			aria-label="Queue item details"
-			className="hidden min-h-0 w-[420px] shrink-0 flex-col overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] min-[1100px]:flex"
+			id="queue-item-details"
+			onKeyDown={(event) => {
+				if (event.key === "Escape" && expanded) {
+					event.preventDefault();
+					event.stopPropagation();
+					close?.();
+				}
+				if (event.key === "Tab" && expanded && window.innerWidth < 1100) {
+					const controls = Array.from(
+						event.currentTarget.querySelectorAll<HTMLElement>(
+							"button:not(:disabled), textarea:not(:disabled), [tabindex='0']"
+						)
+					).filter((control) => control.getBoundingClientRect().height > 0);
+					const first = controls[0];
+					const last = controls.at(-1);
+					if (
+						(!event.shiftKey && document.activeElement === last) ||
+						(event.shiftKey && document.activeElement === first)
+					) {
+						event.preventDefault();
+						(event.shiftKey ? last : first)?.focus();
+					}
+				}
+			}}
+			className={`${expanded ? "absolute inset-0 z-10 flex" : "hidden"} min-h-0 min-w-0 shrink-0 flex-col overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] min-[1100px]:static min-[1100px]:flex min-[1100px]:w-[420px]`}
 		>
 			<div className="px-6 py-6">
+				<button
+					ref={closeButton}
+					type="button"
+					onClick={close}
+					className={`${queueButton} mb-3 min-[1100px]:hidden`}
+				>
+					Back to queue items
+				</button>
 				<p className="mb-6 flex min-w-0 items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
 					<span
 						className="size-2 shrink-0 rounded-sm"
@@ -42,6 +88,31 @@ export function QueuePanel({
 						{item.context.workspaceName}
 					</span>
 				</p>
+				<div className="mb-4 space-y-1 break-words text-[11px] text-[var(--text-tertiary)]">
+					<p>
+						{item.context.role === "coordinator"
+							? "Coordinator directory"
+							: item.context.projectKind === "folder"
+								? "Folder"
+								: item.context.projectKind === "repo"
+									? "Repository"
+									: "Project"}
+						{item.context.projectPath ? ` · ${item.context.projectPath}` : " · Path unavailable"}
+					</p>
+					<p>
+						{item.context.role ?? "workspace"} · {item.context.workspaceName}
+					</p>
+					{item.context.terminalTitle && <p>Chat: {item.context.terminalTitle}</p>}
+					{item.context.linkedProjects?.map((project) => (
+						<p key={project.id}>
+							Linked {project.kind === "folder" ? "folder" : "repository"}: {project.name} ·{" "}
+							{project.path}
+						</p>
+					))}
+					{item.context.identityCapability === "missing-owner" && (
+						<p>Reporting conversation is unknown. No sibling chat is assumed to own this item.</p>
+					)}
+				</div>
 				<h2 className="break-words text-[20px] font-medium leading-7 tracking-tight text-[var(--text)]">
 					{item.subject}
 				</h2>
@@ -72,16 +143,52 @@ export function QueuePanel({
 							{item.missingContext}
 						</p>
 					)}
-					{item.evidence.slice(0, 4).map((line, i) => (
-						<p
-							key={`${i}-${line}`}
-							className="break-words text-[12px] leading-5 text-[var(--text-secondary)]"
-						>
-							{line}
-						</p>
+					{item.evidence.map((line, i) => (
+						<div key={`${i}-${line}`}>
+							<p className="whitespace-pre-wrap break-words text-[12px] leading-5 text-[var(--text-secondary)]">
+								{line}
+							</p>
+							{item.providerEvidence
+								?.filter((value) => value.text === line)
+								.map((value, index) => (
+									<p
+										key={`${value.sourceField}-${index}`}
+										className="mt-1 break-words text-[10px] text-[var(--text-tertiary)]"
+									>
+										{value.provider} · {value.kind} · {value.rawEvent} / {value.sourceField}
+										{value.truncated ? " · Truncated excerpt" : ""}
+										{value.redacted ? " · Sensitive text redacted" : ""}
+									</p>
+								))}
+						</div>
 					))}
+					{item.permission && (
+						<p className="text-[11px] text-[var(--text-tertiary)]">
+							Permission: {item.permission.outcome}
+							{item.permission.requestId ? ` · ${item.permission.requestId}` : ""}. This status does
+							not confirm that the requested action ran.
+						</p>
+					)}
+					{item.ordering === "uncertain" && (
+						<p className="text-[11px] text-[var(--text-tertiary)]">
+							This event has incomplete ordering information. Confirm its current state in the exact
+							chat.
+						</p>
+					)}
 				</div>
 
+				{item.members && item.members.length > 1 && (
+					<p className="text-[11px] leading-5 text-[var(--text-tertiary)]">
+						Combined report and turn update from this exact conversation. Done and Later apply to
+						both updates.
+					</p>
+				)}
+				<QueueQuestionReply
+					item={item}
+					available={canAct && !busy}
+					answer={answer}
+					refresh={refresh}
+				/>
 				<div className="mt-3 flex items-center gap-1 text-[var(--text-tertiary)]">
 					{later ? (
 						<button

@@ -9,11 +9,19 @@ import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
 import { SocketServer } from "../../../src/daemon/socket-server";
 import { ActivityQueueService } from "../../../src/main/activity-queue/service";
 import { listWorkspaceQueue } from "../../../src/main/activity-queue/workspace-queue";
+import { setEventsDir } from "../../../src/main/control-plane/orchestrator-event-sink";
 import { getDb } from "../../../src/main/db";
-import { agentMessages, projects, terminalSessions, workspaces } from "../../../src/main/db/schema";
+import {
+	agentMessages,
+	crossRepoOrchestratorProjects,
+	crossRepoOrchestrators,
+	projects,
+	terminalSessions,
+	workspaces,
+} from "../../../src/main/db/schema";
 import { AgentSessionManager } from "../../../src/main/services/agent-session-manager";
 import { setAgentSessionManager } from "../../../src/main/services/agent-session-manager-handle";
-import { setStatus } from "../../../src/main/services/workspace-service";
+import { sendMessage, setStatus } from "../../../src/main/services/workspace-service";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
 import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
@@ -22,7 +30,9 @@ import { publicProcedure, router } from "../../../src/main/trpc";
 import { setupTRPCIPC } from "../../../src/main/trpc/ipc-link";
 import { activityQueueRouter } from "../../../src/main/trpc/routers/activity-queue";
 import { agentSessionsRouter } from "../../../src/main/trpc/routers/agent-sessions";
+import { crossRepoOrchestratorsRouter } from "../../../src/main/trpc/routers/cross-repo-orchestrators";
 import { workspacesRouter } from "../../../src/main/trpc/routers/workspaces";
+import { checkQuestionInteractions } from "./question-interactions";
 import { checkSidebarInteractions } from "./sidebar-interactions";
 function requireEnvironment(name: string): string {
 	const value = process.env[name];
@@ -60,6 +70,7 @@ const until = async (fn: () => boolean | Promise<boolean>) => {
 };
 async function run() {
 	await app.whenReady();
+	setEventsDir(join(root, "events"));
 	server.listen();
 	await daemon.connect();
 	setDaemonClient(daemon);
@@ -167,22 +178,70 @@ async function run() {
 			providerSessionId: `provider-${id}`,
 			skipPermissions: false,
 		});
-	getDb()
-		.insert(agentMessages)
-		.values({
-			id: "q1",
-			projectId: "p1",
-			fromWorkspaceId: "w1",
+	for (const workspaceId of ["w1", "w2"]) {
+		const terminalId = `sibling-${workspaceId}`;
+		getDb()
+			.insert(terminalSessions)
+			.values({
+				id: terminalId,
+				workspaceId,
+				cwd: root,
+				title: "Unrelated sibling",
+				sortOrder: 9,
+				updatedAt: now,
+			})
+			.run();
+		await daemon.create(
+			terminalId,
+			root,
+			() => {},
+			() => {},
+			{ SHELL: "/bin/sh", HOME: root }
+		);
+		manager.registerManagedSession({
+			terminalId,
+			workspaceId,
+			provider: "codex",
+			providerSessionId: `sibling-conversation-${workspaceId}`,
+			skipPermissions: false,
+		});
+	}
+	const { messageId: questionId } = await sendMessage(
+		{ kind: "workspace", projectId: "p1", workspaceId: "w1", terminalId: "terminal-w1" },
+		{
 			kind: "question",
 			content:
 				"Should a reopened workspace restore the last active chat? The previous chat may still be waiting for your answer while another terminal is running. We can restore the last selected chat, or open the chat that currently needs input. This should also work when you return from a different project, close and reopen the application, or switch between an orchestrator and its workspaces. Which behavior should we use?",
-			createdAt: now,
-		})
-		.run();
+		}
+	);
 	await setStatus(
-		{ kind: "workspace", projectId: "p1", workspaceId: "w2" },
+		{ kind: "workspace", projectId: "p1", workspaceId: "w2", terminalId: "terminal-w2" },
 		{ phase: "done", statusText: "Queue changes are ready for your review." }
 	);
+	manager.handleAgentEvent({
+		agent: "codex",
+		sessionId: "terminal-w2",
+		terminalId: "terminal-w2",
+		workspaceId: "w2",
+		providerSessionId: "provider-w2",
+		timestamp: Date.now(),
+		producerTimestamp: Date.now(),
+		cwd: root,
+		rawEvent: "Stop",
+		turnId: "report-turn",
+		alert: "task-complete",
+		evidence: [
+			{
+				kind: "reply",
+				text: "Report turn ended; the isolated checks passed.",
+				provider: "codex",
+				rawEvent: "Stop",
+				sourceField: "last_assistant_message",
+				truncated: false,
+				redacted: false,
+			},
+		],
+	});
 	manager.handleAgentEvent({
 		agent: "codex",
 		sessionId: "terminal-w3",
@@ -194,6 +253,18 @@ async function run() {
 		cwd: root,
 		rawEvent: "PermissionRequest",
 		turnId: "permission",
+		evidence: [
+			{
+				kind: "permission",
+				text: "Allow reading the isolated fixture only?",
+				provider: "codex",
+				rawEvent: "PermissionRequest",
+				sourceField: "permission_prompt",
+				truncated: false,
+				redacted: false,
+			},
+		],
+		permission: { requestId: "native-request", outcome: "pending" },
 		alert: "needs-input",
 	});
 	// An external candidate is deliberately present in storage; it must never reach the new UI or badge.
@@ -214,10 +285,7 @@ async function run() {
 	});
 	const appRouter = router({
 		projects: router({ list: publicProcedure.query(() => getDb().select().from(projects).all()) }),
-		crossRepoOrchestrators: router({
-			list: publicProcedure.query(() => []),
-			memberCounts: publicProcedure.query(() => ({})),
-		}),
+		crossRepoOrchestrators: crossRepoOrchestratorsRouter,
 		activityQueue: activityQueueRouter,
 		agentSessions: agentSessionsRouter,
 		workspaces: workspacesRouter,
@@ -351,11 +419,30 @@ async function run() {
 		await contents
 			.capturePage()
 			.then((c) => writeFileSync(join(root, `queue-${width}x${height}.png`), c.toPNG()));
+		if (width < 1100) {
+			await click("Details / reply");
+			await until(() => js<boolean>("document.activeElement?.textContent==='Back to queue items'"));
+			const detailsFit = await js<boolean>(`(() => {
+				const p=document.querySelector('[aria-label="Queue item details"]'), r=p.getBoundingClientRect();
+				return r.left>=72 && r.right<=innerWidth && r.bottom<=innerHeight && r.height>0 && getComputedStyle(p).overflowY==='auto';
+			})()`);
+			if (!detailsFit) throw new Error("Narrow question details are clipped");
+			await js(
+				"[...document.querySelectorAll('[aria-label=\"Queue item details\"] button')].filter(b=>!b.disabled&&b.getBoundingClientRect().height>0).at(-1).focus()"
+			);
+			key("Tab");
+			await until(() => js<boolean>("document.activeElement?.textContent==='Back to queue items'"));
+			await contents
+				.capturePage()
+				.then((c) => writeFileSync(join(root, "queue-narrow-details.png"), c.toPNG()));
+			key("Escape");
+			await until(() => js<boolean>("document.activeElement?.textContent==='Details / reply'"));
+		}
 		if (height === 500) {
 			const actionsReachable = await js<boolean>(`(() => {
 				const panel = document.querySelector('[aria-label="Queue item details"]');
 				panel.scrollTop = panel.scrollHeight;
-				const buttons = [...panel.querySelectorAll('button')];
+				const buttons = [...panel.querySelectorAll('button')].filter(button => button.getBoundingClientRect().height > 0);
 				return panel.scrollTop > 0 && buttons.every(button => {
 					button.scrollIntoView({block: "nearest"});
 					const rect = button.getBoundingClientRect();
@@ -380,6 +467,54 @@ async function run() {
 			.capturePage()
 			.then((c) => writeFileSync(join(root, `queue-${name}-context.png`), c.toPNG()));
 	}
+	step = "grouped report retains both revision receipts";
+	const grouped = (await listWorkspaceQueue()).items.find(
+		(item) => item.id === "agent-workspace:w2"
+	);
+	if (grouped?.members?.length !== 2)
+		throw new Error("Exact report and turn were not canonically grouped");
+	await js("document.querySelector('[data-queue-row=\"agent-workspace:w2\"]').click()");
+	key("e");
+	await until(() => count(2));
+	key("z");
+	await until(() => count(3));
+	await until(() =>
+		js<boolean>(
+			"document.querySelector('[data-queue-row=\"agent-workspace:w2\"]')?.getAttribute('aria-current')==='true'"
+		)
+	);
+	key("h");
+	await until(() => js<boolean>("!!document.querySelector('dialog')"));
+	key("1");
+	await until(() => count(2));
+	await click("Later 1");
+	await until(() => js<boolean>("document.querySelectorAll('[data-queue-row]').length===1"));
+	await js("document.querySelector('main').focus()");
+	key("b");
+	await until(() => count(3));
+	await click("All3");
+	await until(() => js<boolean>("document.querySelectorAll('[data-queue-row]').length===3"));
+	step = "known reporter ignores selected sibling";
+	await js("document.querySelector('[data-queue-row=\"agent-workspace:w2\"]').click()");
+	await js("document.querySelector('main').focus()");
+	key("Enter");
+	await until(() =>
+		js<boolean>("!!document.querySelector('[data-terminal-id=\"terminal-w2\"] textarea')")
+	);
+	if (await js<boolean>("!!document.querySelector('[data-terminal-id=\"sibling-w2\"]')"))
+		throw new Error("Queue opened sibling instead of reporter");
+	if ((await listWorkspaceQueue()).totalPending !== 3)
+		throw new Error("Reporter navigation acknowledged activity");
+	if ((await daemon.listSessionsStrict()).length !== 5)
+		throw new Error("Reporter navigation created a replacement PTY");
+	if (
+		!(await js<boolean>(
+			"document.querySelector('[data-terminal-id=\"terminal-w2\"]')?.getAttribute('data-attach-only')==='true'"
+		))
+	)
+		throw new Error("Reporter lost attach-only intent");
+	await click("Queue 3");
+	await until(() => js<boolean>("document.querySelectorAll('[data-queue-row]').length===3"));
 	await js("document.querySelectorAll('[data-queue-row]')[0].click()");
 	await click("Projects");
 	step = "workspace layout retained outside Queue";
@@ -508,7 +643,9 @@ async function run() {
 	await js("document.querySelector('main').focus()");
 	key("Enter");
 	step = "Open navigates without handling";
-	await until(() => js<boolean>("!!document.querySelector('textarea')"));
+	await until(() =>
+		js<boolean>("!!document.querySelector('[data-terminal-id=\"terminal-w1\"] textarea')")
+	);
 	await until(() =>
 		js<boolean>(
 			"document.querySelector('[data-workspace-diff]')?.getBoundingClientRect().width > 0"
@@ -549,12 +686,12 @@ async function run() {
 	const selected = await js<string>(
 		"document.querySelector('[data-queue-row][aria-current=true]').getAttribute('data-queue-row')"
 	);
-	if (selected !== "agent-question:q1")
+	if (selected !== `agent-question:${questionId}`)
 		throw new Error(`Unexpected selected question: ${selected}`);
 	getDb()
 		.update(agentMessages)
 		.set({ content: "The question has changed. Review the latest options." })
-		.where(eq(agentMessages.id, "q1"))
+		.where(eq(agentMessages.id, questionId))
 		.run();
 	await js("document.querySelector('main').focus()");
 	key("e");
@@ -571,6 +708,8 @@ async function run() {
 	await contents
 		.capturePage()
 		.then((c) => writeFileSync(join(root, "queue-conflict.png"), c.toPNG()));
+	step = "correlated question reply and exact retrieval";
+	await checkQuestionInteractions(win, root, questionId);
 	step = "partial unavailable inventory";
 	daemon.disconnect();
 	await click("Refresh queue");
@@ -614,10 +753,140 @@ async function run() {
 	}
 	await until(() => js<boolean>("document.body.textContent.includes('Nothing needs you.')"));
 	await contents.capturePage().then((c) => writeFileSync(join(root, "queue-empty.png"), c.toPNG()));
+	step = "rendered provider failure evidence";
+	manager.handleAgentEvent({
+		agent: "codex",
+		sessionId: "terminal-w3",
+		terminalId: "terminal-w3",
+		workspaceId: "w3",
+		providerSessionId: "provider-w3",
+		timestamp: Date.now(),
+		producerTimestamp: Date.now(),
+		cwd: root,
+		rawEvent: "UserPromptSubmit",
+		turnId: "failure-turn",
+		alert: "active",
+	});
+	manager.handleAgentEvent({
+		agent: "codex",
+		sessionId: "terminal-w3",
+		terminalId: "terminal-w3",
+		workspaceId: "w3",
+		providerSessionId: "provider-w3",
+		timestamp: Date.now(),
+		producerTimestamp: Date.now(),
+		cwd: root,
+		rawEvent: "StopFailure",
+		turnId: "failure-turn",
+		alert: "needs-input",
+		evidence: [
+			{
+				kind: "error",
+				text: "Synthetic fixture failure: isolated input was unavailable.",
+				provider: "codex",
+				rawEvent: "StopFailure",
+				sourceField: "error_message",
+				truncated: false,
+				redacted: false,
+			},
+		],
+	});
+	await click("Refresh queue");
+	await until(() => count(1));
+	await until(() =>
+		js<boolean>(
+			"document.body.textContent.includes('Synthetic fixture failure')&&document.body.textContent.includes('StopFailure / error_message')"
+		)
+	);
+	await contents
+		.capturePage()
+		.then((c) => writeFileSync(join(root, "queue-provider-failure.png"), c.toPNG()));
+	await js("document.querySelector('main').focus()");
+	key("e");
+	await until(() => count(0));
+	step = "coordinator own entity navigation";
+	const coordinatorDir = join(root, "coordinator");
+	mkdirSync(coordinatorDir);
+	getDb()
+		.insert(crossRepoOrchestrators)
+		.values({
+			id: "xro-native",
+			name: "Cross-project coordinator",
+			workDir: coordinatorDir,
+			agentKind: "codex",
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+	for (const projectId of ["p1", "folder-0"])
+		getDb()
+			.insert(crossRepoOrchestratorProjects)
+			.values({ orchestratorId: "xro-native", projectId, sortOrder: 0, createdAt: now })
+			.run();
+	getDb()
+		.insert(terminalSessions)
+		.values({
+			id: "coordinator-chat",
+			workspaceId: "xro-native",
+			cwd: coordinatorDir,
+			title: "Coordinator planning",
+			sortOrder: 0,
+			updatedAt: now,
+		})
+		.run();
+	await daemon.create(
+		"coordinator-chat",
+		coordinatorDir,
+		() => {},
+		() => {},
+		{ SHELL: "/bin/sh", HOME: root }
+	);
+	manager.registerManagedSession({
+		terminalId: "coordinator-chat",
+		workspaceId: "xro-native",
+		provider: "codex",
+		providerSessionId: "coordinator-conversation",
+		skipPermissions: false,
+	});
+	await setStatus(
+		{
+			kind: "xro",
+			xroId: "xro-native",
+			linkedProjectIds: ["p1", "folder-0"],
+			terminalId: "coordinator-chat",
+		},
+		{ phase: "blocked", needs: "Choose which isolated project to inspect." }
+	);
+	await click("Refresh queue");
+	await until(() => count(1));
+	await until(() =>
+		js<boolean>(
+			"document.body.textContent.includes('Coordinator directory')&&document.body.textContent.includes('Linked folder')&&document.body.textContent.includes('Linked repository')"
+		)
+	);
+	await contents
+		.capturePage()
+		.then((c) => writeFileSync(join(root, "queue-coordinator-context.png"), c.toPNG()));
+	await js("document.querySelector('main').focus()");
+	key("Enter");
+	await until(() =>
+		js<boolean>(
+			'!!document.querySelector(\'[data-queue-workspace="xro-native"] [data-terminal-id="coordinator-chat"] textarea\')'
+		)
+	);
+	if ((await listWorkspaceQueue()).totalPending !== 1)
+		throw new Error("Coordinator open cleared attention");
+	if (!(await daemon.listSessionsStrict()).some((session) => session.id === "coordinator-chat"))
+		throw new Error("Coordinator PTY disappeared");
 	writeFileSync(
 		join(root, "result.json"),
 		JSON.stringify({
 			workspaceOnly: true,
+			correlatedReply: true,
+			exactReporter: true,
+			coordinatorNavigation: true,
+			groupedReceipts: true,
 			openOnly: true,
 			doneUndo: true,
 			laterBringBack: true,

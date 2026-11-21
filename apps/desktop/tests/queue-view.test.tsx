@@ -344,5 +344,91 @@ test("selected item keeps its source and next action visible", async () => {
 	expect(panel?.textContent).toContain(item.nextAction);
 	expect(panel?.textContent).toContain(item.missingContext);
 	expect(panel?.textContent).toContain(item.clearsWhen);
-	expect(panel?.querySelector("button")?.textContent).toContain("Open chat to read reply");
+	expect(
+		[...(panel?.querySelectorAll("button") ?? [])].some((button) =>
+			button.textContent?.includes("Open chat to read reply")
+		)
+	).toBe(true);
+});
+
+test("narrow details action exposes full context and returns keyboard focus", async () => {
+	const item = row("question");
+	item.evidence = [
+		"Full question with\nmultiple lines",
+		"Second detail",
+		"Third detail",
+		"Fourth detail",
+		"Fifth detail is not hidden",
+	];
+	item.context.projectKind = "folder";
+	item.context.projectPath = "/isolated/folder";
+	item.context.role = "orchestrator";
+	await mount([item]);
+	await click("Details / reply");
+	expect(document.activeElement?.textContent).toBe("Back to queue items");
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.className).toContain("absolute");
+	expect(panel?.textContent).toContain("Fifth detail is not hidden");
+	expect(panel?.textContent).toContain("Folder · /isolated/folder");
+	expect(panel?.textContent).toContain("orchestrator");
+	await key("Escape");
+	expect(document.activeElement?.textContent).toBe("Details / reply");
+	expect(panel?.className).not.toContain("absolute");
+});
+
+test("canonical grouped actions preserve every displayed member receipt including Undo", async () => {
+	const item = row("report");
+	item.members = [
+		{ id: "report", revision: 1 },
+		{ id: "turn", revision: 9 },
+	];
+	const f = await mount([item]);
+	await key("e");
+	expect(f.calls.at(-1)?.input).toEqual({ id: "report", revision: 1, members: item.members });
+	await key("z");
+	expect(f.calls.at(-1)).toEqual({
+		action: "undo",
+		input: { id: "report", revision: 1, members: item.members },
+	});
+	await key("h");
+	await key("1");
+	expect(f.calls.at(-1)?.input).toEqual({
+		id: "report",
+		revision: 1,
+		members: item.members,
+		until: undefined,
+		untilChange: true,
+	});
+	await click("Later 1");
+	await key("b");
+	expect(f.calls.at(-1)).toEqual({
+		action: "back",
+		input: { id: "report", revision: 1, members: item.members },
+	});
+});
+
+test("provider request evidence keeps provenance and does not claim permission execution", async () => {
+	const item = row("permission");
+	item.situation = "agent-permission";
+	item.evidence = ["Read the isolated fixture?"];
+	item.providerEvidence = [
+		{
+			kind: "permission",
+			text: "Read the isolated fixture?",
+			provider: "codex",
+			rawEvent: "PermissionRequest",
+			sourceField: "permission_prompt",
+			truncated: true,
+			redacted: true,
+		},
+	];
+	item.permission = { requestId: "request-1", outcome: "pending" };
+	item.ordering = "uncertain";
+	await mount([item]);
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.textContent).toContain("PermissionRequest / permission_prompt");
+	expect(panel?.textContent).toContain("Truncated excerpt");
+	expect(panel?.textContent).toContain("Sensitive text redacted");
+	expect(panel?.textContent).toContain("does not confirm that the requested action ran");
+	expect(panel?.textContent).toContain("incomplete ordering information");
 });

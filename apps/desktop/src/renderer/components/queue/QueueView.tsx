@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceQueueItem, WorkspaceQueueListResult } from "../../../shared/activity-queue";
+import type {
+	WorkspaceQueueItem,
+	WorkspaceQueueListResult,
+	WorkspaceQueueRevisionInput,
+} from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
 import { useWorkspaceQueue } from "../../hooks/useWorkspaceQueue";
 import { focusQueueDestination, openQueueTarget } from "../../lib/activity-queue-navigation";
@@ -13,10 +17,11 @@ import {
 import { useActivityQueueStore } from "../../stores/activity-queue-store";
 import { trpc } from "../../trpc/client";
 import { QueuePanel, queueButton } from "./QueuePanel";
+import type { AnswerQuestion } from "./QueueQuestionReply";
 import { QueueRow, queueFocus } from "./QueueRow";
 
 const EMPTY: WorkspaceQueueItem[] = [];
-type Receipt = { id: string; revision: number };
+type Receipt = WorkspaceQueueRevisionInput;
 type Result = { status: string };
 type LaterOption = ReturnType<typeof laterOptions>[number];
 export interface QueueScreenProps {
@@ -34,6 +39,7 @@ export interface QueueScreenProps {
 	later: (input: Receipt & { until?: number; untilChange: boolean }) => Promise<Result>;
 	bringBack: (receipt: Receipt) => Promise<Result>;
 	undoDone: (receipt: Receipt) => Promise<Result>;
+	answer?: AnswerQuestion;
 }
 export function QueueScreen({
 	data,
@@ -50,9 +56,12 @@ export function QueueScreen({
 	later,
 	bringBack,
 	undoDone,
+	answer,
 }: QueueScreenProps) {
 	const [filter, setFilter] = useState<WorkspaceQueueFilter>("all");
 	const [group, setGroup] = useState(false);
+	const [detailsOpen, setDetailsOpen] = useState(false);
+	const detailsButton = useRef<HTMLButtonElement>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
 	const [mode, setMode] = useState<"list" | "later" | "help">("list");
 	const [options, setOptions] = useState<LaterOption[]>([]);
@@ -135,7 +144,11 @@ export function QueueScreen({
 	};
 	const act = async (kind: "done" | "later" | "back", option?: LaterOption) => {
 		if (!selected || !available || running.current || (kind === "later" && !option)) return;
-		const receipt = { id: selected.id, revision: selected.revision };
+		const receipt: Receipt = {
+			id: selected.id,
+			revision: selected.revision,
+			...(selected.members ? { members: selected.members } : {}),
+		};
 		const oldIndex = index;
 		running.current = true;
 		setBusy(true);
@@ -386,7 +399,7 @@ export function QueueScreen({
 					</ul>
 				</details>
 			)}
-			<div className="flex min-h-0 flex-1">
+			<div className="relative flex min-h-0 flex-1">
 				<div className="flex min-w-0 flex-1 flex-col">
 					{view === "later" && (
 						<p className="px-5 py-3 text-[11px] text-[var(--text-tertiary)]">
@@ -445,7 +458,17 @@ export function QueueScreen({
 						)}
 					</section>
 					{selected && (
-						<div className="flex shrink-0 items-center gap-1 border-t border-[var(--border-subtle)] px-3 py-2 text-[var(--text-tertiary)] min-[1100px]:hidden">
+						<div className="flex shrink-0 flex-wrap items-center gap-1 border-t border-[var(--border-subtle)] px-3 py-2 text-[var(--text-tertiary)] min-[1100px]:hidden">
+							<button
+								ref={detailsButton}
+								type="button"
+								aria-expanded={detailsOpen}
+								aria-controls="queue-item-details"
+								className={queueButton}
+								onClick={() => setDetailsOpen(true)}
+							>
+								Details / reply
+							</button>
 							<button
 								type="button"
 								className={queueButton}
@@ -488,6 +511,13 @@ export function QueueScreen({
 				</div>
 				{selected && (
 					<QueuePanel
+						expanded={detailsOpen}
+						close={() => {
+							setDetailsOpen(false);
+							detailsButton.current?.focus();
+						}}
+						answer={answer}
+						refresh={refresh}
 						item={selected}
 						later={view === "later"}
 						busy={busy}
@@ -592,6 +622,7 @@ export function QueueView() {
 	const later = trpc.activityQueue.later.useMutation();
 	const bringBack = trpc.activityQueue.bringBack.useMutation();
 	const undoDone = trpc.activityQueue.undoDone.useMutation();
+	const answer = trpc.activityQueue.workspaceAnswer.useMutation();
 	const refresh = async () => {
 		await utils.activityQueue.workspaceList.invalidate();
 		return query.refetch();
@@ -616,6 +647,7 @@ export function QueueView() {
 			later={(input) => later.mutateAsync(input)}
 			bringBack={(input) => bringBack.mutateAsync(input)}
 			undoDone={(input) => undoDone.mutateAsync(input)}
+			answer={(input) => answer.mutateAsync(input)}
 		/>
 	);
 }

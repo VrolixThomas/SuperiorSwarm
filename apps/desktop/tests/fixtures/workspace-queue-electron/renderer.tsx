@@ -20,12 +20,21 @@ localStorage.setItem(
 	"react-resizable-panels:app-layout",
 	JSON.stringify({ sidebar: 21, main: 54, diff: 25 })
 );
+useTabStore
+	.getState()
+	.addTerminalTab("xro-native", "/tmp", "Coordinator planning", "coordinator-chat");
+useTabStore.getState().addTerminalTab("w1", "/tmp", "Unrelated sibling", "sibling-w1");
+useTabStore.getState().addTerminalTab("w2", "/tmp", "Unrelated sibling", "sibling-w2");
 useTabStore.getState().setSidebarSegment("repos");
 useTabStore.getState().setActiveWorkspace("w1", "/tmp");
 useTabStore.getState().setSidebarSegment("queue");
 function Surface() {
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const workspace = useTabStore((s) => s.activeWorkspaceId);
+	const terminal = useTabStore((s) => s.getActiveTabId());
+	const attachOnly = useTabStore(
+		(s) => !!terminal && s.terminalCreateIntents[terminal] === "attach-existing-only"
+	);
 	return (
 		<>
 			<WorkspaceQueueSync />
@@ -40,7 +49,7 @@ function Surface() {
 					) : (
 						<main data-queue-workspace={workspace} tabIndex={-1} className="p-8">
 							<h1>Workspace</h1>
-							<div data-terminal-id={`terminal-${workspace}`}>
+							<div data-terminal-id={terminal} data-attach-only={attachOnly}>
 								<textarea aria-label="Agent input" className="xterm-helper-textarea" />
 							</div>
 						</main>
