@@ -164,7 +164,7 @@ export function countsByPath(threads: UnifiedThread[]) {
 	for (const thread of threads) {
 		const count = counts.get(thread.path) ?? { openThreads: 0, pendingFindings: 0 };
 		if (thread.isAIDraft) {
-			if (thread.status === "pending") count.pendingFindings++;
+			if (!thread.isOutdated && thread.status === "pending") count.pendingFindings++;
 		} else if (!thread.isResolved && thread.resolutionKnown !== false) count.openThreads++;
 		counts.set(thread.path, count);
 	}

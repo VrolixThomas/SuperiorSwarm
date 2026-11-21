@@ -1,18 +1,21 @@
 import { type PointerEvent as ReactPointerEvent, useCallback } from "react";
-import { useReviewModeStore } from "../../stores/review-mode-store";
+import { type ReviewTerminal, useReviewModeStore } from "../../stores/review-mode-store";
 import { Terminal } from "../Terminal";
 
-export function TerminalDrawer() {
+export function TerminalDrawer({
+	terminal: scopedTerminal,
+}: { terminal?: ReviewTerminal | null } = {}) {
 	const drawerOpen = useReviewModeStore((state) => state.drawerOpen);
 	const drawerHeight = useReviewModeStore((state) => state.drawerHeight);
 	const setDrawerOpen = useReviewModeStore((state) => state.setDrawerOpen);
 	const setDrawerHeight = useReviewModeStore((state) => state.setDrawerHeight);
 	const setView = useReviewModeStore((state) => state.setView);
 	const view = useReviewModeStore((state) => state.view);
-	const terminal = useReviewModeStore((state) =>
+	const storedTerminal = useReviewModeStore((state) =>
 		state.active ? (state.terminals[state.active.workspaceId] ?? null) : null
 	);
 
+	const terminal = scopedTerminal === undefined ? storedTerminal : scopedTerminal;
 	const startResize = useCallback(
 		(event: ReactPointerEvent<HTMLDivElement>) => {
 			event.preventDefault();

@@ -35,6 +35,8 @@ export interface DraftLike {
 	prIdentifier: string;
 	status: string;
 	roundNumber?: number | null;
+	reviewChainId?: string | null;
+	createdAt?: string | Date;
 }
 
 export const DRAFT_STATUS_PRIORITY: Record<string, number> = {
@@ -113,7 +115,7 @@ export function threadCounts(threads: UnifiedThread[]): Record<ThreadFilter, num
 	};
 
 	for (const thread of threads) {
-		if (!thread.isAIDraft && thread.resolutionKnown === false) continue;
+		if (thread.isAIDraft ? thread.isOutdated : thread.resolutionKnown === false) continue;
 		counts[threadBucket(thread)] += 1;
 	}
 
@@ -127,12 +129,17 @@ export function draftStatusAfterEdit(status: AIDraftThread["status"]): "edited" 
 export function canAcceptDraft(
 	thread: UnifiedThread | null
 ): thread is AIDraftThread & { status: "pending" | "edited" } {
-	return thread?.isAIDraft === true && (thread.status === "pending" || thread.status === "edited");
+	return (
+		thread?.isAIDraft === true &&
+		!thread.isOutdated &&
+		(thread.status === "pending" || thread.status === "edited")
+	);
 }
 
 export function canEditDraft(thread: UnifiedThread | null): thread is AIDraftThread {
 	return (
 		thread?.isAIDraft === true &&
+		!thread.isOutdated &&
 		(thread.status === "pending" ||
 			thread.status === "edited" ||
 			thread.status === "user-pending" ||
@@ -153,7 +160,7 @@ export function fileCommentCounts(threads: UnifiedThread[]): Map<string, number>
 
 	for (const thread of threads) {
 		if (thread.isAIDraft) {
-			if (!isDraftCountedForFileBadge(thread.status)) continue;
+			if (thread.isOutdated || !isDraftCountedForFileBadge(thread.status)) continue;
 		} else if (thread.isResolved || thread.resolutionKnown === false) {
 			continue;
 		}
@@ -179,7 +186,7 @@ export function changesThreadsForFile(
 		.filter((thread) => {
 			if (thread.path !== filePath) return false;
 			if (!thread.isAIDraft) return publishedCommentsVisible;
-			return CHANGES_DRAFT_STATUSES.has(thread.status);
+			return thread.isOutdated === true || CHANGES_DRAFT_STATUSES.has(thread.status);
 		})
 		.sort((a, b) => {
 			const lineA = a.line ?? Number.MAX_SAFE_INTEGER;
@@ -214,7 +221,7 @@ export function partitionChangesThreads(
 	for (const thread of threads) {
 		const lineIsRenderable =
 			thread.line != null && thread.line >= 1 && thread.line <= lineCounts[thread.diffSide];
-		if (!editorVisible || !lineIsRenderable) {
+		if (thread.isOutdated || !editorVisible || !lineIsRenderable) {
 			layout.fallback.push(thread);
 		} else if (thread.diffSide === "LEFT") {
 			(diffMode === "split" ? layout.leftInline : layout.fallback).push(thread);
@@ -226,10 +233,25 @@ export function partitionChangesThreads(
 	return layout;
 }
 
-export function mapDraftComment(c: DraftCommentLike, roundNumber?: number): AIDraftThread {
+export function mapDraftComment(
+	c: DraftCommentLike,
+	roundNumber?: number,
+	provenance?: { draftId: string; commitSha: string | null; currentHead?: string }
+): AIDraftThread {
 	const thread: AIDraftThread = {
 		id: `ai-${c.id}`,
 		isAIDraft: true,
+		...(provenance
+			? {
+					draftId: provenance.draftId,
+					commitSha: provenance.commitSha,
+					originalLine: c.lineNumber,
+					isOutdated:
+						!provenance.commitSha ||
+						!provenance.currentHead ||
+						provenance.commitSha !== provenance.currentHead,
+				}
+			: {}),
 		draftCommentId: c.id,
 		path: c.filePath,
 		line: c.lineNumber,
@@ -261,16 +283,27 @@ export function pickLatestDraft<T extends DraftLike>(
 			continue;
 		}
 
-		const priority = DRAFT_STATUS_PRIORITY[draft.status] ?? 5;
-		const latestPriority = DRAFT_STATUS_PRIORITY[latest.status] ?? 5;
-		if (priority < latestPriority) {
-			latest = draft;
+		// Old callers without chain or time metadata retain their legacy ordering.
+		if (!draft.reviewChainId && !latest.reviewChainId && !draft.createdAt && !latest.createdAt) {
+			const priority = DRAFT_STATUS_PRIORITY[draft.status] ?? 5;
+			const previousPriority = DRAFT_STATUS_PRIORITY[latest.status] ?? 5;
+			if (
+				priority < previousPriority ||
+				(priority === previousPriority && (draft.roundNumber ?? 1) > (latest.roundNumber ?? 1))
+			)
+				latest = draft;
 			continue;
 		}
-
-		if (priority === latestPriority && (draft.roundNumber ?? 1) > (latest.roundNumber ?? 1)) {
-			latest = draft;
+		// Round numbers are meaningful only within one chain. Across independent
+		// reviews, creation order wins, including an active replacement over ready history.
+		const sameChain = draft.reviewChainId && draft.reviewChainId === latest.reviewChainId;
+		if (sameChain && (draft.roundNumber ?? 1) !== (latest.roundNumber ?? 1)) {
+			if ((draft.roundNumber ?? 1) > (latest.roundNumber ?? 1)) latest = draft;
+			continue;
 		}
+		const created = draft.createdAt ? new Date(draft.createdAt).getTime() : 0;
+		const previous = latest.createdAt ? new Date(latest.createdAt).getTime() : 0;
+		if (created >= previous) latest = draft;
 	}
 
 	return latest;

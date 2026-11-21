@@ -29,19 +29,14 @@ export function ReviewWorkspace({
 }: { active: ActiveReview; fixture?: boolean }) {
 	const { workspaceId, prCtx } = active;
 	const data = useReviewWorkspaceData(workspaceId, prCtx, { manageFileOrder: false });
-	const { source, askAgent, reviewer, attachmentError } = useReviewConnections(
-		workspaceId,
-		prCtx,
-		data.details,
-		fixture
-	);
+	const { source, askAgent, reviewer, attachmentError, openTerminal, terminal } =
+		useReviewConnections(workspaceId, prCtx, data.details, fixture);
 	const queue = useReviewQueue(prCtx);
 	const panel = useReviewModeStore((s) => s.panel);
 	const queueOpen = useReviewModeStore((s) => s.queueOpen);
 	const askAnchor = useReviewModeStore((s) => s.askAnchor);
 	const collapsed = useReviewModeStore((s) => s.navigatorCollapsed);
 	const view = useReviewModeStore((s) => s.view);
-	const terminal = useReviewModeStore((s) => s.terminals[workspaceId]);
 	const root = useRef<HTMLDivElement>(null);
 	const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const reveal = useRef<CodeReference | null>(null);
@@ -158,9 +153,6 @@ export function ReviewWorkspace({
 			useReviewModeStore.getState().setView("changes");
 		}
 	}, [view]);
-	const openTerminal = terminal
-		? () => useReviewModeStore.getState().setDrawerOpen(true)
-		: undefined;
 	return (
 		<div
 			ref={root}
@@ -242,6 +234,14 @@ export function ReviewWorkspace({
 								/>
 							) : (
 								<AskTab
+									key={JSON.stringify([
+										workspaceId,
+										prCtx.provider,
+										prCtx.owner,
+										prCtx.repo,
+										prCtx.number,
+										data.details?.headCommitOid,
+									])}
 									messages={askAgent.messages}
 									anchor={askAnchor}
 									available={askAgent.available}
@@ -271,7 +271,7 @@ export function ReviewWorkspace({
 					)}
 				</main>
 			</div>
-			<TerminalDrawer />
+			<TerminalDrawer terminal={terminal ?? null} />
 			{queueOpen && (
 				<AllPRsDrawer
 					queue={queue.queue}

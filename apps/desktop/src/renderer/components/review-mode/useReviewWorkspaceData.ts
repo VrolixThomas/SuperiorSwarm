@@ -27,6 +27,7 @@ export function useReviewWorkspaceData(
 	const {
 		details,
 		isLoading,
+		draftPending,
 		matchingDraft,
 		activeDraft,
 		aiDraft,
@@ -38,7 +39,10 @@ export function useReviewWorkspaceData(
 		fileOrder,
 	} = useReviewData(workspaceId, prCtx, options);
 	const isOpen = details?.state === "OPEN";
-	const canSubmitReview = isOpen;
+	const canSubmitReview =
+		isOpen &&
+		!draftPending &&
+		(!aiDraft || (!!aiDraft.commitSha && aiDraft.commitSha === details?.headCommitOid));
 	const commentCount = (counts.pending ?? 0) + (counts.open ?? 0);
 	const commentCountByFile = useMemo(() => fileCommentCounts(allThreads), [allThreads]);
 	const reviewChainId =
@@ -111,15 +115,21 @@ export function useReviewWorkspaceData(
 
 		return {
 			...navigation,
-			onAccept: (commentId) => updateDraftComment({ commentId, status: "user-pending" }),
+			onAccept: (commentId) => {
+				if (allThreads.some((t) => t.isAIDraft && t.draftCommentId === commentId && !t.isOutdated))
+					updateDraftComment({ commentId, status: "user-pending" });
+			},
 			onDecline: (commentId) => updateDraftComment({ commentId, status: "rejected" }),
 			onDelete: (commentId) => deleteDraftComment({ commentId }),
-			onSaveEdit: (commentId, body, status) =>
+			onSaveEdit: (commentId, body, status) => {
+				if (!allThreads.some((t) => t.isAIDraft && t.draftCommentId === commentId && !t.isOutdated))
+					return;
 				updateDraftComment({
 					commentId,
 					status: draftStatusAfterEdit(status),
 					userEdit: body,
-				}),
+				});
+			},
 			onReply: (threadId, body) => {
 				if (prCtx.provider === "github") {
 					addReviewComment({ threadId, body });
@@ -182,6 +192,7 @@ export function useReviewWorkspaceData(
 	return {
 		details,
 		isLoading,
+		draftPending,
 		matchingDraft,
 		activeDraft,
 		aiDraft,

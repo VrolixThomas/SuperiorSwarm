@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useReviewPath } from "../../../lib/review-path-source";
+import { useRememberedReviewPath } from "../../../lib/review-path-status-cache";
 import {
 	type ReviewQueue,
 	type ReviewQueueFacts,
@@ -7,6 +7,7 @@ import {
 	queueStatus,
 } from "../../../lib/review-queue";
 import { useReviewPathSettingsStore } from "../../../stores/review-path-settings-store";
+import { trpc } from "../../../trpc/client";
 
 export interface AllPRsDrawerProps {
 	queue: ReviewQueue;
@@ -36,13 +37,35 @@ function QueueRow({
 	facts?: ReviewQueueFacts;
 	onSelect: (pr: ReviewQueuePR) => void;
 }) {
-	const source = useReviewPath(
-		{ ...pr, targetBranch: pr.targetBranch ?? "", repoPath: "" },
-		pr.headCommitSha ? { headCommitOid: pr.headCommitSha } : undefined
-	);
+	const scope = {
+		provider: pr.provider,
+		owner: pr.owner,
+		repo: pr.repo,
+		prNumber: pr.number,
+		headSha: pr.headCommitSha ?? "",
+		projectId: pr.projectId,
+	};
+	const enabled = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(scope.headSha);
+	const remembered = useRememberedReviewPath(enabled ? scope : undefined);
+	const projection = trpc.reviewPath.status.useQuery(scope, {
+		enabled,
+		staleTime: 1000,
+		refetchInterval: 5000,
+	});
+	const matched = projection.data?.identity;
+	const pathStatus =
+		matched?.headSha === pr.headCommitSha &&
+		matched?.provider === pr.provider &&
+		matched.owner === pr.owner &&
+		matched.repo === pr.repo &&
+		matched.prNumber === pr.number
+			? projection.data.status
+			: projection.data === null || projection.isError
+				? undefined
+				: remembered?.path?.status;
 	const status = queueStatus({
 		headCommitSha: pr.headCommitSha,
-		pathStatus: source.available ? source.status : undefined,
+		pathStatus,
 		...facts,
 	});
 	return (

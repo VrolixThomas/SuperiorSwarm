@@ -24,6 +24,7 @@ export function openThreadInChanges(
 	}
 	const activeReviewMode = useReviewModeStore.getState();
 	activeReviewMode.setPublishedCommentsVisible(true);
+	activeReviewMode.setOverviewOpen(false);
 	activeReviewMode.setView("changes");
 }
 

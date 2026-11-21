@@ -36,6 +36,12 @@ export interface GitHubReviewThread {
 
 /** An AI draft comment transformed into a thread-like structure for unified rendering */
 export interface AIDraftThread {
+	/** Local draft and immutable revision that own this original anchor. */
+	draftId?: string;
+	commitSha?: string | null;
+	/** Historical or unverified anchors must never be projected onto current code. */
+	isOutdated?: boolean;
+	originalLine?: number | null;
 	category?: string;
 	id: string;
 	isAIDraft: true;
