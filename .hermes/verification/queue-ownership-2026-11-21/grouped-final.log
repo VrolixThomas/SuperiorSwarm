@@ -1,0 +1,46 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-ownership.test.ts:
+(pass) claude/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [47.07ms]
+(pass) claude/workspace: closed/replaced question owner cannot receive or mutate [15.53ms]
+(pass) claude/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [64.31ms]
+(pass) claude/coordinator: closed/replaced question owner cannot receive or mutate [25.46ms]
+(pass) codex/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [75.21ms]
+(pass) codex/workspace: closed/replaced question owner cannot receive or mutate [28.58ms]
+(pass) codex/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [100.35ms]
+(pass) codex/coordinator: closed/replaced question owner cannot receive or mutate [37.71ms]
+(pass) report and turn receipt group atomically; stale member rejects all actions and Undo retains exact revisions [205.52ms]
+(pass) legacy question/report remains explicitly unavailable for safe reply and never binds to sibling [61.23ms]
+(pass) polymorphic session constraints reject nonexistent owners and cascade both real entity kinds [2.07ms]
+(pass) wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution [93.36ms]
+(pass) ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval [74.25ms]
+(pass) grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically [236.35ms]
+
+tests/activity-queue-workspace.test.ts:
+(pass) public workspace list excludes external sources from items, counts, errors and update time [35.82ms]
+(pass) workspace/project rename and color enrich context without bumping revisions or fingerprints [15.13ms]
+(pass) classification uses structured permission/failure/question evidence, never summary instructions [28.27ms]
+(pass) workspace mutations reject missing, external and mismatched source targets [86.93ms]
+(pass) Done refuses wrong revision, failed inventory, disconnect and retired work [69.39ms]
+(pass) fresh state is reconciled after inventory wait, so an old click cannot acknowledge new work [13.27ms]
+(pass) terminal identity must match the current workspace and provider generation [32.98ms]
+(pass) unavailable source is visible with its own error but cannot be acknowledged or deferred [31.40ms]
+(pass) Later persists across DB reopen, expires at the boundary and never affects generic counts [42.41ms]
+(pass) new revision returns pending and a stale bringBack cannot delete the newer snooze [49.97ms]
+(pass) Done and Undo require the same current revision and acknowledgement [64.68ms]
+(pass) failed inventory cannot restore handled work or remove its deferral [29.39ms]
+(pass) Later validates future bounded timestamps or untilChange, including invalid numeric values [11.43ms]
+(pass) removed source cascades its snooze and retired terminals do not contribute Later counts [12.57ms]
+(pass) confirmed exact managed terminal can be handled and undone without sending provider input [34.77ms]
+(pass) exact terminal binding is required even when another terminal keeps its old workspace live [21.27ms]
+(pass) global counts combine pending, snoozed and handled work independently of project/view filters [43.84ms]
+(pass) expiry uses the time after waiting for inventory [12.13ms]
+(pass) concurrent Done then Later rejects deferral so Undo returns the item to pending [24.58ms]
+(pass) concurrent restore mutations use persisted receipts rather than their pre-await views [31.13ms]
+(pass) chat titles identify the conversation without changing its source revision [11.93ms]
+(pass) a sibling terminal cannot keep a closed reporting chat's workspace item current [15.65ms]
+
+ 36 pass
+ 0 fail
+ 241 expect() calls
+Ran 36 tests across 2 files. [1.92s]
