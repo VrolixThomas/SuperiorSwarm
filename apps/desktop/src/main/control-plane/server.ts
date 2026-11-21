@@ -576,7 +576,7 @@ async function handleRequest(
 				// launch that inherits SUPERIORSWARM_MANAGER_TOKEN from its
 				// environment must still resolve as its task, not as the manager.
 				const taskToken = url.searchParams.get("taskToken");
-				if (taskToken) {
+				if (taskToken !== null) {
 					const reg = deps.taskRegistry.consume(taskToken);
 					if (reg) {
 						if (reg.mode === "review-path") {
@@ -593,6 +593,11 @@ async function handleRequest(
 						respond(res, 200, requestId, reg);
 						return;
 					}
+					// A supplied task credential is an authority boundary, including on
+					// reconnect. Never upgrade an expired/consumed/unknown task via cwd
+					// or inherited workspace/manager credentials.
+					respond(res, 403, requestId, { error: "invalid_task_token" });
+					return;
 				}
 				// External manager bootstrap: identity comes from the token, not cwd.
 				// Header only, never a query param — req.url is logged on every
