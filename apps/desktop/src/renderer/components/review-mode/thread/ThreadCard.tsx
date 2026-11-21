@@ -125,7 +125,9 @@ function FileLineLink({
 	thread: UnifiedThread;
 	onOpenInChanges?: (path: string, threadId: string) => void;
 }) {
-	const label = fileLabel(thread.path, thread.line);
+	const label =
+		fileLabel(thread.path, thread.originalLine ?? thread.line) +
+		(thread.isOutdated ? " · historical anchor" : "");
 
 	if (!onOpenInChanges) {
 		return (
@@ -159,7 +161,9 @@ function CollapsedThread({
 	active: boolean;
 	onExpand: () => void;
 }) {
-	const label = fileLabel(thread.path, thread.line);
+	const label =
+		fileLabel(thread.path, thread.originalLine ?? thread.line) +
+		(thread.isOutdated ? " · historical anchor" : "");
 	const author = threadAuthor(thread);
 
 	return (

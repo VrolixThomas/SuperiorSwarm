@@ -23,7 +23,7 @@ export function useReadingThreads(
 		(thread: UnifiedThread) => {
 			nav.openReference({
 				path: thread.path,
-				line: thread.isAIDraft || !thread.isOutdated ? (thread.line ?? 1) : 1,
+				line: !thread.isOutdated ? (thread.line ?? 1) : 1,
 				description: "Review thread",
 			});
 			usePRReviewSessionStore.getState().selectThread(data.sessionKey, thread.id);
@@ -54,7 +54,7 @@ export function useReadingThreads(
 					},
 					`Explain this review comment: ${thread.isAIDraft ? thread.body : (thread.comments[0]?.body ?? "")}`
 				);
-			if (thread.isAIDraft && thread.status === "pending") {
+			if (thread.isAIDraft && !thread.isOutdated && thread.status === "pending") {
 				const findings = data.allThreads.filter(
 					(candidate) =>
 						candidate.isAIDraft && candidate.status === "pending" && candidate.path === thread.path
@@ -66,7 +66,7 @@ export function useReadingThreads(
 						agentLabel={source.path?.agent.label}
 						index={findings.findIndex((candidate) => candidate.id === thread.id) + 1}
 						total={findings.length}
-						onAsk={onAsk}
+						onAsk={thread.isOutdated ? undefined : onAsk}
 					/>
 				);
 			}
@@ -85,7 +85,7 @@ export function useReadingThreads(
 					variant="inline"
 					callbacks={callbacks}
 					active={thread.id === activeThreadId}
-					onAsk={onAsk}
+					onAsk={thread.isOutdated ? undefined : onAsk}
 					agentNote={note ? <AgentNoteRow note={note} onReference={onReference} /> : undefined}
 				/>
 			);

@@ -13,6 +13,8 @@ export interface ReviewIntent {
 }
 
 export interface ReviewTerminal {
+	/** Exact reading-path revision scope; absent for legacy terminals. */
+	reviewScopeKey?: string;
 	tabId: string;
 	workspaceId: string;
 	cwd: string;

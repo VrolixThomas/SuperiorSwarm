@@ -19,7 +19,7 @@ export function stepThreadLayout(
 	visible: boolean,
 	counts: { LEFT: number; RIGHT: number }
 ) {
-	const outdated = threads.filter((t) => !t.isAIDraft && t.isOutdated);
-	const current = threads.filter((t) => t.isAIDraft || !t.isOutdated);
+	const outdated = threads.filter((t) => t.isOutdated);
+	const current = threads.filter((t) => !t.isOutdated);
 	return { ...partitionChangesThreads(current, mode, visible, counts), outdated };
 }

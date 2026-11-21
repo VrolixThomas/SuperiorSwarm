@@ -6,7 +6,8 @@ export async function attachReadingPathTerminal(
 	workspaceId: string,
 	launch: ReviewPathLaunchResult,
 	attach: (input: { workspaceId: string; terminalId: string }) => Promise<unknown>,
-	isCurrent: () => boolean = () => true
+	isCurrent: () => boolean = () => true,
+	reviewScopeKey?: string
 ): Promise<boolean> {
 	if (
 		!isCurrent() ||
@@ -19,6 +20,11 @@ export async function attachReadingPathTerminal(
 	if (!isCurrent()) return false;
 	useReviewModeStore
 		.getState()
-		.setTerminal({ workspaceId, tabId: launch.terminalId, cwd: launch.worktreePath });
+		.setTerminal({
+			workspaceId,
+			tabId: launch.terminalId,
+			cwd: launch.worktreePath,
+			...(reviewScopeKey ? { reviewScopeKey } : {}),
+		});
 	return true;
 }

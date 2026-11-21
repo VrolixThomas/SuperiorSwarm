@@ -29,6 +29,7 @@ export function ReviewWorkspaceTopBar({
 			prCtx={{ ...prCtx, title: data.details?.title ?? prCtx.title }}
 			queueCount={queue.queue.needsReview.length + queue.queue.waitingOnAuthor.length}
 			queueOpen={queueOpen}
+			onOpenTerminal={openTerminal}
 			nextPrNumber={queue.next?.number}
 			openingPR={!!queue.openingKey}
 			onOpenQueue={() => {
@@ -75,7 +76,7 @@ export function ReviewWorkspaceTopBar({
 					>
 						Submit review
 					</button>
-					{data.submitOpen && (
+					{data.submitOpen && data.canSubmitReview && (
 						<SubmitReviewPopover
 							prCtx={prCtx}
 							draftId={data.aiDraft?.id ?? null}

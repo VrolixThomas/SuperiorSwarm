@@ -10,6 +10,7 @@ export interface ReviewTopBarProps {
 	onOpenQueue: () => void;
 	onOpenOverview: () => void;
 	onNextPR: () => void;
+	onOpenTerminal?: () => void;
 	/** MappingPill while mapping, otherwise the existing AgentStatusChip. */
 	statusSlot?: ReactNode;
 	/** Existing submit control and SubmitReviewPopover, owned by the workspace. */
@@ -25,6 +26,7 @@ export function ReviewTopBar({
 	onOpenQueue,
 	onOpenOverview,
 	onNextPR,
+	onOpenTerminal,
 	statusSlot,
 	submitSlot,
 }: ReviewTopBarProps) {
@@ -71,6 +73,15 @@ export function ReviewTopBar({
 			</div>
 			<div className="app-no-drag relative flex shrink-0 items-center gap-3">
 				{statusSlot}
+				{onOpenTerminal && (
+					<button
+						type="button"
+						onClick={onOpenTerminal}
+						className="rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
+					>
+						Agent terminal
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={onNextPR}
