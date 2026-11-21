@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { afterEach, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,4 +123,49 @@ test("launch identity cannot become shell syntax", () => {
 			queueLaunchId: "'; unsafe",
 		})
 	).toThrow("Invalid app launch identity");
+});
+
+test("accepted answer envelopes over 16000 characters retain bounded digest-only receipts", async () => {
+	agentRegistry.set("claude", claudeConfig);
+	const listener = createAlertListener(0, "digest-test-token");
+	await listener.start();
+	const events: AgentEvent[] = [];
+	listener.onEvent((event) => events.push(event));
+	const bridge = join(temp(), "bridge.cjs");
+	writeFileSync(bridge, HOOK_BRIDGE_SOURCE);
+	try {
+		const prompts = ["x".repeat(16100), "é".repeat(27000), "é".repeat(28001)];
+		for (const prompt of prompts) {
+			const child = Bun.spawn([process.execPath, bridge], {
+				stdin: new Response(
+					JSON.stringify({
+						hook_event_name: "UserPromptSubmit",
+						session_id: "conversation",
+						prompt_id: randomUUID(),
+						prompt,
+					})
+				),
+				stdout: "pipe",
+				stderr: "pipe",
+				env: {
+					...process.env,
+					AGENT_NOTIFY_TOKEN: "digest-test-token",
+					AGENT_NOTIFY_PORT: String(listener.getPort()),
+					AGENT_NOTIFY_AGENT: "claude",
+					AGENT_NOTIFY_TERMINAL_ID: "terminal",
+					AGENT_NOTIFY_WORKSPACE_ID: "workspace",
+				},
+			});
+			expect(await child.exited).toBe(0);
+			const event = events.at(-1);
+			expect(event?.promptHash).toBe(
+				Buffer.byteLength(prompt) <= 56000
+					? createHash("sha256").update(prompt).digest("hex")
+					: undefined
+			);
+			expect(JSON.stringify(event)).not.toContain(prompt);
+		}
+	} finally {
+		listener.stop();
+	}
 });

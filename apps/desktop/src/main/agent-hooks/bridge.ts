@@ -62,7 +62,7 @@ try {
     sessionSource: field("source"),
     producerTimestamp: String(producerTimestamp),
     providerEventId: field("event_id"),
-    promptHash: rawEvent === "UserPromptSubmit" && typeof payload.prompt === "string" && payload.prompt.length <= 16000 ? crypto.createHash("sha256").update(payload.prompt).digest("hex") : undefined,
+    promptHash: rawEvent === "UserPromptSubmit" && typeof payload.prompt === "string" && Buffer.byteLength(payload.prompt, "utf8") <= 56000 ? crypto.createHash("sha256").update(payload.prompt).digest("hex") : undefined,
     providerTimestamp: typeof payload.event_timestamp === "number" ? String(payload.event_timestamp) : "",
     evidence: admitAgentEvidence(payload, env.AGENT_NOTIFY_AGENT || "unknown", rawEvent),
     permission: rawEvent === "PermissionRequest" ? {
