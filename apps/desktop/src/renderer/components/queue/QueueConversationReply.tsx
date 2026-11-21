@@ -180,6 +180,26 @@ export function QueueConversationReply({
 				maxLength={QUEUE_REPLY_MAX_CHARACTERS}
 				id={`queue-reply-${inputId}`}
 				value={draft.content}
+				onKeyDown={(event) => {
+					if (
+						event.nativeEvent.isComposing ||
+						event.metaKey ||
+						event.ctrlKey ||
+						event.altKey ||
+						event.repeat
+					)
+						return;
+					if (event.key === "Enter" && !event.shiftKey) {
+						event.preventDefault();
+						event.stopPropagation();
+						if (!locked) void send();
+					}
+					if (event.key === "Escape") {
+						event.preventDefault();
+						event.currentTarget.blur();
+						event.currentTarget.closest<HTMLElement>('[aria-label="Workspace queue"]')?.focus();
+					}
+				}}
 				disabled={busy || locked}
 				onChange={(e) => update({ content: e.target.value })}
 				className="w-full rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-[12px]"

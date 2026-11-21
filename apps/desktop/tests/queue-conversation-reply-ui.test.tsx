@@ -164,3 +164,36 @@ test("definite unavailable permits editing and an explicit new attempt without a
 	expect(f.calls[0]?.requestId).not.toBe(f.calls[1]?.requestId);
 	expect(f.calls[1]?.content).toBe("revised");
 });
+test("Enter submits an ordinary reply while Shift, modifiers, repeats and IME never submit", async () => {
+	const f = await fixture();
+	await f.type("keyboard reply");
+	const input = document.querySelector("textarea")!;
+	for (const options of [
+		{ shiftKey: true },
+		{ ctrlKey: true },
+		{ metaKey: true },
+		{ repeat: true },
+		{ isComposing: true },
+	]) {
+		await act(async () => {
+			input.dispatchEvent(
+				new browser.KeyboardEvent("keydown", {
+					key: "Enter",
+					bubbles: true,
+					cancelable: true,
+					...options,
+				})
+			);
+			await Promise.resolve();
+		});
+	}
+	expect(f.calls).toHaveLength(0);
+	await act(async () => {
+		input.dispatchEvent(
+			new browser.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	expect(f.calls).toHaveLength(1);
+	expect(f.calls[0]?.content).toBe("keyboard reply");
+});

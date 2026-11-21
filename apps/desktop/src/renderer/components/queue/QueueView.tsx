@@ -72,6 +72,7 @@ export function QueueScreen({
 	const [filter, setFilter] = useState<WorkspaceQueueFilter>("all");
 	const [group, setGroup] = useState(false);
 	const [detailsOpen, setDetailsOpen] = useState(false);
+	const [replyFocus, setReplyFocus] = useState(false);
 	const detailsButton = useRef<HTMLButtonElement>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
 	const [mode, setMode] = useState<"list" | "later" | "help">("list");
@@ -89,6 +90,16 @@ export function QueueScreen({
 	const counts = queueCounts(pendingItems ?? (view === "pending" ? items : EMPTY));
 	const effectiveId = nextQueueSelection(ordered, selectedId, previousIndex.current);
 	const selected = ordered.find((i) => i.id === effectiveId);
+	useEffect(() => {
+		if (!replyFocus) return;
+		if (detailsOpen)
+			root.current
+				?.querySelector<HTMLTextAreaElement>(
+					'section[aria-label="Reply to conversation"] textarea:not(:disabled), section[aria-label="Reply to this question"] textarea:not(:disabled)'
+				)
+				?.focus();
+		setReplyFocus(false);
+	}, [replyFocus, detailsOpen]);
 	const index = ordered.findIndex((i) => i.id === effectiveId);
 	const detailsItem = useRef(effectiveId);
 	useEffect(() => {
@@ -306,6 +317,15 @@ export function QueueScreen({
 				} else if (/^[1-9]$/.test(e.key)) {
 					const row = ordered[Number(e.key) - 1];
 					if (row) select(row.id);
+				} else if (
+					e.key.toLowerCase() === "r" &&
+					selected &&
+					!busy &&
+					((selected.question && answer) ||
+						(conversationActions && ["agent-done", "agent-failed"].includes(selected.situation)))
+				) {
+					setDetailsOpen(true);
+					setReplyFocus(true);
 				} else if (e.key === "Enter") void runOpen();
 				else if (e.key.toLowerCase() === "h" && view === "pending") startLater();
 				else if (e.key.toLowerCase() === "e" && view === "pending") void act("done");
@@ -627,6 +647,7 @@ export function QueueScreen({
 								["↑ ↓ / 1–9", "Select item"],
 								["← →", "Switch filter"],
 								["↵", "Open workspace"],
+								["R", "Focus reply"],
 								["H / E", "Later / Done"],
 								["B / Z", "Bring back / Undo"],
 								["G", "Group by project"],

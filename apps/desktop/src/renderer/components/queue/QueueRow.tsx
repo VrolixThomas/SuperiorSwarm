@@ -59,7 +59,12 @@ export function QueueRow({
 				</span>
 			</span>
 			{selected ? (
-				<span className="col-span-2 flex items-center justify-end gap-4 whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">
+				<span className="col-span-2 flex items-center justify-end gap-2 whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">
+					{(item.question || ["agent-done", "agent-failed"].includes(item.situation)) && (
+						<span>
+							<kbd>R</kbd> Reply
+						</span>
+					)}
 					<span className="text-[var(--accent)]">
 						<kbd>↵</kbd> Open
 					</span>

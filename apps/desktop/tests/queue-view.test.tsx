@@ -58,7 +58,10 @@ function row(
 }
 async function mount(
 	initial = [row("one"), row("two", "agent-ready")],
-	answer?: import("../src/renderer/components/queue/QueueQuestionReply").AnswerQuestion
+	answer?: import("../src/renderer/components/queue/QueueQuestionReply").AnswerQuestion,
+	conversationActions?: import(
+		"../src/renderer/components/queue/QueueConversationReply"
+	).QueueConversationActions
 ) {
 	const host = document.createElement("div");
 	document.body.append(host);
@@ -81,6 +84,7 @@ async function mount(
 		root?.render(
 			<QueueScreen
 				answer={answer}
+				conversationActions={conversationActions}
 				data={data()}
 				pendingItems={rows}
 				view={view}
@@ -511,4 +515,23 @@ test("question, reply and command error evidence preserve multiline plain text",
 		expect(paragraph?.className).toContain("whitespace-pre-wrap");
 	}
 	expect(panel?.querySelector("command")).toBeNull();
+});
+test("R focuses the direct reply without handling; typing keeps queue shortcuts inert", async () => {
+	let sends = 0;
+	const f = await mount([row("chat", "agent-ready")], undefined, {
+		capability: async () => ({ status: "available", mode: "reply", detail: "Ready" }),
+		reply: async (input) => {
+			sends++;
+			return { status: "admitted", requestId: input.requestId, detail: "Submitted" };
+		},
+	});
+	await key("r");
+	expect(document.activeElement?.tagName).toBe("TEXTAREA");
+	expect(sends).toBe(0);
+	expect(f.calls).toEqual([]);
+	await key("e");
+	expect(f.calls).toEqual([]);
+	expect(sends).toBe(0);
+	await key("Escape");
+	expect(document.activeElement?.tagName).not.toBe("TEXTAREA");
 });
