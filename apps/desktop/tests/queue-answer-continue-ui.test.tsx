@@ -160,6 +160,10 @@ async function click(label: string) {
 test("explicit Send & continue submits the full displayed receipt once, independent of save-only", async () => {
 	const f = await mount();
 	await type("Use blue");
+	const controls = Array.from(browser.document.querySelectorAll("button"));
+	expect(controls.indexOf(button("Send & continue"))).toBeLessThan(
+		controls.indexOf(button("Save answer only"))
+	);
 	await act(async () => {
 		const send = button("Send & continue");
 		send.click();

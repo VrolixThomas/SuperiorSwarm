@@ -323,6 +323,56 @@ export function QueueQuestionReply({
 		setBusy(false);
 	};
 
+	const continuationControls = continuationActions && (
+		<div className="space-y-2" aria-label="Continue with answer">
+			{continuation?.result && (
+				<output className="block">
+					{"detail" in continuation.result.continuation
+						? continuation.result.continuation.detail
+						: continuation.result.continuation.reason}
+				</output>
+			)}
+			{locked ? (
+				<button
+					type="button"
+					disabled={busy || continuation?.result?.continuation.status === "received"}
+					onClick={() => void checkContinuation()}
+					className={`rounded-md border border-[var(--border)] px-3 py-2 disabled:opacity-40 ${queueFocus}`}
+				>
+					{busy
+						? "Checking…"
+						: continuation?.result?.continuation.status === "received"
+							? "Answer received"
+							: "Check continuation status"}
+				</button>
+			) : (
+				persistedAnswer?.delivery !== "retrieved" && (
+					<button
+						type="button"
+						disabled={
+							busy ||
+							changed ||
+							!available ||
+							capability?.status !== "available" ||
+							!savedContent.trim()
+						}
+						onClick={() => void continueAnswer()}
+						className={`rounded-md border border-[var(--border)] px-3 py-2 disabled:opacity-40 ${queueFocus}`}
+					>
+						{busy ? "Continuing…" : saved ? "Continue with saved answer" : "Send & continue"}
+					</button>
+				)
+			)}
+			{!locked && persistedAnswer?.delivery !== "retrieved" && (
+				<p className="text-[11px] text-[var(--text-tertiary)]">
+					{capability?.status === "unavailable"
+						? capability.reason
+						: (capability?.detail ?? "Checking whether this chat can continue…")}
+				</p>
+			)}
+		</div>
+	);
+
 	return (
 		<section
 			aria-label="Reply to this question"
@@ -353,27 +403,30 @@ export function QueueQuestionReply({
 				<p>Question ID: {question.messageId}</p>
 			</details>
 			{saved ? (
-				<output className="block space-y-2">
-					{changed && (
-						<p role="alert">
-							This answer belongs to the previous queue update. Review the current conversation
-							before continuing.
+				<>
+					<output className="block space-y-2">
+						{changed && (
+							<p role="alert">
+								This answer belongs to the previous queue update. Review the current conversation
+								before continuing.
+							</p>
+						)}
+						{savedContent && (
+							<p className="whitespace-pre-wrap break-words">Your answer: {savedContent}</p>
+						)}
+						<p>
+							{persistedAnswer?.delivery === "retrieved"
+								? "Retrieved by the reporting agent."
+								: "Saved. The agent has not read this answer yet."}
 						</p>
-					)}
-					{savedContent && (
-						<p className="whitespace-pre-wrap break-words">Your answer: {savedContent}</p>
-					)}
-					<p>
-						{persistedAnswer?.delivery === "retrieved"
-							? "Retrieved by the reporting agent."
-							: "Saved. The agent has not read this answer yet."}
-					</p>
-					<p className="text-[var(--text-secondary)]">
-						{continuationActions
-							? "Continue with this saved answer when the chat is ready. A received answer does not mean the task is complete."
-							: "Saving an answer does not resume the task. If the agent is idle, open this chat and ask it to check its messages. Ordinary chat input does not submit an answer to this question."}
-					</p>
-				</output>
+						<p className="text-[var(--text-secondary)]">
+							{continuationActions
+								? "Continue with this saved answer when the chat is ready. A received answer does not mean the task is complete."
+								: "Saving an answer does not resume the task. If the agent is idle, open this chat and ask it to check its messages. Ordinary chat input does not submit an answer to this question."}
+						</p>
+					</output>
+					{continuationControls}
+				</>
 			) : (
 				<>
 					{question.replyCapability === "unavailable" && (
@@ -423,11 +476,12 @@ export function QueueQuestionReply({
 							{draft.error}
 						</p>
 					)}
+					{continuationControls}
 					<button
 						type="button"
 						disabled={!canReply || changed || busy || !draft.content.trim()}
 						onClick={() => void submit()}
-						className={`rounded-md border border-[var(--border)] px-3 py-2 disabled:opacity-40 ${queueFocus}`}
+						className={`${continuationActions ? "underline underline-offset-2" : "rounded-md border border-[var(--border)] px-3 py-2"} disabled:opacity-40 ${queueFocus}`}
 					>
 						{busy ? "Saving answer…" : continuationActions ? "Save answer only" : "Send answer"}
 					</button>
@@ -436,55 +490,6 @@ export function QueueQuestionReply({
 						or wake a chat.
 					</p>
 				</>
-			)}
-			{continuationActions && (
-				<div className="space-y-2" aria-label="Continue with answer">
-					{continuation?.result && (
-						<output className="block">
-							{"detail" in continuation.result.continuation
-								? continuation.result.continuation.detail
-								: continuation.result.continuation.reason}
-						</output>
-					)}
-					{locked ? (
-						<button
-							type="button"
-							disabled={busy || continuation?.result?.continuation.status === "received"}
-							onClick={() => void checkContinuation()}
-							className={`rounded-md border border-[var(--border)] px-3 py-2 disabled:opacity-40 ${queueFocus}`}
-						>
-							{busy
-								? "Checking…"
-								: continuation?.result?.continuation.status === "received"
-									? "Answer received"
-									: "Check continuation status"}
-						</button>
-					) : (
-						persistedAnswer?.delivery !== "retrieved" && (
-							<button
-								type="button"
-								disabled={
-									busy ||
-									changed ||
-									!available ||
-									capability?.status !== "available" ||
-									!savedContent.trim()
-								}
-								onClick={() => void continueAnswer()}
-								className={`rounded-md border border-[var(--border)] px-3 py-2 disabled:opacity-40 ${queueFocus}`}
-							>
-								{busy ? "Continuing…" : saved ? "Continue with saved answer" : "Send & continue"}
-							</button>
-						)
-					)}
-					{!locked && persistedAnswer?.delivery !== "retrieved" && (
-						<p className="text-[11px] text-[var(--text-tertiary)]">
-							{capability?.status === "unavailable"
-								? capability.reason
-								: (capability?.detail ?? "Checking whether this chat can continue…")}
-						</p>
-					)}
-				</div>
 			)}
 		</section>
 	);
