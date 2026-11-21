@@ -182,7 +182,9 @@ async function run() {
 	setupTerminalIPC(daemon, manager);
 	await win.loadFile(join(root, "index.html"));
 	win.show();
+	app.focus({ steal: true });
 	win.focus();
+	contents.focus();
 	const js = <T = unknown>(s: string): Promise<T> => contents.executeJavaScript(s);
 	const now = new Date();
 	const repo = join(root, "repo");
@@ -434,7 +436,9 @@ async function run() {
 					"First actual MCP status action must bind the CLI session"
 				);
 				const own = async () =>
-					(await listWorkspaceQueue()).items.filter((i) => i.context.workspaceId === id);
+					(await listWorkspaceQueue()).items.filter(
+						(i) => i.target.type === "terminal" && i.target.terminalId === terminal
+					);
 				await until(async () => (await own()).length > 0);
 				const initial = await own();
 				assert.equal(initial.length, 1);
@@ -451,14 +455,67 @@ async function run() {
 						)
 					);
 				}
+				const siblingArgs =
+					provider === "claude"
+						? [
+								"-p",
+								"--setting-sources",
+								"",
+								"--settings",
+								join(root, "settings.json"),
+								"--strict-mcp-config",
+								"--mcp-config",
+								'{"mcpServers":{}}',
+								"--tools",
+								"",
+								"--no-session-persistence",
+								"--output-format",
+								"json",
+								"Reply exactly SIBLING_READY. Do not use tools.",
+							]
+						: [
+								"exec",
+								"--ignore-user-config",
+								"-c",
+								`hooks=${TOML.stringify.value({ state })}`,
+								"--skip-git-repo-check",
+								"--sandbox",
+								"read-only",
+								"--ephemeral",
+								"--json",
+								"Reply exactly SIBLING_READY. Do not use tools.",
+							];
+				daemon.write(
+					sibling,
+					`${[
+						required(provider === "claude" ? "SS_QUEUE_CLAUDE_BIN" : "SS_QUEUE_CODEX_BIN"),
+						...siblingArgs,
+					]
+						.map(quote)
+						.join(" ")}\r`
+				);
+				const siblingItems = async () =>
+					(await listWorkspaceQueue()).items.filter(
+						(i) => i.target.type === "terminal" && i.target.terminalId === sibling
+					);
+				await until(async () => (await siblingItems()).length === 1);
+				const siblingAttention = (await siblingItems())[0];
+				assert.notEqual(manager.getSession(sibling)?.providerSessionId, first.session);
+				assert.equal(
+					(await own())[0]?.revision,
+					initial[0]?.revision,
+					"Real sibling prompt must not clear owner report"
+				);
 				await js(
 					`window.queueProbe.prepare(${JSON.stringify(id)},${JSON.stringify(cwd)},${JSON.stringify(terminal)},${JSON.stringify(sibling)})`
 				);
-				await until(() =>
-					js<boolean>(
-						`document.body.textContent.includes(${JSON.stringify(`Actual ${provider} color task`)})`
-					)
+				const row = `[...document.querySelectorAll('[data-queue-row]')].find(el=>el.dataset.queueRow===${JSON.stringify(initial[0]?.id)})`;
+				await until(() => js<boolean>(`!!(${row})`));
+				await js(`(${row}).click()`);
+				await js(
+					"Promise.race([new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Fixture compositor did not paint')),2000))])"
 				);
+				await new Promise((resolve) => setTimeout(resolve, 100));
 				await contents
 					.capturePage()
 					.then((img) => writeFileSync(join(evidence, `${name}-queue.png`), img.toPNG()));
@@ -507,15 +564,22 @@ async function run() {
 				assert.equal(after.length, 1);
 				assert(after[0]?.reasons.some((r) => r.code === "turn-ended"));
 				assert(!after[0]?.id.startsWith("agent-workspace:"));
+				assert.equal(
+					(await siblingItems())[0]?.revision,
+					siblingAttention?.revision,
+					"Owner follow-up must preserve sibling completion"
+				);
 				closeDb();
 				assert.equal((await own()).length, 1);
 				await js(`window.electron.terminal.dispose(${JSON.stringify(terminal)})`);
 				await until(async () => (await own()).length === 0);
 				assert.equal(manager.getSession(terminal), null);
+				assert.equal((await siblingItems()).length, 1);
 				await js(`window.electron.terminal.dispose(${JSON.stringify(sibling)})`);
 				results.push({
 					name,
 					status: "pass",
+					realSiblingPreserved: true,
 					mcpStartup: startup,
 					followupRoute: managed ? "queue navigation" : "direct original conversation",
 					launch: managed
