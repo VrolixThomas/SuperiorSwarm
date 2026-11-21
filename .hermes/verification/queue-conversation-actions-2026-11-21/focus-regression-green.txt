@@ -1,0 +1,23 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-view.test.tsx:
+(pass) Open only navigates; Done sends displayed revision and Undo restores it [35.24ms]
+(pass) conflict refreshes same item without advancing or opening another [13.08ms]
+(pass) Later then Bring back use exact revisions and keyboard options [17.45ms]
+(pass) selection survives refresh and typing never runs quick actions [7.69ms]
+(pass) new revision closes the Later menu instead of acting on unseen activity [10.43ms]
+(pass) loading, empty and fetch errors offer honest recovery states [1.77ms]
+(pass) unavailable permission items remain readable but cannot be handled [9.53ms]
+(pass) keyboard focus follows the next row after Done [26.44ms]
+(pass) Later keeps category counts tied to pending items [10.64ms]
+(pass) Later does not offer an Undo receipt for a different previously completed item [9.06ms]
+(pass) selected item keeps its source and next action visible [4.01ms]
+(pass) narrow details action exposes full context and returns keyboard focus [8.14ms]
+(pass) canonical grouped actions preserve every displayed member receipt including Undo [13.92ms]
+(pass) provider request evidence keeps provenance and does not claim permission execution [1.98ms]
+(pass) handling an item from narrow details returns focus to the visible next row [9.70ms]
+
+ 15 pass
+ 0 fail
+ 64 expect() calls
+Ran 15 tests across 1 file. [310.00ms]
