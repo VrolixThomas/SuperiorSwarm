@@ -233,7 +233,7 @@ export async function checkJumpInteractions(
 	await click("Details / reply");
 	await js("document.querySelector('[aria-label=\"Queue navigation\"] textarea').focus()");
 	await web.insertText("Exact native answer");
-	await click("Send answer");
+	await click("Save answer only");
 	await until(() =>
 		js<boolean>("document.body.textContent.includes('has not read this answer yet')")
 	);
