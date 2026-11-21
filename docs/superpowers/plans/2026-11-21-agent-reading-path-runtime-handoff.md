@@ -2,6 +2,8 @@
 
 Base frontend: `163c7059`. Shared contract dependency: A's `963c0b56`, cherry-picked here as equivalent `120bf0ec`; integrate only one copy. A owns storage/service/schema/router/MCP. This lane adds no migrations or router registration.
 
+Implementation commits: `15af833e` and `2b78db36`; initial handoff `247216eb`.
+
 ## Integration
 
 - Call `initializeReviewPathRuntime()` from `main/review-path/runtime.ts` after DB, task registry, daemon and providers initialize, before accepting mapping requests. It installs the port through A's `configureReviewPathRuntime` and reconciles durable runs against terminal inventory. Missing processes become explicit failures; no restart prompt is injected into any terminal.
@@ -24,7 +26,7 @@ Base frontend: `163c7059`. Shared contract dependency: A's `963c0b56`, cherry-pi
 
 Logs: `/tmp/agent-reading-runtime-validation/`.
 
-- 72 tests pass across 16 targeted files, including existing path/model/settings/rail/panel/workspace/poller/auto-review regressions. The shell test executes fake Codex and Claude binaries in a temporary directory; it verifies exact prompt bytes and scoped task token without invoking a real provider.
+- 73 tests pass across 16 targeted files, including existing path/model/settings/rail/panel/workspace/poller/auto-review regressions. The shell test executes fake Codex and Claude binaries in a temporary directory; it verifies exact prompt bytes and scoped task token without invoking a real provider.
 - New tests cover duplicate starts, cancellation during preparation, wrong question identity, offline failures, unrelated terminal rejection, late poll fencing, full identity mismatches, restart reconciliation, completed-run exit, duplicate auto triggers and server-authoritative legacy settings migration.
 - Scoped Biome: 21 files pass. `git diff --check` passes.
 - Production build attempted and blocked by the intentionally absent A `main/review-path/service.ts` dependency. Main TypeScript additions are the absent service and `review-path` TaskMode. Renderer/test checks additionally require A's AppRouter registration. Existing global diagnostics remain; no clean global type-check is claimed. Integrated build/types must run after A lands.
