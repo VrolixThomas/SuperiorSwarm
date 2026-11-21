@@ -113,6 +113,11 @@ function apiFixture(type = "worktree") {
 		},
 	]);
 	const api = {
+		crossRepoOrchestrators: {
+			get: {
+				query: mock(async () => ({ id: "target", workDir: "/coordinator", name: "Coordinator" })),
+			},
+		},
 		workspaces: {
 			getById: { query: mock(async () => workspace) },
 			listByProject: { query: mock(async () => ({ orchestrators: [], loose: [workspace] })) },
@@ -159,7 +164,7 @@ const prTarget: ActivityQueueTarget = {
 };
 
 describe("Queue source targeting", () => {
-	test("GAP workspace report Open retains a selected sibling instead of the known reporting chat", async () => {
+	test("workspace reporter target opens the exact reporting chat instead of the selected sibling", async () => {
 		const store = useTabStore.getState();
 		store.setActiveWorkspace("target", "/target");
 		store.addTerminalTab("target", "/target", "Reporting conversation", "terminal-2");
@@ -167,10 +172,10 @@ describe("Queue source targeting", () => {
 		store.setActiveTab("terminal-1");
 		store.setActiveWorkspace("previous", "/previous");
 		const { api } = apiFixture();
-		// agent-workspace sources have this shape even with a validated reporter snapshot.
-		const destination = await openQueueTarget({ type: "workspace", workspaceId: "target" }, api);
-		expect(destination).toEqual({ workspaceId: "target" });
-		expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe("terminal-1");
+		// Validated reports now project this exact target (backend projection is tested separately).
+		const destination = await openQueueTarget(terminalTarget, api);
+		expect(destination).toEqual({ workspaceId: "target", terminalId: "terminal-2" });
+		expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe("terminal-2");
 	});
 
 	test("selects the exact tab and split pane, preserving the other terminal", async () => {
@@ -323,6 +328,29 @@ test("terminal service errors retain the current workspace", async () => {
 	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
 });
 
+test("closing the requested chat during inventory preflight cannot select its sibling", async () => {
+	const { api, raw } = apiFixture();
+	const store = useTabStore.getState();
+	store.addTerminalTab("target", "/target", "Sibling", "terminal-1");
+	store.addTerminalTab("target", "/target", "Reporter", "terminal-2");
+	store.setActiveWorkspace("current", "/current");
+	raw.daemon.listSessions.mockImplementationOnce(async () => {
+		const pane = usePaneStore.getState().findPaneForTab("target", "terminal-2");
+		if (pane) usePaneStore.getState().removeTabFromPane("target", pane.id, "terminal-2");
+		return {
+			daemonSessions: [
+				{ id: "terminal-1", cwd: "/target", pid: 1 },
+				{ id: "terminal-2", cwd: "/target", pid: 2 },
+			],
+			liveSessions: [],
+			callbackIds: [],
+		};
+	});
+	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("no longer open");
+	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+	expect(store.getTabsByWorkspace("target").map((tab) => tab.id)).toEqual(["terminal-1"]);
+});
+
 test("Queue marks terminals added during preflight before any destination activation", async () => {
 	const store = useTabStore.getState();
 	store.setActiveWorkspace("target", "/target");
@@ -352,4 +380,30 @@ test("Queue marks terminals added during preflight before any destination activa
 	} finally {
 		unsubscribe();
 	}
+});
+
+for (const exact of [false, true]) {
+	test(`coordinator ${exact ? "chat" : "entity"} navigation never substitutes a linked workspace or creates a shell`, async () => {
+		const { api, raw } = apiFixture();
+		const store = useTabStore.getState();
+		store.addTerminalTab("target", "/coordinator", "Coordinator chat", "terminal-2");
+		store.setActiveWorkspace("current", "/current");
+		const target: ActivityQueueTarget = exact
+			? { ...terminalTarget, entity: { kind: "coordinator", id: "target" } }
+			: { type: "coordinator", coordinatorId: "target" };
+		await openQueueTarget(target, api);
+		expect(raw.workspaces.getById.query).not.toHaveBeenCalled();
+		expect(raw.crossRepoOrchestrators.get.query).toHaveBeenCalledWith({ id: "target" });
+		expect(useTabStore.getState().activeWorkspaceId).toBe("target");
+		expect(useTabStore.getState().activeWorkspaceCwd).toBe("/coordinator");
+		expect(useTabStore.getState().terminalCreateIntents["terminal-2"]).toBe("attach-existing-only");
+		expect(store.getTabsByWorkspace("target").map((t) => t.id)).toEqual(["terminal-2"]);
+	});
+}
+test("mismatched coordinator owner is rejected before navigation", async () => {
+	const { api } = apiFixture();
+	await expect(
+		openQueueTarget({ ...terminalTarget, entity: { kind: "coordinator", id: "other" } }, api)
+	).rejects.toThrow("owner does not match");
+	expect(useTabStore.getState().activeWorkspaceId).toBeNull();
 });

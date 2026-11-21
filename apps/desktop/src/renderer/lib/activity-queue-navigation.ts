@@ -11,6 +11,7 @@ export interface QueueNavigationApi {
 	workspaces: Pick<typeof trpcVanilla.workspaces, "getById" | "getOrCreateReview">;
 	projects: Pick<typeof trpcVanilla.projects, "getByRepo" | "getPRDetails">;
 	agentSessions: Pick<typeof trpcVanilla.agentSessions, "list">;
+	crossRepoOrchestrators: Pick<typeof trpcVanilla.crossRepoOrchestrators, "get">;
 	daemon: Pick<DaemonAPI, "listSessions">;
 }
 export type QueueDestination = { workspaceId: string; terminalId?: string };
@@ -19,6 +20,7 @@ const navigationApi: QueueNavigationApi = {
 	workspaces: trpcVanilla.workspaces,
 	projects: trpcVanilla.projects,
 	agentSessions: trpcVanilla.agentSessions,
+	crossRepoOrchestrators: trpcVanilla.crossRepoOrchestrators,
 	daemon: { listSessions: () => window.electron.daemon.listSessions() },
 };
 
@@ -75,6 +77,16 @@ function activateWorkspace(workspace: Awaited<ReturnType<typeof resolveWorkspace
 	});
 	store.navigateToWorkspace(workspace.id, workspace.path, "attach-existing-only");
 	useProjectStore.getState().closeSettings();
+}
+
+function requireOpenChat(workspaceId: string, terminalId: string, reviewWorkspace: boolean) {
+	const pane = usePaneStore.getState().findPaneForTab(workspaceId, terminalId);
+	const tab = pane?.tabs.find((t) => t.id === terminalId && t.kind === "terminal");
+	const review = useReviewModeStore.getState().terminals[workspaceId];
+	if (!tab && review?.tabId !== terminalId)
+		throw new Error("This terminal is no longer open. Queue will not create a replacement shell.");
+	if (reviewWorkspace && review?.tabId !== terminalId)
+		throw new Error("This terminal is not attached to the review drawer.");
 }
 
 /** Open is navigation only. There is deliberately no acknowledgment API in this helper. */
@@ -159,7 +171,35 @@ export async function openQueueTarget(
 			if (openingPRs.get(key) === opening) openingPRs.delete(key);
 		}
 	}
-	const workspace = await resolveWorkspace(target.workspaceId, api);
+	const coordinatorId =
+		target.type === "coordinator"
+			? target.coordinatorId
+			: target.type === "terminal" && target.entity?.kind === "coordinator"
+				? target.entity.id
+				: null;
+	if (target.type === "terminal" && target.entity && target.entity.id !== target.workspaceId)
+		throw new Error("The conversation owner does not match this queue target.");
+	const coordinator = coordinatorId
+		? await api.crossRepoOrchestrators.get.query({ id: coordinatorId })
+		: null;
+	if (coordinatorId && (!coordinator || coordinator.id !== coordinatorId || !coordinator.workDir))
+		throw new Error("This coordinator is no longer available.");
+	const workspace =
+		target.type !== "coordinator" && !coordinatorId
+			? await resolveWorkspace(target.workspaceId, api)
+			: null;
+	const entityId = coordinator?.id ?? workspace?.id;
+	if (!entityId) throw new Error("This queue destination is no longer available.");
+	const isReview = workspace?.type === "review";
+	const activate = () => {
+		if (coordinator) {
+			// openXroWorkspace can launch a replacement. Queue only selects existing panes.
+			useTabStore
+				.getState()
+				.navigateToWorkspace(coordinator.id, coordinator.workDir, "attach-existing-only");
+			useProjectStore.getState().closeSettings();
+		} else if (workspace) activateWorkspace(workspace);
+	};
 	if (target.type === "terminal") {
 		const sessions = await api.agentSessions.list.query();
 		const session = sessions.find(
@@ -177,26 +217,20 @@ export async function openQueueTarget(
 			throw new Error(
 				"This agent is asleep. Resume it explicitly from its workspace before opening this terminal."
 			);
-		const pane = usePaneStore.getState().findPaneForTab(target.workspaceId, target.terminalId);
-		const tab = pane?.tabs.find((t) => t.id === target.terminalId && t.kind === "terminal");
-		const review = useReviewModeStore.getState().terminals[target.workspaceId];
-		if (!tab && review?.tabId !== target.terminalId)
-			throw new Error(
-				"This terminal is no longer open. Queue will not create a replacement shell."
-			);
-		if (workspace.type === "review" && review?.tabId !== target.terminalId)
-			throw new Error("This terminal is not attached to the review drawer.");
-		await requireExistingTerminals(workspace.id, workspace.type === "review", api);
-		activateWorkspace(workspace);
-		if (workspace.type === "review") {
+		requireOpenChat(target.workspaceId, target.terminalId, isReview);
+		await requireExistingTerminals(entityId, isReview, api);
+		// The user may close the reporter while the inventory request is pending.
+		requireOpenChat(target.workspaceId, target.terminalId, isReview);
+		activate();
+		if (isReview) {
 			const reviewStore = useReviewModeStore.getState();
 			if (reviewStore.view !== "terminal") reviewStore.setDrawerOpen(true);
 		} else useTabStore.getState().setActiveTab(target.terminalId);
 		return { workspaceId: target.workspaceId, terminalId: target.terminalId };
 	}
-	await requireExistingTerminals(workspace.id, workspace.type === "review", api);
-	activateWorkspace(workspace);
-	return { workspaceId: target.workspaceId };
+	await requireExistingTerminals(entityId, isReview, api);
+	activate();
+	return { workspaceId: entityId };
 }
 
 /** Run after the panel closes and React commits the selected destination. */
