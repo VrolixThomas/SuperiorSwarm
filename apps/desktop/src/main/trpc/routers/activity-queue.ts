@@ -57,7 +57,7 @@ export const activityQueueRouter = router({
 			answerReference.extend({
 				requestId: z.string().min(1).max(128),
 				answerId: z.string().min(1).max(256).optional(),
-				content: z.string().trim().min(1).max(16000),
+				content: z.string().min(1).max(56000),
 			})
 		)
 		.mutation(({ input }) => workspaceAnswerAndContinue(input, answerContinuationTransport)),

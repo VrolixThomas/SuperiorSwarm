@@ -140,7 +140,7 @@ export async function workspaceAnswerAndContinue(
 		input.requestId.length > 128 ||
 		input.id !== questionSourceId(input.questionId) ||
 		!content ||
-		content.length > 16000
+		input.content.length > 56000
 	)
 		return {
 			answer: null,
@@ -178,6 +178,11 @@ export async function workspaceAnswerAndContinue(
 			},
 		};
 	if (!record.answer) {
+		if (content.length > 16000)
+			return {
+				answer: null,
+				continuation: unavailable("Enter an answer of 1 to 16000 characters."),
+			};
 		const result = await workspaceAnswer({ ...input, content });
 		record = readAnswer(input.questionId, input.answerId);
 		if (!record?.answer)
@@ -193,7 +198,11 @@ export async function workspaceAnswerAndContinue(
 	const { question, answer } = record;
 	if (!answer) return { answer: null, continuation: unavailable("The answer is unavailable.") };
 	const answerReceipt = saved(answer);
-	if (answer.content !== content)
+	if (
+		input.answerId
+			? answer.content !== input.content
+			: answer.content !== input.content && answer.content !== content
+	)
 		return {
 			answer: answerReceipt,
 			continuation: {

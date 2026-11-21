@@ -453,3 +453,56 @@ test("wrong-recipient and older answer rows cannot poison the selected valid ans
 		f.manager.dispose();
 	}
 });
+
+test("outside-queue saved answers retain raw whitespace and may use the bounded larger envelope", async () => {
+	for (const content of ["  \n\tUse blue\n ", "a".repeat(17000)]) {
+		const f = await fixture("codex", "worktree");
+		try {
+			const saved = await caller.workspaceAnswer(f.input);
+			if (saved.status !== "saved") throw Error("Save failed");
+			getDb()
+				.update(agentMessages)
+				.set({ content })
+				.where(eq(agentMessages.id, saved.messageId))
+				.run();
+			const result = await caller.workspaceAnswerAndContinue({
+				...f.input,
+				answerId: saved.messageId,
+				content,
+			});
+			expect(result.continuation.status).toBe("admitted");
+			expect(result.answer?.content).toBe(content);
+			const encoded = f.writes[0]?.content.split("\n")[1];
+			if (!encoded) throw Error("Missing exact answer envelope");
+			expect(JSON.parse(encoded)).toBe(content);
+			expect(f.accept()).not.toBeNull();
+			expect(
+				getDb().select().from(agentMessages).where(eq(agentMessages.id, saved.messageId)).get()
+					?.retrievedAt
+			).not.toBeNull();
+		} finally {
+			f.manager.dispose();
+		}
+	}
+});
+test("larger continuation allowance never expands new-answer save limits", async () => {
+	const f = await fixture("codex", "worktree");
+	try {
+		const result = await caller.workspaceAnswerAndContinue({
+			...f.input,
+			content: "a".repeat(17000),
+		});
+		expect(result.answer).toBeNull();
+		expect(result.continuation.status).toBe("unavailable");
+		expect(
+			getDb()
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.inReplyTo, f.input.questionId))
+				.all()
+		).toHaveLength(0);
+		expect(f.writes).toHaveLength(0);
+	} finally {
+		f.manager.dispose();
+	}
+});
