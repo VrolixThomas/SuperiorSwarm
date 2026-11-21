@@ -6,6 +6,7 @@ import { questionSourceId, workspaceReporter } from "../src/main/activity-queue/
 import {
 	type AnswerContinuationTransport,
 	workspaceAnswerAndContinue,
+	workspaceAnswerContinuationCapability,
 	workspaceAnswerContinuationReceipt,
 } from "../src/main/activity-queue/answer-continuation";
 import { markAnswerPromptReceived } from "../src/main/activity-queue/answer-continuation-receipts";
@@ -247,7 +248,7 @@ test("answer consumed outside Queue is not continued a second time", async () =>
 		f.transport
 	);
 	expect(continued.answer?.delivery).toBe("retrieved");
-	expect(continued.continuation.status).toBe("unavailable");
+	expect(continued.continuation.status).toBe("not-needed");
 	expect(f.submissions).toHaveLength(0);
 });
 test("old prompt digest cannot mark edited answer or replaced conversation retrieved", async () => {
@@ -297,4 +298,37 @@ test("oversized encoded continuation saves but never truncates or submits", asyn
 	expect(result.answer?.content).toBe(content);
 	expect(result.continuation.status).toBe("unavailable");
 	expect(f.submissions).toHaveLength(0);
+});
+
+test("independent retrieval while admission waits returns not-needed without duplicate delivery", async () => {
+	const f = await fixture();
+	f.transport.submit = async (request) => {
+		f.submissions.push(request);
+		const answer = f.answers()[0];
+		if (!answer) throw Error("Missing answer");
+		getDb()
+			.update(agentMessages)
+			.set({ retrievedAt: new Date() })
+			.where(eq(agentMessages.id, answer.id))
+			.run();
+		return { status: "rejected", reason: "Already retrieved" };
+	};
+	const result = await workspaceAnswerAndContinue(f.input, f.transport);
+	expect(result.answer?.delivery).toBe("retrieved");
+	expect(result.continuation.status).toBe("not-needed");
+	expect(f.answers()).toHaveLength(1);
+	expect(f.submissions).toHaveLength(1);
+});
+
+test("capability rechecks persisted envelope size after save", async () => {
+	const f = await fixture();
+	await workspaceAnswer({ ...f.input, content: "‮".repeat(16000) });
+	let checks = 0;
+	f.transport.capability = async () => {
+		checks++;
+		return { status: "available", mode: "reply", detail: "Ready" };
+	};
+	const result = await workspaceAnswerContinuationCapability(f.input, f.transport);
+	expect(result.status).toBe("unavailable");
+	expect(checks).toBe(0);
 });

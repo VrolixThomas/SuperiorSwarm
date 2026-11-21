@@ -22,9 +22,13 @@ export interface QueueSavedAnswer {
 	content: string;
 	delivery: "saved" | "retrieved";
 }
+export interface QueueAnswerReceiptInput extends QueueAnswerCapabilityInput {
+	requestId: string;
+	answerId?: string;
+}
 export interface QueueAnswerContinueResult {
 	answer: QueueSavedAnswer | null;
-	continuation: WorkspaceQueueReplyResult;
+	continuation: WorkspaceQueueReplyResult | { status: "not-needed"; detail: string };
 }
 
 export type QueueAnswerTarget = Extract<ActivityQueueTarget, { type: "terminal" }>;

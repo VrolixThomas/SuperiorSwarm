@@ -11,6 +11,7 @@ import {
 	type QueueAnswerCapabilityInput,
 	type QueueAnswerContinueInput,
 	type QueueAnswerContinueResult,
+	type QueueAnswerReceiptInput,
 	type QueueAnswerTarget,
 	type QueueSavedAnswer,
 	answerContinuationFits,
@@ -99,6 +100,26 @@ export async function workspaceAnswerContinuationCapability(
 		return {
 			status: "unavailable",
 			reason: "This question changed or was handled. Refresh the queue.",
+		};
+	const record = readAnswer(input.questionId);
+	if (!record || record.ambiguous || record.answer?.retrievedAt)
+		return {
+			status: "unavailable",
+			reason: "This question or its saved answer changed. Refresh the queue before continuing.",
+		};
+	if (
+		record?.answer &&
+		!answerContinuationFits(
+			answerContinuationPrompt(
+				{ questionId: input.questionId, answerId: record.answer.id },
+				record.answer.content
+			)
+		)
+	)
+		return {
+			status: "unavailable",
+			reason:
+				"This saved answer is too large to continue from here. Open the chat and ask it to check its messages.",
 		};
 	return transport.capability(input, input.questionId);
 }
@@ -209,9 +230,10 @@ export async function workspaceAnswerAndContinue(
 	if (answer.retrievedAt)
 		return {
 			answer: answerReceipt,
-			continuation: unavailable(
-				"The agent has already received this answer. Refresh the queue for its current task."
-			),
+			continuation: {
+				status: "not-needed",
+				detail: "The agent has already retrieved this answer. No extra continuation was sent.",
+			},
 		};
 	if (!answerContinuationFits(prompt))
 		return {
@@ -221,9 +243,30 @@ export async function workspaceAnswerAndContinue(
 			),
 		};
 	try {
+		const continuation = await transport.submit({ ...input, content: prompt }, binding);
+		const latest = readAnswer(input.questionId, answer.id)?.answer;
+		const delivered = latest ? saved(latest) : answerReceipt;
+		if (latest && latest.content !== answer.content)
+			return {
+				answer: delivered,
+				continuation: {
+					status: "uncertain",
+					requestId: input.requestId,
+					detail:
+						"The saved answer changed during delivery. Open the conversation to verify which answer was received before continuing.",
+				},
+			};
 		return {
-			answer: answerReceipt,
-			continuation: await transport.submit({ ...input, content: prompt }, binding),
+			answer: delivered,
+			continuation:
+				delivered.delivery === "retrieved" &&
+				["conflict", "not-found", "unavailable", "rejected"].includes(continuation.status)
+					? {
+							status: "not-needed",
+							detail:
+								"The agent retrieved this answer while continuation was being prepared. No extra prompt was sent.",
+						}
+					: continuation,
 		};
 	} catch {
 		return {
@@ -240,14 +283,19 @@ export async function workspaceAnswerAndContinue(
 
 /** Status recovery never saves an answer, creates an intent, resumes or writes into a chat. */
 export function workspaceAnswerContinuationReceipt(
-	input: QueueAnswerCapabilityInput & { answerId: string; requestId: string },
+	input: QueueAnswerReceiptInput,
 	transport: AnswerContinuationTransport
 ): QueueAnswerContinueResult {
 	const record = readAnswer(input.questionId, input.answerId);
 	if (!record?.answer || record.ambiguous || input.id !== questionSourceId(input.questionId))
 		return {
 			answer: null,
-			continuation: { status: "conflict", reason: "This saved answer is no longer available." },
+			continuation: {
+				status: "uncertain",
+				requestId: input.requestId,
+				detail:
+					"No exact saved-answer receipt is available yet. This status check did not save or resend anything.",
+			},
 		};
 	const { question, answer } = record;
 	const target = question.reporter;
@@ -269,8 +317,10 @@ export function workspaceAnswerContinuationReceipt(
 		return {
 			answer: saved(answer),
 			continuation: {
-				status: "conflict",
-				reason: "This request belongs to another answer or queue update.",
+				status: "uncertain",
+				requestId: input.requestId,
+				detail:
+					"The saved answer or request binding changed. Delivery cannot be confirmed here; open the conversation before trying again.",
 			},
 		};
 	return {
