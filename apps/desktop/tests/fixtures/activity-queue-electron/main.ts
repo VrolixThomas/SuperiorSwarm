@@ -418,6 +418,21 @@ lines.on('line', line => {
 	step = "same-session next-turn input";
 	await until(() => hasCount(1));
 	await until(() => js<boolean>("document.body.textContent.includes('Agent needs input')"));
+	const beforeDisconnect = (await listCurrentActivityQueue()).items.map((item) => item.id);
+	daemon.disconnect();
+	const disconnected = await listCurrentActivityQueue();
+	if (
+		disconnected.agentStatusAvailable ||
+		JSON.stringify(disconnected.items.map((item) => item.id)) !== JSON.stringify(beforeDisconnect)
+	)
+		throw new Error("Daemon disconnect discarded last-confirmed queue state");
+	await daemon.connect();
+	const reconnected = await listCurrentActivityQueue();
+	if (
+		!reconnected.agentStatusAvailable ||
+		JSON.stringify(reconnected.items.map((item) => item.id)) !== JSON.stringify(beforeDisconnect)
+	)
+		throw new Error("Daemon reconnect changed unchanged queue activity");
 	await hook("Stop", "turn-1");
 	if ((await listCurrentActivityQueue()).items[0]?.kind !== "agent-input")
 		throw new Error("Late prior-turn Stop overwrote input");

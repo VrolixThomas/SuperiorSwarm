@@ -1,0 +1,533 @@
+{
+  "root": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-live-investigation-Fz16ai",
+  "results": [
+    {
+      "provider": "claude",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "providerMcpStatus": "delivered",
+      "hooks": [
+        {
+          "provider": "claude",
+          "event": "SessionStart",
+          "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+          "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795275355502,
+          "receivedAt": 1795275355513,
+          "accepted": true,
+          "attention": []
+        },
+        {
+          "provider": "claude",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+          "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+          "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+          "source": null,
+          "producedAt": 1795275355730,
+          "receivedAt": 1795275355737,
+          "accepted": true,
+          "attention": []
+        },
+        {
+          "provider": "claude",
+          "event": "PreToolUse",
+          "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+          "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+          "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+          "source": null,
+          "producedAt": 1795275357663,
+          "receivedAt": 1795275357670,
+          "accepted": true,
+          "attention": []
+        },
+        {
+          "provider": "claude",
+          "event": "PostToolUse",
+          "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+          "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+          "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+          "source": null,
+          "producedAt": 1795275357725,
+          "receivedAt": 1795275357732,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "agent-workspace:ws-jMzM-OQQ",
+              "kind": "agent-input",
+              "revision": 1
+            }
+          ]
+        },
+        {
+          "provider": "claude",
+          "event": "Stop",
+          "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+          "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+          "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+          "source": null,
+          "producedAt": 1795275358797,
+          "receivedAt": 1795275358804,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "agent-workspace:ws-jMzM-OQQ",
+              "kind": "agent-input",
+              "revision": 1
+            },
+            {
+              "sourceId": "[\"agent-session\",\"ws-jMzM-OQQ\",\"live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699\",\"claude\",\"9f989579-eb51-4fd3-8d65-e85b7301c237\"]",
+              "kind": "agent-ready",
+              "revision": 3
+            }
+          ]
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-input",
+          "situation": "agent-input",
+          "summary": "Choose amber or blue",
+          "target": {
+            "type": "workspace",
+            "workspaceId": "ws-jMzM-OQQ"
+          }
+        },
+        {
+          "kind": "agent-ready",
+          "situation": "agent-done",
+          "summary": "Ready for next input",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-jMzM-OQQ",
+            "terminalId": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+            "provider": "claude",
+            "providerSessionId": "9f989579-eb51-4fd3-8d65-e85b7301c237"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-jMzM-OQQ\",\"live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699\",\"claude\",\"9f989579-eb51-4fd3-8d65-e85b7301c237\"]",
+          "situation": "agent-done",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-jMzM-OQQ",
+            "terminalId": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+            "provider": "claude",
+            "providerSessionId": "9f989579-eb51-4fd3-8d65-e85b7301c237"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 1962,
+        "hookMessages": []
+      }
+    },
+    {
+      "provider": "codex",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "providerMcpStatus": "permission-blocked-unverified",
+      "hooks": [
+        {
+          "provider": "codex",
+          "event": "SessionStart",
+          "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+          "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795275364566,
+          "receivedAt": 1795275364569,
+          "accepted": true,
+          "attention": []
+        },
+        {
+          "provider": "codex",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+          "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+          "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+          "source": null,
+          "producedAt": 1795275364638,
+          "receivedAt": 1795275364641,
+          "accepted": true,
+          "attention": []
+        },
+        {
+          "provider": "codex",
+          "event": "PreToolUse",
+          "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+          "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+          "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+          "source": null,
+          "producedAt": 1795275370615,
+          "receivedAt": 1795275370619,
+          "accepted": true,
+          "attention": []
+        },
+        {
+          "provider": "codex",
+          "event": "PermissionRequest",
+          "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+          "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+          "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+          "source": null,
+          "producedAt": 1795275370692,
+          "receivedAt": 1795275370695,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+              "kind": "agent-input",
+              "revision": 3
+            }
+          ]
+        },
+        {
+          "provider": "codex",
+          "event": "Stop",
+          "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+          "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+          "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+          "source": null,
+          "producedAt": 1795275373831,
+          "receivedAt": 1795275373834,
+          "accepted": true,
+          "attention": [
+            {
+              "sourceId": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+              "kind": "agent-ready",
+              "revision": 4
+            }
+          ]
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-ready",
+          "situation": "agent-done",
+          "summary": "Ready for next input",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-PjhsAHit",
+            "terminalId": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+            "provider": "codex",
+            "providerSessionId": "01a1fec0-11ad-7442-9854-041c574500c4"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+          "situation": "agent-done",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-PjhsAHit",
+            "terminalId": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+            "provider": "codex",
+            "providerSessionId": "01a1fec0-11ad-7442-9854-041c574500c4"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 1230,
+        "hookMessages": []
+      }
+    }
+  ],
+  "trace": [
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795275355502,
+      "receivedAt": 1795275355513,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+      "source": null,
+      "producedAt": 1795275355730,
+      "receivedAt": 1795275355737,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "claude",
+      "event": "PreToolUse",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+      "source": null,
+      "producedAt": 1795275357663,
+      "receivedAt": 1795275357670,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "claude",
+      "event": "PostToolUse",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+      "source": null,
+      "producedAt": 1795275357725,
+      "receivedAt": 1795275357732,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-jMzM-OQQ",
+          "kind": "agent-input",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": "cbc443d0-3a50-4754-8e91-9f820cc94eb2",
+      "source": null,
+      "producedAt": 1795275358797,
+      "receivedAt": 1795275358804,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-jMzM-OQQ",
+          "kind": "agent-input",
+          "revision": 1
+        },
+        {
+          "sourceId": "[\"agent-session\",\"ws-jMzM-OQQ\",\"live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699\",\"claude\",\"9f989579-eb51-4fd3-8d65-e85b7301c237\"]",
+          "kind": "agent-ready",
+          "revision": 3
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795275359917,
+      "receivedAt": 1795275359925,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "agent-workspace:ws-jMzM-OQQ",
+          "kind": "agent-input",
+          "revision": 1
+        },
+        {
+          "sourceId": "[\"agent-session\",\"ws-jMzM-OQQ\",\"live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699\",\"claude\",\"9f989579-eb51-4fd3-8d65-e85b7301c237\"]",
+          "kind": "agent-ready",
+          "revision": 3
+        }
+      ]
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": "5ed0ef5e-8310-4d03-b980-c8ff3c72f53c",
+      "source": null,
+      "producedAt": 1795275360059,
+      "receivedAt": 1795275360065,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699",
+      "conversation": "9f989579-eb51-4fd3-8d65-e85b7301c237",
+      "turn": "5ed0ef5e-8310-4d03-b980-c8ff3c72f53c",
+      "source": null,
+      "producedAt": 1795275361808,
+      "receivedAt": 1795275361815,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-jMzM-OQQ\",\"live-investigation-claude-aa4fc50b-1020-4ffd-ad4c-8b01e9616699\",\"claude\",\"9f989579-eb51-4fd3-8d65-e85b7301c237\"]",
+          "kind": "agent-ready",
+          "revision": 5
+        }
+      ]
+    },
+    {
+      "provider": "codex",
+      "event": "SessionStart",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795275364566,
+      "receivedAt": 1795275364569,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "codex",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+      "source": null,
+      "producedAt": 1795275364638,
+      "receivedAt": 1795275364641,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "codex",
+      "event": "PreToolUse",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+      "source": null,
+      "producedAt": 1795275370615,
+      "receivedAt": 1795275370619,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "codex",
+      "event": "PermissionRequest",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+      "source": null,
+      "producedAt": 1795275370692,
+      "receivedAt": 1795275370695,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+          "kind": "agent-input",
+          "revision": 3
+        }
+      ]
+    },
+    {
+      "provider": "codex",
+      "event": "Stop",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": "01a1fec0-13da-7c60-bda0-188a86f009f2",
+      "source": null,
+      "producedAt": 1795275373831,
+      "receivedAt": 1795275373834,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+          "kind": "agent-ready",
+          "revision": 4
+        }
+      ]
+    },
+    {
+      "provider": "codex",
+      "event": "SessionStart",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795275377160,
+      "receivedAt": 1795275377163,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+          "kind": "agent-ready",
+          "revision": 4
+        }
+      ]
+    },
+    {
+      "provider": "codex",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": "01a1fec0-4546-7363-a936-31bebc1b5234",
+      "source": null,
+      "producedAt": 1795275377232,
+      "receivedAt": 1795275377235,
+      "accepted": true,
+      "attention": []
+    },
+    {
+      "provider": "codex",
+      "event": "Stop",
+      "terminal": "live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b",
+      "conversation": "01a1fec0-11ad-7442-9854-041c574500c4",
+      "turn": "01a1fec0-4546-7363-a936-31bebc1b5234",
+      "source": null,
+      "producedAt": 1795275378891,
+      "receivedAt": 1795275378894,
+      "accepted": true,
+      "attention": [
+        {
+          "sourceId": "[\"agent-session\",\"ws-PjhsAHit\",\"live-investigation-codex-c20ca1b1-b8cc-46ec-a5b0-38a7b58b9b4b\",\"codex\",\"01a1fec0-11ad-7442-9854-041c574500c4\"]",
+          "kind": "agent-ready",
+          "revision": 6
+        }
+      ]
+    }
+  ]
+}

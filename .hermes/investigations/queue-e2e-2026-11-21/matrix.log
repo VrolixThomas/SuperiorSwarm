@@ -1,0 +1,34 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-investigation-matrix.test.ts:
+(pass) claude/worktree/manual: exact direct continuation and sibling isolation [93.28ms]
+(pass) claude/folder/manual: exact direct continuation and sibling isolation [66.90ms]
+(pass) claude/repo-orchestrator/manual: exact direct continuation and sibling isolation [74.92ms]
+(pass) GAP claude/cross-repo/manual: registered coordinator callback is rejected [5.82ms]
+(pass) claude/worktree/managed: exact direct continuation and sibling isolation [63.96ms]
+(pass) claude/folder/managed: exact direct continuation and sibling isolation [93.37ms]
+(pass) claude/repo-orchestrator/managed: exact direct continuation and sibling isolation [60.28ms]
+(pass) GAP claude/cross-repo/managed: registered coordinator callback is rejected [4.23ms]
+(pass) GAP claude: known reporter is discarded from navigation and workspace/chat duplicate [48.19ms]
+(pass) GAP claude: untagged accepted prompt clears chat but leaves owned workspace attention [44.35ms]
+(pass) GAP claude: structured question has no terminal ownership and survives reporter closure [28.28ms]
+(pass) GAP claude: legacy Stop without turn identity resurrects attention after explicit working [77.81ms]
+(pass) GAP claude: managed sibling prompt can clear a legacy ownerless manual report [38.88ms]
+(pass) codex/worktree/manual: exact direct continuation and sibling isolation [198.57ms]
+(pass) codex/folder/manual: exact direct continuation and sibling isolation [124.91ms]
+(pass) codex/repo-orchestrator/manual: exact direct continuation and sibling isolation [101.56ms]
+(pass) GAP codex/cross-repo/manual: registered coordinator callback is rejected [10.95ms]
+(pass) codex/worktree/managed: exact direct continuation and sibling isolation [124.06ms]
+(pass) codex/folder/managed: exact direct continuation and sibling isolation [133.43ms]
+(pass) codex/repo-orchestrator/managed: exact direct continuation and sibling isolation [273.12ms]
+(pass) GAP codex/cross-repo/managed: registered coordinator callback is rejected [58.66ms]
+(pass) GAP codex: known reporter is discarded from navigation and workspace/chat duplicate [189.58ms]
+(pass) GAP codex: untagged accepted prompt clears chat but leaves owned workspace attention [53.20ms]
+(pass) GAP codex: structured question has no terminal ownership and survives reporter closure [135.89ms]
+(pass) GAP codex: legacy Stop without turn identity resurrects attention after explicit working [156.51ms]
+(pass) GAP codex: managed sibling prompt can clear a legacy ownerless manual report [57.36ms]
+
+ 26 pass
+ 0 fail
+ 128 expect() calls
+Ran 26 tests across 1 file. [2.64s]

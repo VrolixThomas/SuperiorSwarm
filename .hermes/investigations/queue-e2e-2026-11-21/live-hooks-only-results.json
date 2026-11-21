@@ -1,0 +1,317 @@
+{
+  "root": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-live-investigation-6Vox5b",
+  "results": [
+    {
+      "provider": "claude",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "hooks": [
+        {
+          "provider": "claude",
+          "event": "SessionStart",
+          "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+          "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795275125270,
+          "receivedAt": 1795275125278,
+          "accepted": true
+        },
+        {
+          "provider": "claude",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+          "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+          "turn": "359b3469-b3be-471f-a331-affcaa1dcfb4",
+          "source": null,
+          "producedAt": 1795275125360,
+          "receivedAt": 1795275125367,
+          "accepted": true
+        },
+        {
+          "provider": "claude",
+          "event": "Stop",
+          "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+          "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+          "turn": "359b3469-b3be-471f-a331-affcaa1dcfb4",
+          "source": null,
+          "producedAt": 1795275126516,
+          "receivedAt": 1795275126523,
+          "accepted": true
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-ready",
+          "summary": "Ready for next input",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-KkNkZW-T",
+            "terminalId": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+            "provider": "claude",
+            "providerSessionId": "ec57ac3d-6bd6-426a-9941-ef36b16188c4"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-KkNkZW-T\",\"live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761\",\"claude\",\"ec57ac3d-6bd6-426a-9941-ef36b16188c4\"]",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-KkNkZW-T",
+            "terminalId": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+            "provider": "claude",
+            "providerSessionId": "ec57ac3d-6bd6-426a-9941-ef36b16188c4"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 1957,
+        "hookMessages": []
+      }
+    },
+    {
+      "provider": "codex",
+      "firstExit": 0,
+      "timedOut": false,
+      "generatedQuestion": true,
+      "hooks": [
+        {
+          "provider": "codex",
+          "event": "SessionStart",
+          "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+          "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+          "turn": null,
+          "source": "startup",
+          "producedAt": 1795275131147,
+          "receivedAt": 1795275131150,
+          "accepted": true
+        },
+        {
+          "provider": "codex",
+          "event": "UserPromptSubmit",
+          "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+          "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+          "turn": "01a1febc-84e4-7943-ad51-c246d248f809",
+          "source": null,
+          "producedAt": 1795275131219,
+          "receivedAt": 1795275131223,
+          "accepted": true
+        },
+        {
+          "provider": "codex",
+          "event": "Stop",
+          "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+          "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+          "turn": "01a1febc-84e4-7943-ad51-c246d248f809",
+          "source": null,
+          "producedAt": 1795275133150,
+          "receivedAt": 1795275133154,
+          "accepted": true
+        }
+      ],
+      "queueAfterQuestion": [
+        {
+          "kind": "agent-ready",
+          "summary": "Ready for next input",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-JFcBPP5w",
+            "terminalId": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+            "provider": "codex",
+            "providerSessionId": "01a1febc-82e7-7901-91e3-ff50e41de1f6"
+          }
+        }
+      ],
+      "sessionTracked": true,
+      "followupExit": 0,
+      "followupTimedOut": false,
+      "followupReply": true,
+      "queueAfterFollowup": [
+        {
+          "id": "[\"agent-session\",\"ws-JFcBPP5w\",\"live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105\",\"codex\",\"01a1febc-82e7-7901-91e3-ff50e41de1f6\"]",
+          "target": {
+            "type": "terminal",
+            "workspaceId": "ws-JFcBPP5w",
+            "terminalId": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+            "provider": "codex",
+            "providerSessionId": "01a1febc-82e7-7901-91e3-ff50e41de1f6"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "kind": "agent-ready",
+          "reasons": [
+            {
+              "code": "turn-ended",
+              "label": "Ready for next input"
+            }
+          ]
+        }
+      ],
+      "diagnostics": {
+        "rateLimit": false,
+        "authError": false,
+        "routingError": false,
+        "hookTrust": false,
+        "outputBytes": 410,
+        "hookMessages": []
+      }
+    }
+  ],
+  "trace": [
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+      "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795275125270,
+      "receivedAt": 1795275125278,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+      "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+      "turn": "359b3469-b3be-471f-a331-affcaa1dcfb4",
+      "source": null,
+      "producedAt": 1795275125360,
+      "receivedAt": 1795275125367,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+      "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+      "turn": "359b3469-b3be-471f-a331-affcaa1dcfb4",
+      "source": null,
+      "producedAt": 1795275126516,
+      "receivedAt": 1795275126523,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "SessionStart",
+      "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+      "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795275127531,
+      "receivedAt": 1795275127539,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+      "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+      "turn": "2ed54b21-bb33-4550-a731-ba70488be195",
+      "source": null,
+      "producedAt": 1795275127608,
+      "receivedAt": 1795275127615,
+      "accepted": true
+    },
+    {
+      "provider": "claude",
+      "event": "Stop",
+      "terminal": "live-investigation-claude-c7213d74-53a5-4356-8c44-d63a608f7761",
+      "conversation": "ec57ac3d-6bd6-426a-9941-ef36b16188c4",
+      "turn": "2ed54b21-bb33-4550-a731-ba70488be195",
+      "source": null,
+      "producedAt": 1795275128689,
+      "receivedAt": 1795275128696,
+      "accepted": true
+    },
+    {
+      "provider": "codex",
+      "event": "SessionStart",
+      "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+      "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+      "turn": null,
+      "source": "startup",
+      "producedAt": 1795275131147,
+      "receivedAt": 1795275131150,
+      "accepted": true
+    },
+    {
+      "provider": "codex",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+      "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+      "turn": "01a1febc-84e4-7943-ad51-c246d248f809",
+      "source": null,
+      "producedAt": 1795275131219,
+      "receivedAt": 1795275131223,
+      "accepted": true
+    },
+    {
+      "provider": "codex",
+      "event": "Stop",
+      "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+      "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+      "turn": "01a1febc-84e4-7943-ad51-c246d248f809",
+      "source": null,
+      "producedAt": 1795275133150,
+      "receivedAt": 1795275133154,
+      "accepted": true
+    },
+    {
+      "provider": "codex",
+      "event": "SessionStart",
+      "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+      "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+      "turn": null,
+      "source": "resume",
+      "producedAt": 1795275136996,
+      "receivedAt": 1795275136999,
+      "accepted": true
+    },
+    {
+      "provider": "codex",
+      "event": "UserPromptSubmit",
+      "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+      "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+      "turn": "01a1febc-9c84-7af2-b4a7-b14540c584cb",
+      "source": null,
+      "producedAt": 1795275137069,
+      "receivedAt": 1795275137073,
+      "accepted": true
+    },
+    {
+      "provider": "codex",
+      "event": "Stop",
+      "terminal": "live-investigation-codex-4ee3424a-30dd-43be-bce9-6a8214ddf105",
+      "conversation": "01a1febc-82e7-7901-91e3-ff50e41de1f6",
+      "turn": "01a1febc-9c84-7af2-b4a7-b14540c584cb",
+      "source": null,
+      "producedAt": 1795275138873,
+      "receivedAt": 1795275138876,
+      "accepted": true
+    }
+  ]
+}
