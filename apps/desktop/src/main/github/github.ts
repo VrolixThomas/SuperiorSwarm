@@ -223,6 +223,7 @@ export function mapPRDetails(raw: RawGQLPR): import("../../shared/github-types")
 		reviewThreads: raw.reviewThreads.nodes.map((t) => ({
 			id: t.id,
 			isResolved: t.isResolved,
+			resolutionKnown: typeof t.isResolved === "boolean",
 			isOutdated: t.isOutdated,
 			originalLine: t.originalLine,
 			path: t.path,

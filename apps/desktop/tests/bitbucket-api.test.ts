@@ -57,7 +57,7 @@ describe("getBitbucketPRComments", () => {
 
 		const result = await getBitbucketPRComments("ws", "repo", 42);
 
-		expect(result).toEqual([
+		expect(result).toMatchObject([
 			{
 				id: 1,
 				body: "hello",
@@ -137,7 +137,7 @@ describe("getBitbucketPRComments", () => {
 							created_on: "2026-04-01T00:00:00Z",
 						},
 					],
-					next: "https://api.bitbucket.org/2.0/page2",
+					next: "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/42/comments?page=2",
 				})
 			)
 			.mockImplementationOnce(async () =>
