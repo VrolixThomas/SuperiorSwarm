@@ -31,6 +31,7 @@ export const activityQueueDeliveries = sqliteTable(
 	"activity_queue_deliveries",
 	{
 		requestId: text("request_id").primaryKey(),
+		continuationTurnId: text("continuation_turn_id"),
 		occurrenceKey: text("occurrence_key").notNull(),
 		fingerprint: text("fingerprint").notNull(),
 		target: text("target", { mode: "json" })

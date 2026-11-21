@@ -115,8 +115,15 @@ export class QueueDeliveryAdmission {
 		if (session.state === "needs-input" && !failed) return false;
 		// A newly observed permission/question must also prevent sending to an unrelated input prompt.
 		const sources = this.db
-			.prepare("SELECT candidate FROM activity_queue_sources WHERE candidate IS NOT NULL")
-			.all() as { candidate: string }[];
+			.prepare(
+				"SELECT source_id,revision,acknowledged_revision,candidate FROM activity_queue_sources WHERE candidate IS NOT NULL"
+			)
+			.all() as {
+			source_id: string;
+			revision: number;
+			acknowledged_revision: number | null;
+			candidate: string;
+		}[];
 		for (const source of sources) {
 			const candidate = JSON.parse(source.candidate);
 			const t = candidate.target;
@@ -124,8 +131,10 @@ export class QueueDeliveryAdmission {
 				t?.type === "terminal" &&
 				t.terminalId === terminalId &&
 				t.providerSessionId === target.providerSessionId &&
-				candidate.kind === "agent-input" &&
-				!candidate.reasons?.some((r: { code: string }) => r.code === "turn-failed")
+				((!members.some((member) => member.id === source.source_id) &&
+					source.acknowledged_revision !== source.revision) ||
+					(candidate.kind === "agent-input" &&
+						!candidate.reasons?.some((r: { code: string }) => r.code === "turn-failed")))
 			)
 				return false;
 		}

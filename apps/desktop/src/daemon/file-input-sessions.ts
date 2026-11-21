@@ -15,7 +15,8 @@ export interface FileInputTarget {
 }
 interface Session {
 	inputVersion: number;
-	submittedVersion: number | null;
+	submittedVersions: number[];
+	ambiguousInput?: boolean;
 	prompt?: { key: string; version: number; identity: TerminalProcessIdentity };
 	readyKey?: string;
 	inputDirty: boolean;
@@ -69,7 +70,7 @@ export class FileInputSessions {
 		this.sessions.set(id, {
 			inputDirty: true,
 			inputVersion: 0,
-			submittedVersion: null,
+			submittedVersions: [],
 			shell,
 			foreground,
 			write,
@@ -91,7 +92,10 @@ export class FileInputSessions {
 		if (active && data.length) {
 			active.inputDirty = true;
 			active.inputVersion += data.length;
-			if (String(data).endsWith("\r")) active.submittedVersion = active.inputVersion;
+			if (String(data).endsWith("\r")) {
+				if (active.submittedVersions.length >= 64) active.ambiguousInput = true;
+				else active.submittedVersions.push(active.inputVersion);
+			}
 		}
 		if (data.length && active)
 			for (const [client, lease] of active.clients) {
@@ -129,10 +133,8 @@ export class FileInputSessions {
 			session.readyKey = undefined;
 			if (session.prompt?.key === key) return;
 			const identity = session.inspect?.();
-			session.prompt =
-				identity && session.submittedVersion !== null
-					? { key, version: session.submittedVersion, identity }
-					: undefined;
+			const version = session.submittedVersions.shift();
+			session.prompt = identity && version !== undefined ? { key, version, identity } : undefined;
 			return;
 		}
 		const identity = session.inspect?.();
@@ -162,6 +164,7 @@ export class FileInputSessions {
 			foreground: identity?.name ?? "",
 			supported:
 				!session.inputDirty &&
+				!session.ambiguousInput &&
 				!!session.readyKey &&
 				JSON.parse(session.readyKey)[0] === provider &&
 				JSON.parse(session.readyKey)[1] === providerSessionId &&
@@ -210,7 +213,7 @@ export class FileInputSessions {
 			session.inputDirty = true;
 			session.readyKey = undefined;
 			session.inputVersion += payload.length;
-			session.submittedVersion = session.inputVersion;
+			session.submittedVersions.push(session.inputVersion);
 			session.write(payload);
 			return "admitted";
 		} catch {
@@ -267,7 +270,7 @@ export class FileInputSessions {
 			// File insertion invalidates a competing Queue lease and preserves draft safety.
 			session.inputDirty = true;
 			session.inputVersion += payload.length + (submit ? 1 : 0);
-			if (submit) session.submittedVersion = session.inputVersion;
+			if (submit) session.submittedVersions.push(session.inputVersion);
 			for (const [owner, lease] of session.clients)
 				if (lease?.conversation) session.clients.set(owner, null);
 			// Only the explicit send operation may forward the user's Enter.

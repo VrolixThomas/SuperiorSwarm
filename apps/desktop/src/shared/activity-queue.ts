@@ -184,5 +184,5 @@ export interface WorkspaceQueueReplyInput extends WorkspaceQueueRevisionInput {
 	content: string;
 }
 export type WorkspaceQueueReplyResult =
-	| { status: "admitted" | "uncertain"; requestId: string; detail: string }
+	| { status: "admitted" | "uncertain" | "received"; requestId: string; detail: string }
 	| { status: "conflict" | "not-found" | "unavailable" | "rejected"; reason: string };

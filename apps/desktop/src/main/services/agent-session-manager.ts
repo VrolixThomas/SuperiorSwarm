@@ -10,6 +10,7 @@ import {
 } from "../../shared/agent-session";
 import { observeValidatedAgentEvent, workspaceReporter } from "../activity-queue/agent-source";
 import { queueEntities } from "../activity-queue/entities";
+import { queueReplyContinuationTime } from "../activity-queue/reply-continuation";
 import { reporterAdmissions } from "../activity-queue/reporter-admission";
 import { recordAcceptedHookEvent } from "../agent-hooks/diagnostics";
 import { publishCurrentHookEndpoint } from "../agent-hooks/endpoint";
@@ -302,7 +303,19 @@ export class AgentSessionManager {
 		) {
 			continueWorkspaceAfterPrompt(
 				resolved.workspaceId,
-				event.providerTimestamp ?? event.timestamp,
+				queueReplyContinuationTime(
+					{
+						type: "terminal",
+						entity: queueEntities().get(resolved.workspaceId)?.entity,
+						workspaceId: resolved.workspaceId,
+						terminalId: resolved.terminalId,
+						provider: event.agent,
+						providerSessionId: event.providerSessionId,
+					},
+					event.turnId,
+					event.providerTimestamp ?? event.timestamp,
+					event.promptHash
+				),
 				{
 					type: "terminal",
 					workspaceId: resolved.workspaceId,

@@ -98,7 +98,11 @@ export function QueueConversationReply({
 		}
 		update({
 			requestId:
-				result.status === "admitted" || result.status === "uncertain" ? requestId : undefined,
+				result.status === "admitted" ||
+				result.status === "uncertain" ||
+				result.status === "received"
+					? requestId
+					: undefined,
 			result,
 		});
 		try {

@@ -38,14 +38,14 @@ function problem(item: WorkspaceQueueItem): string | null {
 	)
 		return "The conversation was replaced. Refresh the queue.";
 	if (session.state === "hibernated")
-		return "Safe atomic resume is unavailable for this terminal service. Open this exact conversation to resume it; no reply was sent.";
+		return "This chat is asleep. Open it to resume; no reply was sent.";
 	if (
 		!["idle", "error"].includes(session.state) &&
 		!(session.state === "needs-input" && item.situation === "agent-failed")
 	)
 		return "The conversation is busy or awaiting input. Open it before continuing.";
 	if (!getDaemonClient()?.supportsQueueReply)
-		return "This terminal service does not support safe Queue replies. Open the conversation.";
+		return "Reply here is unavailable for this terminal. Open the chat to continue.";
 	return null;
 }
 export async function workspaceReplyCapability(
@@ -70,26 +70,33 @@ export async function workspaceReplyCapability(
 	if (!lease?.supported)
 		return {
 			status: "unavailable",
-			reason: "The foreground provider could not be verified. Open the conversation.",
+			reason: "Open this chat and complete a turn before replying here.",
 		};
 	return {
 		status: "available",
 		mode: "reply",
-		detail: "Send to this exact chat. Terminal admission does not confirm model receipt or action.",
+		detail: "Send to this exact chat. The agent must still accept and act on your reply.",
 	};
 }
 function receipt(row: typeof activityQueueDeliveries.$inferSelect): WorkspaceQueueReplyResult {
+	if (row.continuationTurnId)
+		return {
+			status: "received",
+			requestId: row.requestId,
+			detail:
+				"This chat accepted a matching prompt. This does not confirm the requested work is complete.",
+		};
 	if (row.state === "rejected")
 		return {
 			status: "rejected",
-			reason: "No reply was admitted. Open the conversation to check its state.",
+			reason: "The reply was not sent. Check the chat, then try again.",
 		};
 	return {
 		status: row.state === "admitted" ? "admitted" : "uncertain",
 		requestId: row.requestId,
 		detail:
 			row.state === "admitted"
-				? "Submitted to this exact provider terminal. Model receipt and action are not confirmed."
+				? "Submitted to this chat. The agent has not confirmed receiving or acting on it."
 				: "Delivery is uncertain. Do not resend; open this conversation to check. This request will not be submitted again.",
 	};
 }
@@ -154,13 +161,14 @@ export async function workspaceReply(
 	if (!lease?.supported || !daemon)
 		return {
 			status: "unavailable",
-			reason: "The provider foreground is unverified. Open the conversation.",
+			reason: "Open this chat and complete a turn before replying here.",
 		};
 	item = await currentQueueAction(input);
 	if (!item || problem(item) || JSON.stringify(item.target) !== JSON.stringify(target))
 		return { status: "conflict", reason: "The conversation changed during admission." };
 	const row = {
 		requestId: input.requestId,
+		continuationTurnId: null,
 		occurrenceKey,
 		fingerprint,
 		target,

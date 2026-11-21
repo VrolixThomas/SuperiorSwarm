@@ -236,3 +236,241 @@ test("a newly appearing structured question at admission blocks ordinary free-fo
 	expect((await workspaceReply(input())).status).toBe("rejected");
 	expect(writes).toBe(0);
 });
+
+for (const provider of ["claude", "codex"] as const)
+	for (const kind of ["worktree", "folder", "orchestrator", "coordinator"] as const) {
+		test(`${provider} ${kind}: exact delivery preserves sibling, identity and later occurrence`, async () => {
+			const { seedCrossRepoOrchestrator } = await import("./helpers/db");
+			const db = getDb();
+			const projectId = await seedProject();
+			if (kind === "folder")
+				db.update(projects).set({ kind: "folder" }).where(eq(projects.id, projectId)).run();
+			const entityId =
+				kind === "coordinator"
+					? await seedCrossRepoOrchestrator({ agentKind: provider, projectIds: [projectId] })
+					: await seedWorkspace(projectId, {
+							name: `${kind} delivery`,
+							isOrchestrator: kind === "orchestrator",
+						});
+			const entityKind = kind === "coordinator" ? "coordinator" : "workspace";
+			const owner = `${provider}-${kind}-owner`;
+			const sibling = `${provider}-${kind}-sibling`;
+			for (const terminalId of [owner, sibling]) {
+				db.insert(terminalSessions)
+					.values({
+						id: terminalId,
+						workspaceId: entityId,
+						title: terminalId,
+						cwd: "/tmp",
+						sortOrder: 0,
+						updatedAt: new Date(),
+					})
+					.run();
+				db.insert(agentSessions)
+					.values({
+						terminalId,
+						workspaceId: entityId,
+						entityKind,
+						provider,
+						providerSessionId: `${terminalId}-chat`,
+						state: "idle",
+						managed: kind !== "folder",
+						createdAt: new Date(),
+						updatedAt: new Date(),
+					})
+					.run();
+				observeValidatedAgentEvent({
+					terminalId,
+					sessionId: terminalId,
+					workspaceId: entityId,
+					providerSessionId: `${terminalId}-chat`,
+					agent: provider,
+					alert: "task-complete",
+					rawEvent: "Stop",
+					timestamp: Date.now(),
+					turnId: "initial",
+					cwd: "/tmp",
+				});
+			}
+			daemon.listSessionsStrict = async () =>
+				db
+					.select()
+					.from(terminalSessions)
+					.all()
+					.map((t, index) => ({ id: t.id, cwd: t.cwd, pid: index + 1 }));
+			const queue = (await listWorkspaceQueue()).items;
+			const exact = queue.find(
+				(i) => i.target.type === "terminal" && i.target.terminalId === owner
+			)!;
+			const siblingItem = queue.find(
+				(i) => i.target.type === "terminal" && i.target.terminalId === sibling
+			)!;
+			expect(exact.context.entity).toEqual({ kind: entityKind, id: entityId });
+			expect(exact.context.provider).toBe(provider);
+			const calls: string[] = [];
+			const submit = daemon.submitQueueReply.bind(daemon);
+			daemon.submitQueueReply = async (...args) => {
+				calls.push(args[0]);
+				return submit(...args);
+			};
+			expect(
+				(
+					await workspaceReply({
+						...exact,
+						requestId: `matrix-${provider}-${kind}`,
+						content: "Synthetic exact followup",
+					})
+				).status
+			).toBe("admitted");
+			expect(calls).toEqual([owner]);
+			expect(
+				(await listWorkspaceQueue()).items.find((i) => i.id === siblingItem.id)?.revision
+			).toBe(siblingItem.revision);
+			observeValidatedAgentEvent({
+				terminalId: owner,
+				sessionId: owner,
+				workspaceId: entityId,
+				providerSessionId: `${owner}-chat`,
+				agent: provider,
+				alert: "active",
+				rawEvent: "UserPromptSubmit",
+				timestamp: Date.now(),
+				turnId: "fresh",
+				cwd: "/tmp",
+			});
+			observeValidatedAgentEvent({
+				terminalId: owner,
+				sessionId: owner,
+				workspaceId: entityId,
+				providerSessionId: `${owner}-chat`,
+				agent: provider,
+				alert: "task-complete",
+				rawEvent: "Stop",
+				timestamp: Date.now(),
+				turnId: "fresh",
+				cwd: "/tmp",
+			});
+			const later = (await listWorkspaceQueue()).items;
+			expect(later.find((i) => i.id === exact.id)?.revision).toBeGreaterThan(exact.revision);
+			expect(later.find((i) => i.id === siblingItem.id)?.revision).toBe(siblingItem.revision);
+			expect(later.find((i) => i.id === exact.id)?.target).toEqual(exact.target);
+		});
+	}
+test("a newly grouped same-conversation receipt cannot be omitted at daemon admission", async () => {
+	beforeAdmission = () => {
+		const source = getDb()
+			.select()
+			.from(activityQueueSources)
+			.where(eq(activityQueueSources.sourceId, item.id))
+			.get()!;
+		getDb()
+			.delete(activityQueueSources)
+			.where(eq(activityQueueSources.sourceId, `agent-workspace:${workspaceId}`))
+			.run();
+		getDb()
+			.insert(activityQueueSources)
+			.values({
+				...source,
+				sourceId: `agent-workspace:${workspaceId}`,
+				sourceType: "agent-workspace",
+				candidate: {
+					...source.candidate!,
+					kind: "agent-ready",
+					reasons: [{ code: "workspace-done", label: "Task done" }],
+				},
+			})
+			.run();
+	};
+	expect((await workspaceReply(input())).status).toBe("rejected");
+	expect(writes).toBe(0);
+});
+for (const delivery of ["admitted", "uncertain"] as const)
+	test(`${delivery}: report after handoff survives delayed provider prompt without upgrading delivery`, async () => {
+		const { setStatus } = await import("../src/main/services/workspace-service");
+		const { AgentSessionManager } = await import("../src/main/services/agent-session-manager");
+		if (delivery === "uncertain")
+			daemon.submitQueueReply = async () => {
+				throw Error("lost response");
+			};
+		expect((await workspaceReply(input())).status).toBe(delivery);
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		const projectId = getDb()
+			.select()
+			.from(workspaces)
+			.where(eq(workspaces.id, workspaceId))
+			.get()!.projectId;
+		await setStatus(
+			{ kind: "workspace", workspaceId, projectId, terminalId: "owner" },
+			{ phase: "blocked", needs: "A genuinely later report" }
+		);
+		const manager = new AgentSessionManager({
+			daemonClient: daemon as unknown as DaemonClient,
+			processController: {
+				inspectForeground: async () => ({ status: "agent" }),
+				terminateForeground: async () => ({ ok: false }),
+			},
+			getSettings: () => ({ enabled: false, idleMinutes: 5, keepOrchestratorsAwake: true }),
+		});
+		try {
+			const event = {
+				terminalId: "owner",
+				sessionId: "owner",
+				workspaceId,
+				providerSessionId: "owner-chat",
+				agent: "codex",
+				alert: "active" as const,
+				rawEvent: "UserPromptSubmit",
+				timestamp: Date.now(),
+				turnId: "delayed-submission",
+				cwd: "/tmp",
+			};
+			expect(manager.handleAgentEvent(event)).not.toBeNull();
+			expect(
+				getDb().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()?.needs
+			).toBe("A genuinely later report");
+			const stored = getDb()
+				.select()
+				.from(activityQueueDeliveries)
+				.where(eq(activityQueueDeliveries.requestId, "one"))
+				.get();
+			expect(stored?.state).toBe(delivery);
+			expect(stored?.continuationTurnId).toBeNull();
+			expect(
+				(await listWorkspaceQueue()).items.some(
+					(i) => i.target.type === "terminal" && i.target.terminalId === "sibling"
+				)
+			).toBe(true);
+		} finally {
+			manager.dispose();
+		}
+	});
+test("only the exact prompt digest and conversation can establish provider receipt", async () => {
+	const { queueReplyContinuationTime } = await import(
+		"../src/main/activity-queue/reply-continuation"
+	);
+	const { replyContentHash } = await import("../src/daemon/queue-delivery");
+	expect((await workspaceReply(input())).status).toBe("admitted");
+	if (item.target.type !== "terminal") throw Error("expected terminal");
+	queueReplyContinuationTime(
+		{ ...item.target, terminalId: "sibling" },
+		"wrong-owner",
+		Date.now(),
+		replyContentHash(input().content)
+	);
+	expect((await workspaceReply(input())).status).toBe("admitted");
+	queueReplyContinuationTime(
+		item.target,
+		"unrelated",
+		Date.now(),
+		replyContentHash("another prompt")
+	);
+	expect((await workspaceReply(input())).status).toBe("admitted");
+	queueReplyContinuationTime(
+		item.target,
+		"correlated",
+		Date.now(),
+		replyContentHash(input().content)
+	);
+	expect((await workspaceReply(input())).status).toBe("received");
+	expect(writes).toBe(1);
+});

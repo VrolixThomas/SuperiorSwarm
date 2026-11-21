@@ -138,3 +138,40 @@ test("read-only capability polling cannot replace an in-flight admission lease",
 	);
 	expect(f.writes).toHaveLength(1);
 });
+test("two submissions before the first hook cannot attribute the second Enter to the first turn", () => {
+	const f = fixture();
+	f.sessions.input("t", "first\r");
+	f.sessions.input("t", "queued second\r");
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "first",
+		phase: "prompt",
+	});
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "first",
+		phase: "prompt",
+	});
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "first",
+		phase: "idle",
+	});
+	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(false);
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "second",
+		phase: "prompt",
+	});
+	f.sessions.conversationState("t", {
+		provider: "claude",
+		providerSessionId: "chat",
+		turnId: "second",
+		phase: "idle",
+	});
+	expect(f.sessions.conversationTarget("t", "c", "claude", "chat")?.supported).toBe(true);
+});
