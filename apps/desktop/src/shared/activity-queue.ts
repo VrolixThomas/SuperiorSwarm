@@ -7,10 +7,18 @@ export const ACTIVITY_QUEUE_KINDS = [
 ] as const;
 export type ActivityQueueKind = (typeof ACTIVITY_QUEUE_KINDS)[number];
 
+/** IDs remain existing workspace/coordinator IDs; never synthesize workspace rows. */
+export type QueueEntity =
+	| { kind: "workspace"; id: string }
+	| { kind: "coordinator"; id: string };
+
 export type ActivityQueueTarget =
 	| { type: "workspace"; workspaceId: string }
+	| { type: "coordinator"; coordinatorId: string }
 	| {
 			type: "terminal";
+			/** Legacy workspaceId is the entity ID for both owner kinds. */
+			entity?: QueueEntity;
 			workspaceId: string;
 			terminalId: string;
 			provider: string;
@@ -98,7 +106,20 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 	openLabel: string;
 	detailLabel: string;
 	missingContext?: string;
+	/** Explicit correlated inbox reply, never an arbitrary terminal write. */
+	question?: {
+		messageId: string;
+		replyCapability: "mcp-inbox" | "unavailable";
+		unavailableReason?: string;
+		answer?: { messageId: string; delivery: "saved" | "retrieved" };
+	};
 	context: {
+		entity?: QueueEntity;
+		projectKind?: "repo" | "folder";
+		projectPath?: string;
+		role?: "workspace" | "orchestrator" | "coordinator";
+		providerSessionId?: string | null;
+		identityCapability?: "exact-conversation" | "missing-owner";
 		projectId?: string;
 		projectName: string;
 		projectColor?: string | null;
@@ -138,3 +159,11 @@ export interface WorkspaceQueueLaterInput extends WorkspaceQueueRevisionInput {
 }
 export type WorkspaceQueueLaterResult = { status: "snoozed" | "conflict" | "not-found" };
 export type WorkspaceQueueRestoreResult = { status: "restored" | "conflict" | "not-found" };
+
+export interface WorkspaceQueueAnswerInput extends WorkspaceQueueRevisionInput {
+	questionId: string;
+	content: string;
+}
+export type WorkspaceQueueAnswerResult =
+	| { status: "saved"; messageId: string; delivery: "saved"; detail: string }
+	| { status: "conflict" | "not-found" | "unavailable"; reason?: string };
