@@ -22,6 +22,7 @@ export function transitionAgentEvent(
 	snapshot: AgentEventSnapshot;
 	attention: AgentAttention | null;
 	fingerprint: string;
+	preserveRevision: boolean;
 } | null {
 	const snapshot = nextAgentEventSnapshot(previous, event);
 	if (!snapshot) return null;
@@ -71,9 +72,23 @@ export function transitionAgentEvent(
 					ordering,
 					continuation,
 				};
+	// Delivery uncertainty is diagnostic metadata, not new user work. In particular,
+	// it must not invalidate a dismissal receipt, even for older fingerprint formats.
+	const semanticFingerprint = (value: AgentEventSnapshot) =>
+		JSON.stringify([
+			value.alert,
+			value.turnId,
+			value.rawEvent === "StopFailure",
+			value.evidence ?? [],
+			value.permission ?? null,
+			value.continuation ?? "none",
+		]);
+	const fingerprint = semanticFingerprint(snapshot);
+	const prior = previous as AgentEventSnapshot | undefined;
 	return {
 		snapshot,
 		attention,
-		fingerprint: JSON.stringify([snapshot.alert, snapshot.turnId, attention]),
+		fingerprint,
+		preserveRevision: Boolean(prior?.version === 2 && semanticFingerprint(prior) === fingerprint),
 	};
 }

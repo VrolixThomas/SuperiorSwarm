@@ -173,3 +173,38 @@ test("same-turn new text changes the exact revision fingerprint", () => {
 	expect(a?.fingerprint).not.toBe(b?.fingerprint);
 	expect(b?.attention?.summary).toBe("Second");
 });
+
+test("uncertain replay cannot invalidate an exact dismissal receipt", () => {
+	const stop = transition(null, event("Stop"));
+	const replay = transition(
+		stop?.snapshot,
+		event("Stop", { turnId: undefined, producerTimestamp: 999999 })
+	);
+	expect(replay?.fingerprint).toBe(stop?.fingerprint);
+	expect(replay?.preserveRevision).toBe(true);
+	expect(replay?.snapshot.ordering).toBe("uncertain");
+});
+
+test("old v2 snapshot format retains its receipt unless new evidence arrives", () => {
+	const previous = {
+		version: 2,
+		alert: "task-complete",
+		rawEvent: "Stop",
+		turnId: "turn-1",
+		retiredTurnIds: [],
+		producerTimestamp: 1,
+	};
+	expect(transition(previous, event("Stop"))?.preserveRevision).toBe(true);
+	expect(
+		transition(
+			previous,
+			event("Stop", {
+				evidence: admitAgentEvidence(
+					{ last_assistant_message: "New actual reply" },
+					"claude",
+					"Stop"
+				),
+			})
+		)?.preserveRevision
+	).toBe(false);
+});
