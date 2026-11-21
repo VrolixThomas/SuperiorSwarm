@@ -159,10 +159,7 @@ for (const provider of ["claude", "codex"] as const)
 			expect(stale.isError).toBe(true);
 			expect(JSON.stringify(stale)).toContain("restart MCP");
 			trace.push({ phase: "old pinned process after replacement", rejected: true });
-			const out = resolve(
-				import.meta.dir,
-				"../../../.hermes/investigations/queue-first-admission-owned-2026-11-21"
-			);
+			const out = process.env["SS_QUEUE_BOOTSTRAP_EVIDENCE_DIR"] ?? join(root, "evidence");
 			mkdirSync(out, { recursive: true });
 			writeFileSync(
 				join(out, `bootstrap-${provider}.json`),
