@@ -129,5 +129,5 @@ test.skipIf(process.platform !== "darwin")(
 			else rmSync(root, { recursive: true, force: true });
 		}
 	},
-	90000
+	300000 // Includes production Vite bundling; the native child retains its own bounded timeout.
 );

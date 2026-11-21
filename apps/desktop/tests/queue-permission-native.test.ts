@@ -19,7 +19,7 @@ import { build as viteBuild } from "vite";
 
 // Run after `bun run build`: production preload and CSS are used unchanged.
 test.skipIf(process.platform !== "darwin")(
-	"permission UI sends exact allow/deny through native SQLite, IPC and provider hook stand-ins",
+	"production connected queue actions send exact allow/deny through public router, native SQLite, IPC and provider hook stand-ins",
 	async () => {
 		const desktop = resolve(import.meta.dir, "..");
 		const fixture = join(desktop, "tests/fixtures/queue-permissions");
@@ -119,6 +119,9 @@ test.skipIf(process.platform !== "darwin")(
 			expect(code).toBe(0);
 			expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8"))).toEqual({
 				native: true,
+				productionRouter: true,
+				connectedActions: true,
+				settledCapabilityRefresh: true,
 				realProviders: false,
 				uiToHookReceipt: true,
 				siblingIsolation: true,

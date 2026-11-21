@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { BrowserWindow, app } from "electron";
-import { z } from "zod";
 import { PtyManager } from "../../../src/daemon/pty-manager";
 import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
 import { SocketServer } from "../../../src/daemon/socket-server";
@@ -19,7 +18,6 @@ import {
 } from "../../../src/main/agent-hooks/endpoint";
 import { createAlertListener } from "../../../src/main/agent-hooks/listener";
 import {
-	decideQueuePermission,
 	getQueuePermissionCapability,
 	queuePermissions,
 	resolvePermissionEvent,
@@ -32,10 +30,15 @@ import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
 import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
 import { rendererTrust } from "../../../src/main/terminal/renderer-trust";
-import { publicProcedure, router } from "../../../src/main/trpc";
+import { router } from "../../../src/main/trpc";
 import { setupTRPCIPC } from "../../../src/main/trpc/ipc-link";
 import { agentRegistry } from "../../../src/shared/agent-events";
-const root = process.env["SS_QUEUE_FIXTURE_ROOT"]!;
+function requireEnvironment(name: string): string {
+	const value = process.env[name];
+	if (!value) throw Error(`Missing isolated fixture environment: ${name}`);
+	return value;
+}
+const root = requireEnvironment("SS_QUEUE_FIXTURE_ROOT");
 app.setPath("userData", join(root, "profile"));
 app.setPath("sessionData", join(root, "profile"));
 app.setAppLogsPath(join(root, "profile", "logs"));
@@ -63,25 +66,6 @@ listener.onEvent((e) => {
 	console.log("PERMISSION_EVENT", e.agent, e.rawEvent, !!accepted);
 });
 let win: BrowserWindow | undefined;
-export const fixtureRouter = router({
-	permissionFixture: router({
-		list: publicProcedure.query(async () => {
-			const result = await listWorkspaceQueue();
-			return result.items.map((item) => ({ item, capability: getQueuePermissionCapability(item) }));
-		}),
-		decide: publicProcedure
-			.input(
-				z.object({
-					id: z.string(),
-					revision: z.number(),
-					members: z.array(z.object({ id: z.string(), revision: z.number() })).optional(),
-					requestId: z.string(),
-					action: z.enum(["allow-once", "deny", "open"]),
-				})
-			)
-			.mutation(({ input }) => decideQueuePermission(input)),
-	}),
-});
 const until = async (fn: () => boolean | Promise<boolean>) => {
 	for (let i = 0; i < 240; i++) {
 		if (await fn()) return;
@@ -105,10 +89,15 @@ async function run() {
 	server.listen();
 	await daemon.connect();
 	setDaemonClient(daemon);
-	migrate(getDb(), { migrationsFolder: process.env["SS_QUEUE_MIGRATIONS"]! });
+	if (!getDb().$client.name.startsWith(`${root}/`)) throw Error("Fixture DB escaped isolation");
+	migrate(getDb(), { migrationsFolder: requireEnvironment("SS_QUEUE_MIGRATIONS") });
+	const { activityQueueRouter } = await import("../../../src/main/trpc/routers/activity-queue");
+	const fixtureRouter = router({ activityQueue: activityQueueRouter });
 	agentRegistry.set("claude", claudeConfig);
 	agentRegistry.set("codex", codexConfig);
 	await listener.start();
+	const port = listener.getPort();
+	if (!port) throw Error("Missing fixture hook endpoint");
 	setPermissionResponseEnabled(true);
 	writeFileSync(join(root, "bridge.cjs"), HOOK_BRIDGE_SOURCE);
 	writeFileSync(
@@ -157,7 +146,7 @@ async function run() {
 			skipPermissions: false,
 		});
 		if (provider !== "unknown") setPermissionTerminalVisibility(provider, provider === "visible");
-		publishHookEndpoint(provider, listener.getPort()!, token, join(root, "endpoints"));
+		publishHookEndpoint(provider, port, token, join(root, "endpoints"));
 		await daemon.create(
 			provider,
 			root,
@@ -169,7 +158,7 @@ async function run() {
 			{
 				SHELL: join(root, "provider.sh"),
 				HOME: root,
-				SS_NODE_EXECUTABLE: process.env["SS_NODE_EXECUTABLE"]!,
+				SS_NODE_EXECUTABLE: requireEnvironment("SS_NODE_EXECUTABLE"),
 				FIXTURE_PROVIDER: join(root, "provider.cjs"),
 				FIXTURE_BRIDGE: join(root, "bridge.cjs"),
 				FIXTURE_RESULT: join(root, `${provider}-result.txt`),
@@ -178,7 +167,7 @@ async function run() {
 				AGENT_NOTIFY_WORKSPACE_ID: "w",
 				AGENT_NOTIFY_AGENT: provider === "claude" ? "claude" : "codex",
 				AGENT_NOTIFY_TOKEN: token,
-				AGENT_NOTIFY_PORT: String(listener.getPort()),
+				AGENT_NOTIFY_PORT: String(port),
 			}
 		);
 		daemon.write(provider, 'exec "$SS_NODE_EXECUTABLE" "$FIXTURE_PROVIDER"\r');
@@ -209,7 +198,8 @@ async function run() {
 	app.focus({ steal: true });
 	win.focus();
 	win.webContents.focus();
-	const js = (code: string) => win!.webContents.executeJavaScript(code);
+	const contents = win.webContents;
+	const js = (code: string) => contents.executeJavaScript(code);
 	await until(() =>
 		js(`document.querySelectorAll('[aria-label="Permission decision"]').length===5`)
 	);
@@ -228,6 +218,20 @@ async function run() {
 	assert.equal(readFileSync(join(root, "handoff-result.txt"), "utf8"), "native-fallback");
 	const afterHandoff = (await listWorkspaceQueue()).items.find((i) => i.id === beforeHandoff.id);
 	assert.equal(afterHandoff?.revision, beforeHandoff.revision);
+	await until(() =>
+		js(
+			`!Array.from(document.querySelector('[data-terminal="handoff"]').querySelectorAll('button')).some(b=>b.textContent==='Allow once')`
+		)
+	);
+	await js(
+		`Array.from(document.querySelector('[data-terminal="handoff"]').querySelectorAll('button')).find(b=>b.textContent==='Open conversation').click()`
+	);
+	await until(() => js(`document.body.dataset.openedTerminal==='handoff'`));
+	await until(() =>
+		js(
+			`Array.from(document.querySelector('[data-terminal="claude"]').querySelectorAll('button')).some(b=>b.textContent==='Allow once'&&!b.disabled)`
+		)
+	);
 	assert.equal(existsSync(join(root, "claude-result.txt")), false);
 	assert.equal(existsSync(join(root, "codex-result.txt")), false);
 	await js(
@@ -250,7 +254,9 @@ async function run() {
 		"deny"
 	);
 	await until(() =>
-		js(`document.body.innerText.includes('Provider acceptance and action outcome remain unknown')`)
+		js(
+			`Array.from(document.querySelectorAll('[data-terminal="claude"], [data-terminal="codex"]')).every(el=>el.innerText.includes('The bridge wrote the decision'))`
+		)
 	);
 	const rows = (await listWorkspaceQueue()).items;
 	assert.equal(rows.length, 5);
@@ -263,6 +269,9 @@ async function run() {
 		join(root, "result.json"),
 		JSON.stringify({
 			native: true,
+			productionRouter: true,
+			connectedActions: true,
+			settledCapabilityRefresh: true,
 			realProviders: false,
 			uiToHookReceipt: true,
 			siblingIsolation: true,
