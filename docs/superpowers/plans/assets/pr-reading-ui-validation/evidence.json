@@ -1,0 +1,1175 @@
+{
+  "baseline": "0e79fa3dde6a48700846a4768e45389067fe9c20",
+  "nativeArtifactDirectory": "/tmp/ss-review-ui-NLjKPw",
+  "checks": [
+    {
+      "name": "live adapter loads overview",
+      "pass": true
+    },
+    {
+      "name": "mapping update preserves selected file",
+      "pass": true
+    },
+    {
+      "name": "immutable head content in real Monaco",
+      "pass": true
+    },
+    {
+      "name": "native diff key t",
+      "pass": true
+    },
+    {
+      "name": "native diff key f",
+      "pass": true
+    },
+    {
+      "name": "native diff key v",
+      "pass": true
+    },
+    {
+      "name": "native diff key n",
+      "pass": true
+    },
+    {
+      "name": "native diff key p",
+      "pass": true
+    },
+    {
+      "name": "native diff key /",
+      "pass": true
+    },
+    {
+      "name": "native diff j changes selected item",
+      "pass": true
+    },
+    {
+      "name": "native diff k returns to prior file",
+      "pass": true
+    },
+    {
+      "name": "native diff Cmd period collapses rail",
+      "pass": true
+    },
+    {
+      "name": "right selection exposes actions",
+      "pass": true
+    },
+    {
+      "name": "right selection Ask anchor",
+      "pass": true
+    },
+    {
+      "name": "typed Ask draft survives refetch",
+      "pass": true
+    },
+    {
+      "name": "pending Ask disables duplicate send",
+      "pass": true
+    },
+    {
+      "name": "Ask cancellation shown",
+      "pass": true
+    },
+    {
+      "name": "failed Ask exposes retry",
+      "pass": true
+    },
+    {
+      "name": "retry answer appears",
+      "pass": true
+    },
+    {
+      "name": "answer reference opens target model",
+      "pass": true
+    },
+    {
+      "name": "Add as comment opens original anchor file",
+      "pass": true
+    },
+    {
+      "name": "Add as comment prefills actual inline composer",
+      "pass": true
+    },
+    {
+      "name": "Add as comment saves correct side/end line",
+      "pass": true
+    },
+    {
+      "name": "left selection exposes Ask and Comment actions",
+      "pass": false
+    },
+    {
+      "name": "left selected-line Ask retains side and range",
+      "pass": false
+    },
+    {
+      "name": "left c places composer in original editor",
+      "pass": false
+    },
+    {
+      "name": "edit persists local body",
+      "pass": true
+    },
+    {
+      "name": "dismiss stays local",
+      "pass": true
+    },
+    {
+      "name": "Accept updates local draft status",
+      "pass": true
+    },
+    {
+      "name": "explicit submit payload reaches inert backend",
+      "pass": true
+    },
+    {
+      "name": "large manifest virtualizes rail",
+      "pass": true
+    },
+    {
+      "name": "last >100 file renders exact content",
+      "pass": true
+    },
+    {
+      "name": "model count bounded after navigation",
+      "pass": true
+    },
+    {
+      "name": "unchanged test never marked viewed",
+      "pass": true
+    },
+    {
+      "name": "context snapshot rendered",
+      "pass": true
+    },
+    {
+      "name": "saved context never marked viewed",
+      "pass": true
+    },
+    {
+      "name": "native context t opens threads",
+      "pass": true
+    },
+    {
+      "name": "returning from context retains available diff",
+      "pass": false
+    },
+    {
+      "name": "Mine uses stable identity",
+      "pass": true
+    },
+    {
+      "name": "Mine updates after account switch",
+      "pass": true
+    },
+    {
+      "name": "unknown resolution visibly identified",
+      "pass": true
+    },
+    {
+      "name": "outdated thread preserved",
+      "pass": true
+    },
+    {
+      "name": "overlay preserves diff width",
+      "pass": true
+    },
+    {
+      "name": "rail keyboard resize",
+      "pass": true
+    },
+    {
+      "name": "native pointer rail resize clamps to 360",
+      "pass": true
+    },
+    {
+      "name": "shell Cmd period collapses rail",
+      "pass": true
+    },
+    {
+      "name": "binary.dat handled without stale alpha text",
+      "pass": true
+    },
+    {
+      "name": "empty.txt handled without stale alpha text",
+      "pass": true
+    },
+    {
+      "name": "transport error remains exposed after poll",
+      "pass": false
+    },
+    {
+      "name": "transport error retains question or retry",
+      "pass": false
+    },
+    {
+      "name": "head refresh clears selected Ask anchor",
+      "pass": true
+    },
+    {
+      "name": "unknown commit renders unavailable instead of stale content",
+      "pass": true
+    },
+    {
+      "name": "nine categories captured in both themes",
+      "pass": true
+    },
+    {
+      "name": "1512x945 no body horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "shell Cmd Down opens next PR through workspace mutation",
+      "pass": true
+    },
+    {
+      "name": "shell Cmd Up returns to previous PR",
+      "pass": true
+    },
+    {
+      "name": "no unrequested provider posting or terminal writes",
+      "pass": true
+    }
+  ],
+  "failures": [
+    {
+      "name": "left selection exposes Ask and Comment actions",
+      "pass": false
+    },
+    {
+      "name": "left selected-line Ask retains side and range",
+      "pass": false,
+      "detail": {
+        "path": "src/alpha.ts",
+        "side": "RIGHT",
+        "startLine": 1,
+        "endLine": 1
+      }
+    },
+    {
+      "name": "left c places composer in original editor",
+      "pass": false,
+      "detail": {
+        "left": 0,
+        "right": 1
+      }
+    },
+    {
+      "name": "returning from context retains available diff",
+      "pass": false,
+      "detail": [
+        {
+          "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+          "key": [
+            [
+              "reviewExplanation",
+              "getSnapshotFile"
+            ],
+            {
+              "input": {
+                "workspaceId": "registered",
+                "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+                "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+                "side": "head"
+              },
+              "type": "query"
+            }
+          ]
+        },
+        {
+          "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+          "key": [
+            [
+              "reviewExplanation",
+              "getSnapshotFile"
+            ],
+            {
+              "input": {
+                "workspaceId": "registered",
+                "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+                "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+                "side": "head"
+              },
+              "type": "query"
+            }
+          ]
+        },
+        {
+          "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+          "key": [
+            [
+              "reviewExplanation",
+              "getSnapshotFile"
+            ],
+            {
+              "input": {
+                "workspaceId": "registered",
+                "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+                "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+                "side": "head"
+              },
+              "type": "query"
+            }
+          ]
+        },
+        {
+          "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+          "key": [
+            [
+              "reviewExplanation",
+              "getSnapshotFile"
+            ],
+            {
+              "input": {
+                "workspaceId": "registered",
+                "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+                "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+                "side": "head"
+              },
+              "type": "query"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "transport error remains exposed after poll",
+      "pass": false,
+      "detail": ".txt\nfile-000.ts\nfile-001.ts\nfile-002.ts\nfile-003.ts\nfile-004.ts\nfile-005.ts\nfile-006.ts\nfile-007.ts\nfile-008.ts\nfile-009.ts\nfile-010.ts\nfile-011.ts\nfile-012.ts\nfile-013.ts\nStep 1 of 2\nsrc/alpha.ts\n+2 \u22122\nViewed\nv\n\nValidate the request before handling it.\n\nTested by\nunchanged.test.ts\n1 comment on an earlier version \u00b7 Show\n1\n2\n3\n4\n5\nsame-name\nsrc/alpha.ts:2\nOpen\n\nLeft-side reviewer thread\n\nAsk agent\nReply\nResolve\nView in comments\n//\u00a0base\u00a0alpha\nconst\u00a0valid\u00a0=\u00a0false;\nexport\u00a0const\u00a0value\u00a0=\u00a00;\n//\u00a0end\n1\n2\n3\n4\n5\nAI\nsrc/alpha.ts:3\nAccepted\n1m ago\n\nEdited native finding\n\nAsk agent\nEdit\nDecline\nView in comments\nsame-name\nsrc/alpha.ts:3\nOpen\n\nRight-side reviewer thread\n\nAsk agent\nReply\nResolve\nView in comments\nother\nsrc/alpha.ts:4\nResolution unknown\n\nUnknown resolution thread\n\nAsk agent\nReply\nView in comments\n//\u00a0head\u00a0alpha\nconst\u00a0valid\u00a0=\u00a0true;\nexport\u00a0const\u00a0value\u00a0=\u00a01;\n//\u00a0end\nj k next / previous file\nv viewed\nSelect lines to ask or comment\nn / p threads\nUnified\nSplit\nThreads \u00b7 3\nAsk agent\n\u00d7\nalpha.ts \u00b7 1\u20131\n\nUnsaved follow-up survives refetch\n\nWhy this validation?\n\nWhy this validation?\n\nThe check rejects invalid input.\n\nbeta.ts:3\nAdd as comment\nCopy\nQuestion cancelled\nControlled agent failure\nRetry\n\u2191"
+    },
+    {
+      "name": "transport error retains question or retry",
+      "pass": false
+    }
+  ],
+  "metrics": [
+    {
+      "category": "01-start-no-path",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "01-start-no-path",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "02-mapping-live",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "02-mapping-live",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "03-reading-step",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "03-reading-step",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "04-ask-and-comment",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "04-ask-and-comment",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "05-agent-findings",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "05-agent-findings",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "06-all-prs-next-pr",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "06-all-prs-next-pr",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "07-files-view",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "07-files-view",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "08-context-files",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "08-context-files",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "09-comments-from-others",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "09-comments-from-others",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 44,
+        "width": 1224,
+        "height": 901,
+        "top": 44,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 44,
+        "width": 288,
+        "height": 901,
+        "top": 44,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    }
+  ],
+  "queryErrors": [
+    {
+      "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+      "key": [
+        [
+          "reviewExplanation",
+          "getSnapshotFile"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+            "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+            "side": "head"
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+      "key": [
+        [
+          "reviewExplanation",
+          "getSnapshotFile"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+            "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+            "side": "head"
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+      "key": [
+        [
+          "reviewExplanation",
+          "getSnapshotFile"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+            "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+            "side": "head"
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+      "key": [
+        [
+          "reviewExplanation",
+          "getSnapshotFile"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+            "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+            "side": "head"
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+      "key": [
+        [
+          "reviewExplanation",
+          "getSnapshotFile"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+            "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+            "side": "head"
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review snapshot reader is busy. Retry shortly",
+      "key": [
+        [
+          "reviewExplanation",
+          "getSnapshotFile"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "snapshotId": "6fb6af9a232b8a7613e304ef208c1f2af98c92b8c5582d0b77add8656c74b43a",
+            "fileId": "a97c1d05090f31eb0a034753ed35ac71434aff2044f69111ef01306cd2ad74f1",
+            "side": "head"
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review commit objects are unavailable locally. Acquire the revision before retrying",
+      "key": [
+        [
+          "reviewExplanation",
+          "resolveSnapshot"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "targetTipOid": "93c8fd2b1df858c642e1a51cfa349c32446c3537",
+            "headOid": "ffffffffffffffffffffffffffffffffffffffff",
+            "review": {
+              "provider": "github",
+              "owner": "fixture",
+              "repo": "repo",
+              "number": 1
+            }
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review commit objects are unavailable locally. Acquire the revision before retrying",
+      "key": [
+        [
+          "reviewExplanation",
+          "resolveSnapshot"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "targetTipOid": "93c8fd2b1df858c642e1a51cfa349c32446c3537",
+            "headOid": "ffffffffffffffffffffffffffffffffffffffff",
+            "review": {
+              "provider": "github",
+              "owner": "fixture",
+              "repo": "repo",
+              "number": 1
+            }
+          },
+          "type": "query"
+        }
+      ]
+    }
+  ],
+  "mutations": [
+    {
+      "path": "reviewPath.start",
+      "input": {
+        "identity": {
+          "workspaceId": "registered",
+          "provider": "github",
+          "owner": "fixture",
+          "repo": "repo",
+          "prNumber": 1,
+          "headSha": "8adc3e41c5707eed2122a0a0c02b06ec2f3ed98d"
+        },
+        "agent": {
+          "id": "codex",
+          "label": "Codex"
+        },
+        "alsoReview": true
+      }
+    },
+    {
+      "path": "reviewPath.ask",
+      "input": {
+        "identity": {
+          "workspaceId": "registered",
+          "provider": "github",
+          "owner": "fixture",
+          "repo": "repo",
+          "prNumber": 1,
+          "headSha": "8adc3e41c5707eed2122a0a0c02b06ec2f3ed98d"
+        },
+        "id": "067f4aae-206c-4940-9ba6-b91d684c2986",
+        "text": "Unsaved follow-up survives refetch",
+        "anchor": {
+          "path": "src/alpha.ts",
+          "side": "RIGHT",
+          "startLine": 2,
+          "endLine": 3
+        }
+      }
+    },
+    {
+      "path": "reviewPath.cancelQuestion",
+      "input": {
+        "identity": {
+          "workspaceId": "registered",
+          "provider": "github",
+          "owner": "fixture",
+          "repo": "repo",
+          "prNumber": 1,
+          "headSha": "8adc3e41c5707eed2122a0a0c02b06ec2f3ed98d"
+        },
+        "id": "run-067f4aae-206c-4940-9ba6-b91d684c2986",
+        "version": 1
+      }
+    },
+    {
+      "path": "reviewPath.ask",
+      "input": {
+        "identity": {
+          "workspaceId": "registered",
+          "provider": "github",
+          "owner": "fixture",
+          "repo": "repo",
+          "prNumber": 1,
+          "headSha": "8adc3e41c5707eed2122a0a0c02b06ec2f3ed98d"
+        },
+        "id": "2b32fbdc-ee7d-4c78-bea5-509ee700e15b",
+        "text": "Why this validation?",
+        "anchor": {
+          "path": "src/alpha.ts",
+          "side": "RIGHT",
+          "startLine": 2,
+          "endLine": 3
+        }
+      }
+    },
+    {
+      "path": "reviewPath.ask",
+      "input": {
+        "identity": {
+          "workspaceId": "registered",
+          "provider": "github",
+          "owner": "fixture",
+          "repo": "repo",
+          "prNumber": 1,
+          "headSha": "8adc3e41c5707eed2122a0a0c02b06ec2f3ed98d"
+        },
+        "id": "269145d7-9c6c-4c4e-8da9-592ddc4f863b",
+        "text": "Why this validation?",
+        "anchor": {
+          "path": "src/alpha.ts",
+          "side": "RIGHT",
+          "startLine": 2,
+          "endLine": 3
+        }
+      }
+    },
+    {
+      "path": "aiReview.addUserComment",
+      "input": {
+        "prProvider": "github",
+        "prIdentifier": "fixture/repo#1",
+        "prTitle": "Native reading workspace validation",
+        "sourceBranch": "change",
+        "targetBranch": "main",
+        "filePath": "src/alpha.ts",
+        "lineNumber": 3,
+        "side": "RIGHT",
+        "body": "The check rejects invalid input."
+      }
+    },
+    {
+      "path": "aiReview.updateDraftComment",
+      "input": {
+        "commentId": "finding",
+        "status": "edited",
+        "userEdit": "Edited native finding"
+      }
+    },
+    {
+      "path": "aiReview.updateDraftComment",
+      "input": {
+        "commentId": "finding",
+        "status": "rejected"
+      }
+    },
+    {
+      "path": "aiReview.updateDraftComment",
+      "input": {
+        "commentId": "finding",
+        "status": "user-pending"
+      }
+    },
+    {
+      "path": "aiReview.submitReview",
+      "input": {
+        "draftId": "draft",
+        "verdict": "APPROVE",
+        "body": "Native test summary"
+      }
+    },
+    {
+      "path": "reviewPath.ask",
+      "input": {
+        "identity": {
+          "workspaceId": "registered",
+          "provider": "github",
+          "owner": "fixture",
+          "repo": "repo",
+          "prNumber": 1,
+          "headSha": "8adc3e41c5707eed2122a0a0c02b06ec2f3ed98d"
+        },
+        "id": "a7ccbab6-e9a7-4fd7-8403-6349200d498b",
+        "text": "Do not lose this question on launch failure",
+        "anchor": {
+          "path": "src/alpha.ts",
+          "side": "RIGHT",
+          "startLine": 1,
+          "endLine": 1
+        }
+      }
+    },
+    {
+      "path": "workspaces.getOrCreateReview",
+      "input": {
+        "projectId": "project",
+        "prProvider": "github",
+        "prIdentifier": "fixture/repo#2",
+        "prTitle": "Disposable PR 2",
+        "sourceBranch": "change",
+        "targetBranch": "main"
+      }
+    },
+    {
+      "path": "workspaces.getOrCreateReview",
+      "input": {
+        "projectId": "project",
+        "prProvider": "github",
+        "prIdentifier": "fixture/repo#1",
+        "prTitle": "Disposable PR 1",
+        "sourceBranch": "change",
+        "targetBranch": "main"
+      }
+    }
+  ],
+  "forbiddenOperations": []
+}
