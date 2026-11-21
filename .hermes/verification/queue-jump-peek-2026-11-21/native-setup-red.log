@@ -1,0 +1,40 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-jump-electron.test.ts:
+Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+QUEUE_JUMP_FAILURE start SqliteError: no such table: activity_queue_sources
+    at Database.prepare (<dependency-install>/node_modules/.bun/better-sqlite3@12.8.0/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at BetterSQLiteSession.prepareQuery (file://<dependency-install>/node_modules/.bun/drizzle-orm@0.45.2+4c5a725276aab7b4/node_modules/drizzle-orm/better-sqlite3/session.js:23:30)
+    at BetterSQLiteSession.prepareOneTimeQuery (file://<dependency-install>/node_modules/.bun/drizzle-orm@0.45.2+4c5a725276aab7b4/node_modules/drizzle-orm/sqlite-core/session.js:141:17)
+    at SQLiteSelectBase._prepare (file://<dependency-install>/node_modules/.bun/drizzle-orm@0.45.2+4c5a725276aab7b4/node_modules/drizzle-orm/sqlite-core/query-builders/select.js:615:88)
+    at SQLiteSelectBase.get (file://<dependency-install>/node_modules/.bun/drizzle-orm@0.45.2+4c5a725276aab7b4/node_modules/drizzle-orm/sqlite-core/query-builders/select.js:644:17)
+    at ActivityQueueService.read (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-jump-NLlXSc/main/main.js:2679:107)
+    at sqliteTransaction.<anonymous> (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-jump-NLlXSc/main/main.js:3359:38)
+    at sqliteTransaction (<dependency-install>/node_modules/.bun/better-sqlite3@12.8.0/node_modules/better-sqlite3/lib/methods/transaction.js:65:24)
+    at BetterSQLiteSession.transaction (file://<dependency-install>/node_modules/.bun/drizzle-orm@0.45.2+4c5a725276aab7b4/node_modules/drizzle-orm/better-sqlite3/session.js:40:51)
+    at BetterSQLite3Database.transaction (file://<dependency-install>/node_modules/.bun/drizzle-orm@0.45.2+4c5a725276aab7b4/node_modules/drizzle-orm/sqlite-core/db.js:301:25) {
+  code: 'SQLITE_ERROR'
+}
+
+Workspace queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-jump-NLlXSc
+115 | 					clearTimeout(timer);
+116 | 					if (code !== 0) console.error(output);
+117 | 					done(code);
+118 | 				});
+119 | 			});
+120 | 			expect(code).toBe(0);
+                      ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (<lane-b-worktree>/apps/desktop/tests/queue-jump-electron.test.ts:120:17)
+(fail) queue jump and peek navigate the full native shell without consuming receipts [11340.99ms]
+
+ 0 pass
+ 1 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [11.49s]
