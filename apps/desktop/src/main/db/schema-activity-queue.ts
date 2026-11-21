@@ -13,3 +13,14 @@ export const activityQueueSources = sqliteTable("activity_queue_sources", {
 	observedAt: integer("observed_at").notNull(),
 	error: text("error"),
 });
+
+/** A local deferral applies only to the exact source revision the user saw. */
+export const activityQueueSnoozes = sqliteTable("activity_queue_snoozes", {
+	sourceId: text("source_id")
+		.primaryKey()
+		.references(() => activityQueueSources.sourceId, { onDelete: "cascade" }),
+	revision: integer("revision").notNull(),
+	until: integer("until"),
+	untilChange: integer("until_change", { mode: "boolean" }).notNull(),
+	createdAt: integer("created_at").notNull(),
+});

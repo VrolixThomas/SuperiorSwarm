@@ -3,9 +3,38 @@ import { ACTIVITY_QUEUE_KINDS } from "../../../shared/activity-queue";
 import { reconcileAgentSources } from "../../activity-queue/agent-source";
 import { listCurrentActivityQueue } from "../../activity-queue/current-items";
 import { getActivityQueueService } from "../../activity-queue/service";
+import {
+	bringBack,
+	later,
+	listWorkspaceQueue,
+	undoDone,
+	workspaceDone,
+} from "../../activity-queue/workspace-queue";
 import { publicProcedure, router } from "../index";
 
+const workspaceRevision = z.object({
+	id: z.string().min(1),
+	revision: z.number().int().positive(),
+});
+
 export const activityQueueRouter = router({
+	workspaceList: publicProcedure
+		.input(
+			z
+				.object({ view: z.enum(["pending", "later"]).optional(), projectId: z.string().optional() })
+				.optional()
+		)
+		.query(({ input }) => listWorkspaceQueue(input)),
+	workspaceDone: publicProcedure
+		.input(workspaceRevision)
+		.mutation(({ input }) => workspaceDone(input)),
+	later: publicProcedure
+		.input(
+			workspaceRevision.extend({ until: z.number().int().optional(), untilChange: z.boolean() })
+		)
+		.mutation(({ input }) => later(input)),
+	bringBack: publicProcedure.input(workspaceRevision).mutation(({ input }) => bringBack(input)),
+	undoDone: publicProcedure.input(workspaceRevision).mutation(({ input }) => undoDone(input)),
 	list: publicProcedure
 		.input(
 			z
