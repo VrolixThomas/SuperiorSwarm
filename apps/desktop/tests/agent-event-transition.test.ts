@@ -237,3 +237,26 @@ test("retained permission plus reply and error remain bounded without dropping e
 	expect(stop?.snapshot.evidence?.some((e) => e.kind === "permission")).toBe(true);
 	expect(stop?.snapshot.evidence?.some((e) => e.kind === "error")).toBe(true);
 });
+
+test("unseen event identity alone cannot order a missing-turn Stop after explicit continuation", () => {
+	const stop = transition(null, event("Stop", { turnId: undefined, providerEventId: "old" }));
+	const continued = transition(
+		stop?.snapshot,
+		event("WorkspaceContinuation", { turnId: undefined })
+	);
+	const unknown = transition(
+		continued?.snapshot,
+		event("Stop", {
+			turnId: undefined,
+			providerEventId: "unseen-old-callback",
+			producerTimestamp: 99999,
+		})
+	);
+	expect(unknown?.attention).toBeNull();
+	expect(unknown?.snapshot.ordering).toBe("uncertain");
+	const prompt = transition(
+		continued?.snapshot,
+		event("UserPromptSubmit", { turnId: undefined, providerEventId: "unseen-old-prompt" })
+	);
+	expect(prompt?.snapshot.continuation).toBe("reported");
+});

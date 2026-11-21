@@ -66,7 +66,7 @@ export function nextAgentEventSnapshot(
 	if (event.rawEvent === "SessionStart" && event.sessionSource === "compact" && before) return null;
 	// A missing turn cannot be assigned to the most recently observed turn. In particular,
 	// it cannot clear a newer report merely because the bridge ran again later.
-	if (before && (!stable || (before.turnId && !event.turnId)) && !reported) {
+	if (before && !event.turnId && !reported) {
 		return { ...before, ordering: "uncertain" };
 	}
 	let retired = before?.retiredTurnIds ?? [];
