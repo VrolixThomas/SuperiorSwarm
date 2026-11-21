@@ -60,6 +60,7 @@ const admission = (mode: "live" | "resume", id: string, requestId: string, conte
 const daemon = {
 	isConnected: true,
 	supportsQueueReply: true,
+	supportsQueueAnswer: true,
 	supportsQueueResume: true,
 	listSessionsStrict: async () => ids.map((id) => ({ id, pid: 1, cwd: root })),
 	queueReplyTarget: async () => ({

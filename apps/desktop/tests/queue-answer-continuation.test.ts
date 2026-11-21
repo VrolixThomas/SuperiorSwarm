@@ -1,4 +1,5 @@
 import "./preload-electron-mock";
+import { cleanupAnswerFixtures, ownAnswerFixture } from "./helpers/queue-answer-cleanup";
 import { afterEach, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -30,7 +31,10 @@ import { answerContinuationPrompt } from "../src/shared/queue-answer-continuatio
 import { seedCrossRepoOrchestrator, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
 beforeAll(setupTestDb);
-afterEach(() => setDaemonClient(null));
+afterEach(() => {
+	setDaemonClient(null);
+	cleanupAnswerFixtures();
+});
 const digest = (content: string) => createHash("sha256").update(content).digest("hex");
 async function fixture(provider: "claude" | "codex" = "codex", scope = "worktree") {
 	const db = getDb();
@@ -44,6 +48,7 @@ async function fixture(provider: "claude" | "codex" = "codex", scope = "worktree
 					name: "Saved answer",
 					isOrchestrator: scope === "orchestrator",
 				});
+	ownAnswerFixture(projectId, workspaceId);
 	if (scope === "folder")
 		db.update(workspaces)
 			.set({ type: "folder", folderPath: "/tmp" })

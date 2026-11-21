@@ -1,4 +1,5 @@
 import "./preload-electron-mock";
+import { cleanupAnswerFixtures, ownAnswerFixture } from "./helpers/queue-answer-cleanup";
 import { afterEach, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -20,7 +21,10 @@ import { activityQueueRouter } from "../src/main/trpc/routers/activity-queue";
 import { seedCrossRepoOrchestrator, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
 beforeAll(setupTestDb);
-afterEach(() => setDaemonClient(null));
+afterEach(() => {
+	setDaemonClient(null);
+	cleanupAnswerFixtures();
+});
 const caller = activityQueueRouter.createCaller({});
 async function fixture(provider: "claude" | "codex", scope: string, sleeping = false) {
 	const db = getDb();
@@ -34,6 +38,7 @@ async function fixture(provider: "claude" | "codex", scope: string, sleeping = f
 					name: "Answer routing",
 					isOrchestrator: scope === "orchestrator",
 				});
+	ownAnswerFixture(projectId, workspaceId);
 	if (scope === "folder")
 		db.update(workspaces)
 			.set({ type: "folder", folderPath: "/tmp" })
@@ -93,6 +98,7 @@ async function fixture(provider: "claude" | "codex", scope: string, sleeping = f
 	const daemon = {
 		isConnected: true,
 		supportsQueueReply: true,
+		supportsQueueAnswer: true,
 		supportsQueueResume: true,
 		listSessionsStrict: async () => ids.map((id) => ({ id, cwd: "/tmp", pid: 1 })),
 		queueReplyTarget: async () => ({
@@ -173,6 +179,7 @@ async function fixture(provider: "claude" | "codex", scope: string, sleeping = f
 	};
 	return {
 		input,
+		daemon,
 		owner,
 		sibling,
 		manager,
@@ -355,6 +362,22 @@ test("capability explains another pending question even after its answer was sav
 		expect((await caller.workspaceAnswerContinuationCapability(f.input)).status).toBe(
 			"unavailable"
 		);
+		expect(f.writes).toHaveLength(0);
+	} finally {
+		f.manager.dispose();
+	}
+});
+
+test("a legacy reply-only daemon exposes save-only fallback without answer continuation", async () => {
+	const f = await fixture("codex", "worktree");
+	try {
+		f.daemon.supportsQueueAnswer = false;
+		expect((await caller.workspaceAnswerContinuationCapability(f.input)).status).toBe(
+			"unavailable"
+		);
+		const result = await caller.workspaceAnswerAndContinue(f.input);
+		expect(result.answer?.delivery).toBe("saved");
+		expect(result.continuation.status).toBe("unavailable");
 		expect(f.writes).toHaveLength(0);
 	} finally {
 		f.manager.dispose();
