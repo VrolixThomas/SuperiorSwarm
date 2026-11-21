@@ -93,9 +93,9 @@ export function linkedWorkByWorkspace(workspaceIds: string[]): Map<string, Queue
 				const data: unknown = JSON.parse(row.data);
 				if (data && typeof data === "object" && "id" in data && data.id === link.ticketId) {
 					const item = data as Record<string, unknown>;
-					value.label = text(item.identifier) ?? value.label;
-					value.title = text(item.title);
-					value.url = linearUrl(item.url);
+					value.label = text(item["identifier"]) ?? value.label;
+					value.title = text(item["title"]);
+					value.url = linearUrl(item["url"]);
 					if (value.title) {
 						value.metadata = "cached";
 						value.updatedAt = row.updatedAt.getTime();
