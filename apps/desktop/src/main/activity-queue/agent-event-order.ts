@@ -52,6 +52,15 @@ export function nextAgentEventSnapshot(
 	)
 		return null;
 	if (event.rawEvent?.startsWith("Subagent")) return null;
+	// A prompt identifies the beginning of a turn, not a generic keep-alive.
+	// Its replay after tools or Stop must not clear a later report/input request.
+	if (
+		event.rawEvent === "UserPromptSubmit" &&
+		event.turnId &&
+		before?.turnId === event.turnId &&
+		before.rawEvent !== "SessionStart"
+	)
+		return null;
 	if (
 		(event.rawEvent === "PreCompact" || event.rawEvent === "PostCompact") &&
 		before?.alert === "task-complete"

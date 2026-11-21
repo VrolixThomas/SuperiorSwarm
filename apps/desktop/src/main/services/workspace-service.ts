@@ -30,7 +30,8 @@ import type {
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
 import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
-import { reconcileAgentSources } from "../activity-queue/agent-source";
+import { reconcileAgentSources, workspaceSourceId } from "../activity-queue/agent-source";
+import { getActivityQueueService } from "../activity-queue/service";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -757,7 +758,7 @@ export async function setStatus(
 			.where(eq(workspaces.id, ctx.workspaceId))
 			.run();
 
-		reconcileAgentSources();
+		reconcileAgentSources({ workspaceId: ctx.workspaceId, reportedAt: now.getTime() });
 	});
 
 	eventBus?.emit(ctx.projectId, {
@@ -770,6 +771,48 @@ export async function setStatus(
 	});
 
 	return { ok: true };
+}
+
+/** Called only after a new prompt from the exact managed session was validated.
+ * Reading/opening a workspace and ordinary tool activity never enter this path.
+ * Questions remain independent: continuing work is not a correlated answer.
+ */
+export function continueWorkspaceAfterPrompt(workspaceId: string, producedAt: number): void {
+	const db = getDb();
+	const workspace = db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get();
+	const snapshot = getActivityQueueService().read(workspaceSourceId(workspaceId))?.snapshot as
+		| { reportedAt?: number }
+		| undefined;
+	if (
+		!workspace ||
+		!Number.isFinite(producedAt) ||
+		(workspace.currentPhase !== "done" &&
+			workspace.currentPhase !== "blocked" &&
+			!workspace.needs) ||
+		(workspace.statusUpdatedAt && workspace.statusUpdatedAt.getTime() > producedAt) ||
+		(typeof snapshot?.reportedAt === "number" && snapshot.reportedAt >= producedAt)
+	)
+		return;
+	const now = new Date();
+	db.update(workspaces)
+		.set({
+			currentPhase: "working",
+			statusText: null,
+			needs: null,
+			statusUpdatedAt: now,
+			updatedAt: now,
+		})
+		.where(eq(workspaces.id, workspaceId))
+		.run();
+	reconcileAgentSources();
+	eventBus?.emit(workspace.projectId, {
+		event: "status",
+		workspaceId,
+		phase: "working",
+		statusText: null,
+		needs: null,
+		ts: now.toISOString(),
+	});
 }
 
 export async function setOrchestrator(

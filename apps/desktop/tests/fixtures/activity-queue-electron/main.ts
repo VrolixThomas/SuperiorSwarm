@@ -1,6 +1,8 @@
-import { writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { BrowserWindow, app, session } from "electron";
 import { PtyManager } from "../../../src/daemon/pty-manager";
@@ -9,12 +11,15 @@ import { SocketServer } from "../../../src/daemon/socket-server";
 import { listCurrentActivityQueue } from "../../../src/main/activity-queue/current-items";
 import { observePRActivity, prSourceId } from "../../../src/main/activity-queue/pr-source";
 import { ActivityQueueService } from "../../../src/main/activity-queue/service";
+import { claudeConfig } from "../../../src/main/agent-hooks/agents/claude";
 import { codexConfig } from "../../../src/main/agent-hooks/agents/codex";
+import { HOOK_BRIDGE_SOURCE } from "../../../src/main/agent-hooks/bridge";
 import { createAlertListener } from "../../../src/main/agent-hooks/listener";
 import { closeDb, getDb } from "../../../src/main/db";
-import { projects, terminalSessions, workspaces } from "../../../src/main/db/schema";
+import { agentSessions, projects, terminalSessions, workspaces } from "../../../src/main/db/schema";
 import { AgentSessionManager } from "../../../src/main/services/agent-session-manager";
 import { setAgentSessionManager } from "../../../src/main/services/agent-session-manager-handle";
+import { setStatus } from "../../../src/main/services/workspace-service";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
 import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
@@ -50,6 +55,7 @@ const socketServer = new SocketServer(
 );
 const daemon = new DaemonClient(socketPath, join(root, "pid"), join(root, "daemon.log"));
 let createdPtys = 0;
+let terminalOutput = "";
 let disappearOnAttach = false;
 const createPty = ptys.create.bind(ptys);
 ptys.create = (...args) => {
@@ -71,15 +77,18 @@ const until = async (condition: () => boolean | Promise<boolean>) => {
 };
 async function run() {
 	await app.whenReady();
+	mkdirSync(join(root, "bin"));
 	socketServer.listen();
 	await daemon.connect();
 	setDaemonClient(daemon);
 	await daemon.create(
 		"terminal",
 		root,
+		(data) => {
+			terminalOutput += data;
+		},
 		() => {},
-		() => {},
-		{ SHELL: "/bin/sh", HOME: root }
+		{ SHELL: "/bin/sh", HOME: root, PATH: `${join(root, "bin")}:/usr/bin:/bin` }
 	);
 	await daemon.listSessionsStrict();
 	session.defaultSession.webRequest.onBeforeRequest((details, done) =>
@@ -171,6 +180,7 @@ async function run() {
 		skipPermissions: false,
 	});
 	agentRegistry.set("codex", codexConfig);
+	agentRegistry.set("claude", claudeConfig);
 	listener.onEvent((event) => {
 		const normalized = manager?.handleAgentEvent(event);
 		if (normalized) win?.webContents.send("agent:alert", normalized);
@@ -208,24 +218,148 @@ async function run() {
 		js(
 			`(() => {const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute('aria-label') === ${JSON.stringify(label)}); if (!b) throw new Error('Missing button'); b.click();})()`
 		);
-	let stamp = Date.now();
+	let provider: "codex" | "claude" = "codex";
+	const bridge = join(root, "hook-bridge.cjs");
+	writeFileSync(bridge, HOOK_BRIDGE_SOURCE);
+	const hookEnv = () => ({
+		...process.env,
+		ELECTRON_RUN_AS_NODE: "1",
+		AGENT_NOTIFY_PORT: String(listener.getPort()),
+		AGENT_NOTIFY_TOKEN: "fixture-only-token",
+		AGENT_NOTIFY_TERMINAL_ID: "terminal",
+		AGENT_NOTIFY_WORKSPACE_ID: "workspace",
+		AGENT_NOTIFY_AGENT: provider,
+	});
 	async function hook(rawEvent: string, turnId: string) {
-		const params = new URLSearchParams({
-			rawEvent,
-			terminalId: "terminal",
-			workspaceId: "workspace",
-			providerSessionId: "native-session",
-			agent: "codex",
-			turnId,
-			producerTimestamp: String(++stamp),
+		await new Promise<void>((resolve, reject) => {
+			const child = spawn(process.execPath, [bridge], {
+				env: hookEnv(),
+				stdio: ["pipe", "ignore", "pipe"],
+			});
+			child.on("error", reject);
+			child.on("exit", (code) =>
+				code === 0 ? resolve() : reject(new Error(`Bridge exit ${code}`))
+			);
+			child.stdin.end(
+				JSON.stringify({
+					hook_event_name: rawEvent,
+					session_id: "native-session",
+					[provider === "claude" ? "prompt_id" : "turn_id"]: turnId,
+				})
+			);
 		});
-		const response = await fetch(`http://127.0.0.1:${listener.getPort()}/event?${params}`, {
-			headers: { Authorization: "Bearer fixture-only-token" },
-		});
-		if (!response.ok) throw new Error(`Hook failed: ${response.status}`);
 	}
 	step = "initial real IPC projection";
 	await until(() => hasCount(0));
+	// Isolated provider stand-in reads real PTY input and invokes the production
+	// bridge with each provider's payload shape. No authenticated user chat is used.
+	const fakeAgent = join(root, "input-agent.cjs");
+	writeFileSync(
+		fakeAgent,
+		`
+const {spawnSync} = require('node:child_process');
+const lines = require('node:readline').createInterface({input:process.stdin});
+let turn = 0;
+if (process.env.FIXTURE_RESUME) spawnSync(process.execPath, [${JSON.stringify(bridge)}], {
+  env: process.env, input:JSON.stringify({hook_event_name:'SessionStart',session_id:'native-session',source:'resume'})
+});
+console.log('FIXTURE_READY_' + process.env.AGENT_NOTIFY_AGENT);
+lines.on('line', line => {
+  if (line === '__fixture_exit__') { console.log('FIXTURE_EXIT_' + process.env.AGENT_NOTIFY_AGENT); process.exit(0); }
+  const payload = {hook_event_name:'UserPromptSubmit', session_id:'native-session'};
+  payload[process.env.AGENT_NOTIFY_AGENT === 'claude' ? 'prompt_id' : 'turn_id'] = 'direct-' + (++turn);
+  spawnSync(process.execPath, [${JSON.stringify(bridge)}], {env:process.env, input:JSON.stringify(payload)});
+});
+`
+	);
+	const quote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+	for (provider of ["codex", "claude"] as const) {
+		manager.registerManagedSession({
+			terminalId: "terminal",
+			workspaceId: "workspace",
+			provider,
+			providerSessionId: "native-session",
+			skipPermissions: false,
+		});
+		const env = hookEnv();
+		const assignments = Object.entries(env)
+			.filter(([key]) => key.startsWith("AGENT_NOTIFY_") || key === "ELECTRON_RUN_AS_NODE")
+			.map(([key, value]) => `${key}=${quote(String(value))}`)
+			.join(" ");
+		// wake() must invoke only this isolated provider stand-in, never an
+		// installed/authenticated CLI. It emits resume but no new prompt.
+		writeFileSync(
+			join(root, "bin", provider),
+			`#!/bin/sh\n${assignments} FIXTURE_RESUME=1 ${quote(process.execPath)} ${quote(fakeAgent)}\n`,
+			{ mode: 0o755 }
+		);
+		daemon.write("terminal", `${assignments} ${quote(process.execPath)} ${quote(fakeAgent)}\r`);
+		step = `${provider}: fixture agent reads PTY input`;
+		await until(() => terminalOutput.includes(`FIXTURE_READY_${provider}`));
+		let turn = 0;
+		for (const phase of ["done", "blocked"] as const) {
+			await setStatus(
+				{ kind: "workspace", projectId: "project", workspaceId: "workspace" },
+				{
+					phase,
+					statusText: "Review result",
+					...(phase === "blocked" ? { needs: "Choose approach" } : {}),
+				}
+			);
+			await hook("Stop", turn ? `direct-${turn}` : `initial-${provider}`);
+			step = `${provider}: ${phase} workspace and session attention`;
+			await until(() => hasCount(2));
+			if (!(await js<boolean>("!!document.querySelector('#activity-queue-panel')")))
+				await click("Queue 2");
+			await until(() => js<boolean>("!!document.querySelector('#activity-queue-panel')"));
+			await click("Open Codex native turn");
+			await until(() =>
+				js<boolean>("document.activeElement?.classList.contains('xterm-helper-textarea')")
+			);
+			await contents.insertText("Continue with this approach");
+			await until(() => manager?.getSession("terminal")?.state === "running");
+			if ((await listCurrentActivityQueue()).totalPending !== 2)
+				throw new Error("Opening/typing cleared attention");
+			contents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+			contents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+			turn++;
+			step = `${provider}: direct input clears both rows through real terminal IPC and generated bridge`;
+			await until(() => hasCount(0));
+			closeDb();
+			if ((await listCurrentActivityQueue()).totalPending !== 0)
+				throw new Error("Continued report returned after reopen");
+		}
+		await hook("Stop", `direct-${turn}`);
+		await until(() => hasCount(1));
+		daemon.write("terminal", "__fixture_exit__\r");
+		await until(() => terminalOutput.includes(`FIXTURE_EXIT_${provider}`));
+		getDb()
+			.update(agentSessions)
+			.set({ state: "hibernated" })
+			.where(eq(agentSessions.terminalId, "terminal"))
+			.run();
+		terminalOutput = "";
+		step = `${provider}: opening a sleeping chat resumes for reading without handling attention`;
+		await js("window.electron.terminal.setVisible('terminal', true)");
+		await until(() => terminalOutput.includes(`FIXTURE_READY_${provider}`));
+		if ((await listCurrentActivityQueue()).totalPending !== 1)
+			throw new Error("Wake to read cleared attention");
+		await hook("UserPromptSubmit", `after-view-${provider}`);
+		await until(() => hasCount(0));
+		daemon.write("terminal", "__fixture_exit__\r");
+		await until(() => terminalOutput.includes(`FIXTURE_EXIT_${provider}`));
+		terminalOutput = "";
+	}
+	provider = "codex";
+	manager.registerManagedSession({
+		terminalId: "terminal",
+		workspaceId: "workspace",
+		provider,
+		providerSessionId: "native-session",
+		skipPermissions: false,
+	});
+	if (await js<boolean>("!!document.querySelector('#activity-queue-panel')"))
+		await click("Close Queue");
 	await hook("UserPromptSubmit", "turn-1");
 	await hook("Stop", "turn-1");
 	step = "hook delivery to rendered queue";
@@ -447,6 +581,10 @@ async function run() {
 			openDoesNotAcknowledge: true,
 			focusReturn: true,
 			atomicAttachOnly: true,
+			directChatInputClearsDispatch: true,
+			typingWithoutSubmitPreservesAttention: true,
+			codexAndClaudeBridge: true,
+			wakeToReadPreservesAttention: true,
 		})
 	);
 }

@@ -44,6 +44,17 @@ function Surface() {
 					</p>
 					<textarea
 						aria-label="Agent input"
+						onInput={(event) => {
+							const data = (event.nativeEvent as InputEvent).data;
+							if (data) window.electron.terminal.write("terminal", data);
+						}}
+						onKeyDown={(event) => {
+							if (event.key === "Enter" && !event.shiftKey) {
+								event.preventDefault();
+								window.electron.terminal.write("terminal", "\r");
+								event.currentTarget.value = "";
+							}
+						}}
 						className="xterm-helper-textarea w-full resize-none rounded border border-[var(--border)] bg-[var(--bg-surface)] p-3 text-xs outline-[var(--accent)]"
 						placeholder="Continue working here…"
 					/>

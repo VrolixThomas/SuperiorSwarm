@@ -21,6 +21,7 @@ import type {
 	AgentTerminationResult,
 } from "./agent-process-controller";
 import { getAgentSleepSettings } from "./agent-sleep-settings";
+import { continueWorkspaceAfterPrompt } from "./workspace-service";
 
 const DEFAULT_MINUTE_MS = 60_000;
 const DEFAULT_FOLLOW_UP_READY_TIMEOUT_MS = 5_000;
@@ -254,6 +255,20 @@ export class AgentSessionManager {
 				},
 			})
 			.run();
+
+		// A submitted follow-up handles the previous dispatched-task report even
+		// when the user types directly in the chat. Only the registered dispatch
+		// target may advance workspace status; a sibling terminal must not do so.
+		if (
+			managed &&
+			event.rawEvent === "UserPromptSubmit" &&
+			event.turnId &&
+			event.providerSessionId &&
+			event.providerSessionId === existing?.providerSessionId &&
+			event.producerTimestamp !== undefined
+		) {
+			continueWorkspaceAfterPrompt(resolved.workspaceId, event.producerTimestamp);
+		}
 
 		const session = this.getSession(resolved.terminalId);
 		if (session) {

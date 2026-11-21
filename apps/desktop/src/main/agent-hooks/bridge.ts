@@ -33,7 +33,7 @@ try {
     workspaceId: env.AGENT_NOTIFY_WORKSPACE_ID || "",
     cwd: field("cwd") || process.cwd(),
     agent: env.AGENT_NOTIFY_AGENT || "unknown",
-    turnId: field("turn_id"),
+    turnId: field("turn_id") || (env.AGENT_NOTIFY_AGENT === "claude" ? field("prompt_id") : ""),
     sessionSource: field("source"),
     producerTimestamp: String(producerTimestamp),
   });

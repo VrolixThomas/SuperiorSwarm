@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { claudeConfig } from "../../src/main/agent-hooks/agents/claude";
 import { codexConfig } from "../../src/main/agent-hooks/agents/codex";
 import { HOOK_BRIDGE_SOURCE, buildHookLauncher } from "../../src/main/agent-hooks/bridge";
 import { publishHookEndpoint } from "../../src/main/agent-hooks/endpoint";
@@ -29,7 +30,8 @@ test("generated launcher parses top-level identities and sends authenticated tur
 	const run = async (
 		payload: string,
 		token = "test-token",
-		inheritedPort = String(listener?.getPort())
+		inheritedPort = String(listener?.getPort()),
+		provider = "codex"
 	) => {
 		const child = Bun.spawn(["/bin/bash", launcher], {
 			stdin: new Response(payload),
@@ -39,7 +41,7 @@ test("generated launcher parses top-level identities and sends authenticated tur
 				...process.env,
 				AGENT_NOTIFY_PORT: inheritedPort,
 				AGENT_NOTIFY_TOKEN: token,
-				AGENT_NOTIFY_AGENT: "codex",
+				AGENT_NOTIFY_AGENT: provider,
 				AGENT_NOTIFY_TERMINAL_ID: "terminal",
 				AGENT_NOTIFY_WORKSPACE_ID: "workspace",
 			},
@@ -114,4 +116,20 @@ test("generated launcher parses top-level identities and sends authenticated tur
 		""
 	);
 	expect(events).toHaveLength(4);
+	agentRegistry.set("claude", claudeConfig);
+	await run(
+		JSON.stringify({
+			hook_event_name: "UserPromptSubmit",
+			session_id: "claude-session",
+			prompt_id: "claude-prompt-2",
+		}),
+		"test-token",
+		"",
+		"claude"
+	);
+	expect(events.at(-1)).toMatchObject({
+		agent: "claude",
+		turnId: "claude-prompt-2",
+		providerSessionId: "claude-session",
+	});
 });

@@ -21,7 +21,7 @@ import {
 } from "../src/main/db/schema";
 import { activityQueueSources } from "../src/main/db/schema-activity-queue";
 import { AgentSessionManager } from "../src/main/services/agent-session-manager";
-import { setStatus } from "../src/main/services/workspace-service";
+import { sendMessage, setStatus } from "../src/main/services/workspace-service";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { getDaemonClient, setDaemonClient } from "../src/main/terminal/daemon-instance";
 import { activityQueueRouter } from "../src/main/trpc/routers/activity-queue";
@@ -183,6 +183,229 @@ test("two terminals remain independent; Stop means next input and active clears 
 		},
 	]);
 	agent.dispose();
+});
+
+for (const provider of ["codex", "claude"] as const) {
+	test(`${provider}: direct chat input clears dispatched attention and identical later completion returns`, async () => {
+		const agent = manager();
+		register(agent, "dispatched");
+		getDb()
+			.update(agentSessions)
+			.set({ provider })
+			.where(eq(agentSessions.terminalId, "dispatched"))
+			.run();
+		const ctx = { kind: "workspace" as const, projectId, workspaceId };
+		let stamp = Date.now() + 1;
+		const deliver = (rawEvent: string, turnId: string, alert: AgentEvent["alert"]) => {
+			stamp = Math.max(stamp + 1, Date.now() + 1);
+			return agent.handleAgentEvent({
+				...event("dispatched", alert),
+				agent: provider,
+				rawEvent,
+				turnId,
+				timestamp: stamp,
+				producerTimestamp: stamp,
+			});
+		};
+		try {
+			for (const phase of ["done", "blocked"] as const) {
+				deliver("UserPromptSubmit", `${phase}-first`, "active");
+				await setStatus(ctx, {
+					phase,
+					statusText: "Review result",
+					...(phase === "blocked" ? { needs: "Choose approach" } : {}),
+				});
+				deliver("Stop", `${phase}-first`, "task-complete");
+				const old = queue().read(workspaceSourceId(workspaceId));
+				expect(queue().list().totalPending).toBe(2);
+				// Reads and navigation lookups are not acknowledgements.
+				await workspacesRouter.createCaller({}).getById({ id: workspaceId });
+				reconcileAgentSources();
+				expect(queue().list().totalPending).toBe(2);
+				deliver("UserPromptSubmit", `${phase}-followup`, "active");
+				reconcileAgentSources();
+				expect(queue().list().totalPending).toBe(0);
+				expect(
+					getDb().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
+						?.currentPhase
+				).toBe("working");
+				closeDb();
+				reconcileAgentSources();
+				expect(queue().list().totalPending).toBe(0);
+				await setStatus(ctx, {
+					phase,
+					statusText: "Review result",
+					...(phase === "blocked" ? { needs: "Choose approach" } : {}),
+				});
+				deliver("Stop", `${phase}-followup`, "task-complete");
+				reconcileAgentSources();
+				expect(queue().list().totalPending).toBe(2);
+				expect(queue().read(workspaceSourceId(workspaceId))?.revision).toBeGreaterThan(
+					old?.revision ?? 0
+				);
+				// A redelivered prompt from the completed turn must not clear new attention.
+				expect(deliver("UserPromptSubmit", `${phase}-followup`, "active")).toBeNull();
+				expect(queue().list().totalPending).toBe(2);
+			}
+		} finally {
+			agent.dispose();
+		}
+	});
+}
+
+test("direct input in a sibling chat and background tool activity leave dispatched reports pending", async () => {
+	const agent = manager();
+	register(agent, "sibling");
+	register(agent, "dispatched"); // Only the current dispatch owns workspace status.
+	const ctx = { kind: "workspace" as const, projectId, workspaceId };
+	try {
+		await setStatus(ctx, { phase: "blocked", needs: "Explicit decision" });
+		for (const [terminalId, rawEvent] of [
+			["sibling", "UserPromptSubmit"],
+			["dispatched", "PreToolUse"],
+			["dispatched", "SessionStart"],
+		]) {
+			agent.handleAgentEvent({
+				...event(terminalId ?? "", "active"),
+				rawEvent,
+				turnId: "turn",
+				producerTimestamp: Date.now(),
+			});
+			reconcileAgentSources();
+			expect(queue().read(workspaceSourceId(workspaceId))?.candidate).not.toBeNull();
+		}
+	} finally {
+		agent.dispose();
+	}
+});
+
+test("a prompt produced before a newer workspace report cannot clear it on delayed delivery", async () => {
+	const agent = manager();
+	register(agent, "dispatched");
+	try {
+		const producedAt = Date.now();
+		agent.handleAgentEvent({
+			...event("dispatched"),
+			rawEvent: "Stop",
+			turnId: "old-turn",
+			producerTimestamp: producedAt,
+		});
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		await setStatus(
+			{ kind: "workspace", projectId, workspaceId },
+			{ phase: "blocked", needs: "Newer decision" }
+		);
+		closeDb();
+		reconcileAgentSources();
+		agent.handleAgentEvent({
+			...event("dispatched", "active"),
+			rawEvent: "UserPromptSubmit",
+			turnId: "delayed-turn",
+			producerTimestamp: producedAt,
+		});
+		reconcileAgentSources();
+		expect(queue().read(workspaceSourceId(workspaceId))?.candidate?.summary).toBe("Newer decision");
+	} finally {
+		agent.dispose();
+	}
+});
+
+test("typing and waking to read do not resolve session attention before a provider continuation", async () => {
+	const agent = manager();
+	register(agent, "dispatched");
+	try {
+		agent.handleAgentEvent({ ...event("dispatched"), rawEvent: "Stop", turnId: "finished-turn" });
+		const item = queue().list().items[0];
+		await agent.beforeTerminalInput("dispatched");
+		reconcileAgentSources();
+		expect(queue().list().items[0]?.revision).toBe(item?.revision);
+		expect(queue().list().totalPending).toBe(1);
+		// Visibility/wake can optimistically mark running before SessionStart.
+		getDb()
+			.update(agentSessions)
+			.set({ state: "resuming" })
+			.where(eq(agentSessions.terminalId, "dispatched"))
+			.run();
+		reconcileAgentSources();
+		expect(queue().list().totalPending).toBe(1);
+		agent.handleAgentEvent({
+			...event("dispatched", "active"),
+			rawEvent: "SessionStart",
+			sessionSource: "resume",
+			turnId: "finished-turn",
+		});
+		reconcileAgentSources();
+		expect(queue().list().items[0]?.revision).toBe(item?.revision);
+		expect(queue().list().totalPending).toBe(1);
+		agent.handleAgentEvent({
+			...event("dispatched", "active"),
+			rawEvent: "UserPromptSubmit",
+			turnId: "new-turn",
+		});
+		reconcileAgentSources();
+		expect(queue().list().totalPending).toBe(0);
+	} finally {
+		agent.dispose();
+	}
+});
+
+test("ordinary chat input does not invent an answer; only a reply delivered to the asker resolves the question", async () => {
+	const agent = manager();
+	register(agent, "dispatched");
+	const other = await seedWorkspace(projectId, { name: "Responder" });
+	const third = await seedWorkspace(projectId, { name: "Unrelated recipient" });
+	getDb()
+		.insert(agentMessages)
+		.values({
+			id: "direct-question",
+			projectId,
+			fromWorkspaceId: workspaceId,
+			toWorkspaceId: other,
+			kind: "question",
+			content: "Which approach?",
+			createdAt: new Date(),
+		})
+		.run();
+	try {
+		agent.handleAgentEvent({
+			...event("dispatched", "active"),
+			rawEvent: "UserPromptSubmit",
+			turnId: "new-turn",
+		});
+		reconcileAgentSources();
+		expect(
+			queue()
+				.list()
+				.items.map((item) => item.id)
+		).toContain(questionSourceId("direct-question"));
+		const ctx = { kind: "workspace" as const, projectId, workspaceId: other };
+		await sendMessage(ctx, {
+			kind: "answer",
+			toWorkspaceId: third,
+			inReplyTo: "direct-question",
+			content: "Wrong recipient",
+		});
+		reconcileAgentSources();
+		expect(
+			queue()
+				.list()
+				.items.map((item) => item.id)
+		).toContain(questionSourceId("direct-question"));
+		await sendMessage(ctx, {
+			kind: "answer",
+			toWorkspaceId: workspaceId,
+			inReplyTo: "direct-question",
+			content: "Use approach A",
+		});
+		reconcileAgentSources();
+		expect(
+			queue()
+				.list()
+				.items.map((item) => item.id)
+		).not.toContain(questionSourceId("direct-question"));
+	} finally {
+		agent.dispose();
+	}
 });
 
 test("missing/mismatched identities never create or clear attention", () => {

@@ -86,8 +86,19 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 	const providerSessionId = event.providerSessionId || known?.providerSessionId || null;
 	const sourceId = sessionSourceId(workspaceId, terminalId, event.agent, providerSessionId);
 	const queue = new ActivityQueueService(db);
-	const snapshot = nextAgentEventSnapshot(queue.read(sourceId)?.snapshot, event);
+	const previous = queue.read(sourceId);
+	const snapshot = nextAgentEventSnapshot(previous?.snapshot, event);
 	if (!snapshot) return false;
+	// Resuming a conversation to view it is navigation, not a reply. Preserve
+	// its attention until a prompt or actual tool activity is observed.
+	if (
+		event.rawEvent === "SessionStart" &&
+		event.sessionSource === "resume" &&
+		previous?.candidate &&
+		known?.provider === event.agent &&
+		known.providerSessionId === providerSessionId
+	)
+		return true;
 	if (
 		newGeneration &&
 		known &&
@@ -144,7 +155,10 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
  * Questions are selected by unanswered correlation, not by replaying a message journal.
  * Only queue-recorded turn-end evidence can create a ready session: generic idle cannot.
  */
-export function reconcileAgentSources(): void {
+export function reconcileAgentSources(statusChange?: {
+	workspaceId: string;
+	reportedAt: number;
+}): void {
 	const db = getDb();
 	const queue = new ActivityQueueService(db);
 	const now = Date.now();
@@ -162,6 +176,21 @@ export function reconcileAgentSources(): void {
 			const needsInput = workspace.currentPhase === "blocked" || Boolean(workspace.needs?.trim());
 			const ready = workspace.currentPhase === "done";
 			const label = needsInput ? "Needs input" : "Task complete";
+			const previousSnapshot = queue.read(sourceId)?.snapshot as
+				| { phase?: string; needs?: string | null; statusText?: string | null; reportedAt?: number }
+				| undefined;
+			// The workspace timestamp column is second-precision. Retain the actual
+			// report time in the durable snapshot so a delayed prompt cannot clear a
+			// newer report in the same second. Read-only reconciliation preserves it.
+			const reportedAt =
+				statusChange?.workspaceId === workspace.id
+					? statusChange.reportedAt
+					: previousSnapshot?.phase === workspace.currentPhase &&
+							previousSnapshot.needs === workspace.needs &&
+							previousSnapshot.statusText === workspace.statusText &&
+							typeof previousSnapshot.reportedAt === "number"
+						? previousSnapshot.reportedAt
+						: (workspace.statusUpdatedAt ?? workspace.updatedAt).getTime();
 			queue.observe({
 				sourceId,
 				sourceType: "agent-workspace",
@@ -170,6 +199,7 @@ export function reconcileAgentSources(): void {
 					phase: workspace.currentPhase,
 					needs: workspace.needs,
 					statusText: workspace.statusText,
+					reportedAt,
 				},
 				fingerprint: JSON.stringify([
 					workspace.currentPhase,
@@ -198,7 +228,7 @@ export function reconcileAgentSources(): void {
 			.where(
 				and(
 					eq(agentMessages.kind, "question"),
-					sql`NOT EXISTS (SELECT 1 FROM agent_messages AS answer WHERE answer.kind = 'answer' AND answer.in_reply_to = ${agentMessages.id} AND answer.project_id = ${agentMessages.projectId})`
+					sql`NOT EXISTS (SELECT 1 FROM agent_messages AS answer WHERE answer.kind = 'answer' AND answer.in_reply_to = ${agentMessages.id} AND answer.project_id = ${agentMessages.projectId} AND (answer.to_workspace_id = ${agentMessages.fromWorkspaceId} OR answer.to_workspace_id IS NULL) AND answer.created_at >= ${agentMessages.createdAt})`
 				)
 			)
 			.all();
@@ -299,9 +329,7 @@ export function reconcileAgentSources(): void {
 				!session ||
 				session.workspaceId !== target.workspaceId ||
 				session.provider !== target.provider ||
-				session.providerSessionId !== target.providerSessionId ||
-				session.state === "running" ||
-				session.state === "resuming"
+				session.providerSessionId !== target.providerSessionId
 			) {
 				queue.resolve(source.sourceId, now);
 			} else if (session.state === "error") {

@@ -125,6 +125,10 @@ test.skipIf(process.platform !== "darwin")(
 				openDoesNotAcknowledge: true,
 				focusReturn: true,
 				atomicAttachOnly: true,
+				directChatInputClearsDispatch: true,
+				typingWithoutSubmitPreservesAttention: true,
+				codexAndClaudeBridge: true,
+				wakeToReadPreservesAttention: true,
 			});
 		} finally {
 			if (keep) console.log(`Native queue fixture: ${root}`);
