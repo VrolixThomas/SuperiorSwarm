@@ -208,3 +208,32 @@ test("old v2 snapshot format retains its receipt unless new evidence arrives", (
 		)?.preserveRevision
 	).toBe(false);
 });
+
+test("retained permission plus reply and error remain bounded without dropping either kind", () => {
+	const permission = transition(
+		null,
+		event("PermissionRequest", {
+			evidence: admitAgentEvidence(
+				{ permission_prompt: "p".repeat(4000), message: "q".repeat(4000) },
+				"claude",
+				"PermissionRequest"
+			),
+		})
+	);
+	const stop = transition(
+		permission?.snapshot,
+		event("StopFailure", {
+			evidence: admitAgentEvidence(
+				{ last_assistant_message: "r".repeat(4000), error: "e".repeat(4000) },
+				"claude",
+				"StopFailure"
+			),
+		})
+	);
+	expect(
+		stop?.snapshot.evidence?.reduce((total, entry) => total + entry.text.length, 0)
+	).toBeLessThanOrEqual(4096);
+	expect(stop?.snapshot.evidence?.some((e) => e.kind === "reply")).toBe(true);
+	expect(stop?.snapshot.evidence?.some((e) => e.kind === "permission")).toBe(true);
+	expect(stop?.snapshot.evidence?.some((e) => e.kind === "error")).toBe(true);
+});

@@ -140,7 +140,13 @@ export function nextAgentEventSnapshot(
 				: [
 						...retained,
 						...evidence.filter((e) => !retained.some((r) => r.sourceField === e.sourceField)),
-					].slice(0, 4),
+					]
+						.slice(0, 4)
+						.map((entry) => ({
+							...entry,
+							text: entry.text.slice(0, 1024),
+							truncated: entry.truncated || entry.text.length > 1024,
+						})),
 		permission,
 		ordering: stable || reported ? "identified" : "uncertain",
 		continuation,
