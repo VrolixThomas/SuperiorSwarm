@@ -2,12 +2,14 @@ import type * as monaco from "monaco-editor";
 import { detectLanguage } from "../../../../shared/diff-types";
 import type { PRContext } from "../../../../shared/github-types";
 import type { CodeReference, ContextFileStep } from "../../../../shared/review-path-types";
-import { trpc } from "../../../trpc/client";
 import { ContextEditor } from "./ContextEditor";
 import { StepHeader } from "./StepHeader";
+import { useContextContent } from "./useContextContent";
 
 export interface ContextFileViewProps {
 	prCtx: PRContext;
+	workspaceId?: string;
+	baseRef?: string;
 	step: ContextFileStep;
 	headRef?: string;
 	onPrevious?: () => void;
@@ -21,6 +23,8 @@ export interface ContextFileViewProps {
 }
 export function ContextFileView({
 	prCtx,
+	workspaceId,
+	baseRef,
 	step,
 	headRef,
 	onPrevious,
@@ -31,20 +35,7 @@ export function ContextFileView({
 	stepNumbers,
 	onEditorReady,
 }: ContextFileViewProps) {
-	const query = trpc.diff.getFileContent.useQuery(
-		{ repoPath: prCtx.repoPath, ref: headRef || prCtx.sourceBranch, filePath: step.path },
-		{ staleTime: 60_000 }
-	);
-	const content = query.data?.content ?? "";
-	const message = query.isPending
-		? "Loading context file…"
-		: query.isError
-			? "Context file is unavailable at this revision."
-			: content.includes("\0")
-				? "Binary file — no text preview available."
-				: !content
-					? "File is empty or unavailable at this revision."
-					: null;
+	const { content, message } = useContextContent(workspaceId, prCtx, step.path, baseRef, headRef);
 	const action = onRemove ? (
 		<button
 			type="button"

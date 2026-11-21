@@ -3,6 +3,8 @@ export interface ReviewSnapshotRevision {
 	workspaceId: string;
 	targetTipOid: string;
 	headOid: string;
+	/** Separates renderer caches across providers and PRs, even for identical commits. */
+	review?: { provider: "github" | "bitbucket"; owner: string; repo: string; number: number };
 }
 
 export type ReviewSnapshotSide = "base" | "head";
@@ -57,3 +59,11 @@ export type ReviewSnapshotContent =
 			blobOid: string;
 	  }
 	| { kind: "unavailable"; reason: "object-unavailable"; path: string; blobOid: string };
+
+/** An exact repo-relative path in the immutable snapshot tree (including unchanged files). */
+export interface ReviewSnapshotContextRequest {
+	workspaceId: string;
+	snapshotId: string;
+	path: string;
+	side: ReviewSnapshotSide;
+}

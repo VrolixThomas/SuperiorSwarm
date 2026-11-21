@@ -1,73 +1,98 @@
+import { structuredPatch } from "diff";
 import { useMemo } from "react";
-import type { PRContext } from "../../../../shared/github-types";
+import type { GitHubPRDetails, PRContext } from "../../../../shared/github-types";
 import { trpc } from "../../../trpc/client";
-export function useStepContent(prCtx: PRContext, currentFilePath: string | null) {
-	const queryFilePath = currentFilePath ?? "";
-	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
-		{
-			repoPath: prCtx.repoPath,
-			baseBranch: prCtx.targetBranch,
-			headBranch: prCtx.sourceBranch,
-		},
-		{ staleTime: 60_000 }
+import { SNAPSHOT_REFRESH, snapshotContentMessage, useReviewSnapshot } from "./useReviewSnapshot";
+
+export function useStepContent(
+	workspaceId: string,
+	prCtx: PRContext,
+	details: GitHubPRDetails,
+	currentFilePath: string | null
+) {
+	const revision = useReviewSnapshot(
+		workspaceId,
+		prCtx,
+		details.baseCommitOid,
+		details.headCommitOid
 	);
-	const originalQuery = trpc.diff.getFileContent.useQuery(
-		{
-			repoPath: prCtx.repoPath,
-			ref: branchDiffQuery.data?.mergeBase ?? "",
-			filePath:
-				branchDiffQuery.data?.files.find((file) => file.path === currentFilePath)?.oldPath ??
-				queryFilePath,
-		},
-		{
-			enabled: currentFilePath !== null && branchDiffQuery.data?.mergeBase != null,
-			staleTime: 60_000,
-		}
+	const file = revision.snapshot?.files.find((file) => file.path === currentFilePath);
+	const input = { workspaceId, snapshotId: revision.snapshot?.id ?? "", fileId: file?.id ?? "" };
+	const options = { enabled: !!file, staleTime: 0, retry: false, refetchOnWindowFocus: false };
+	const originalQuery = trpc.reviewExplanation.getSnapshotFile.useQuery(
+		{ ...input, side: "base" },
+		options
 	);
-	const modifiedQuery = trpc.diff.getFileContent.useQuery(
-		{ repoPath: prCtx.repoPath, ref: prCtx.sourceBranch, filePath: queryFilePath },
-		{ enabled: currentFilePath !== null, staleTime: 60_000 }
+	const modifiedQuery = trpc.reviewExplanation.getSnapshotFile.useQuery(
+		{ ...input, side: "head" },
+		options
 	);
-	const unavailable = branchDiffQuery.isError || originalQuery.isError || modifiedQuery.isError;
+	const failed =
+		!revision.available || revision.isError || originalQuery.isError || modifiedQuery.isError;
 	const isLoading =
 		currentFilePath !== null &&
-		!unavailable &&
-		(branchDiffQuery.data?.mergeBase == null || originalQuery.isPending || modifiedQuery.isPending);
-	const originalContent = isLoading || unavailable ? "" : (originalQuery.data?.content ?? "");
-	const modifiedContent = isLoading || unavailable ? "" : (modifiedQuery.data?.content ?? "");
-	const binary =
-		branchDiffQuery.data?.files.find((file) => file.path === currentFilePath)?.status ===
-			"binary" ||
-		originalContent.includes("\0") ||
-		modifiedContent.includes("\0");
-	const validDiffLines = useMemo(() => {
-		const fileData = branchDiffQuery.data?.files.find((file) => file.path === currentFilePath);
-		if (!fileData) return undefined;
-		const lines = new Set<number>();
-		for (const hunk of fileData.hunks) {
-			for (const diffLine of hunk.lines) {
-				if (diffLine.newLineNumber != null) lines.add(diffLine.newLineNumber);
+		!failed &&
+		(revision.isPending || (!!file && (originalQuery.isPending || modifiedQuery.isPending)));
+	const original = originalQuery.data;
+	const modified = modifiedQuery.data;
+	const binary = [original, modified].some(
+		(value) => value?.kind === "omitted" && value.reason === "binary"
+	);
+	const unavailable =
+		failed ||
+		(!isLoading &&
+			currentFilePath !== null &&
+			(!file ||
+				[original, modified].some(
+					(value) => !value || value.kind === "unavailable" || value.kind === "omitted"
+				)));
+	const originalContent =
+		!isLoading && !unavailable && original?.kind === "text" ? original.content : "";
+	const modifiedContent =
+		!isLoading && !unavailable && modified?.kind === "text" ? modified.content : "";
+	const contentMessage = failed
+		? SNAPSHOT_REFRESH
+		: !isLoading && !file && currentFilePath !== null
+			? "File is not part of this snapshot. Refresh the PR to update its file list."
+			: !isLoading
+				? ([original, modified]
+						.filter((value) => value?.kind !== "absent" && value?.kind !== "text")
+						.map(snapshotContentMessage)[0] ?? null)
+				: null;
+	const { validDiffLines, validOriginalDiffLines } = useMemo(() => {
+		const right = new Set<number>();
+		const left = new Set<number>();
+		if (!isLoading && !unavailable && file) {
+			// Bound expensive comparisons; unknown comment anchors remain disallowed.
+			const patch = structuredPatch(
+				"base",
+				"head",
+				originalContent,
+				modifiedContent,
+				undefined,
+				undefined,
+				{ context: 3, timeout: 100 }
+			);
+			for (const hunk of patch?.hunks ?? []) {
+				let oldLine = hunk.oldStart;
+				let newLine = hunk.newStart;
+				for (const line of hunk.lines) {
+					if (line[0] === " " || line[0] === "-") left.add(oldLine++);
+					if (line[0] === " " || line[0] === "+") right.add(newLine++);
+				}
 			}
 		}
-		return lines;
-	}, [branchDiffQuery.data, currentFilePath]);
-
-	const validOriginalDiffLines = useMemo(() => {
-		const file = branchDiffQuery.data?.files.find((file) => file.path === currentFilePath);
-		if (!file) return undefined;
-		return new Set(
-			file.hunks.flatMap((hunk) =>
-				hunk.lines.flatMap((line) => (line.oldLineNumber == null ? [] : [line.oldLineNumber]))
-			)
-		);
-	}, [branchDiffQuery.data, currentFilePath]);
-
+		return { validDiffLines: right, validOriginalDiffLines: left };
+	}, [isLoading, unavailable, file, originalContent, modifiedContent]);
 	return {
 		originalContent,
 		modifiedContent,
 		isLoading,
 		unavailable,
 		binary,
+		contentMessage,
+		originalState: original,
+		modifiedState: modified,
 		validDiffLines,
 		validOriginalDiffLines,
 	};

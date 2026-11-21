@@ -26,7 +26,24 @@ async function snapshotCall<T>(action: () => Promise<T>): Promise<T> {
 export function createReviewExplanationRouter(service: ReviewSnapshotService) {
 	return router({
 		resolveSnapshot: publicProcedure
-			.input(z.object({ workspaceId, targetTipOid: oid, headOid: oid }).strict())
+			.input(
+				z
+					.object({
+						workspaceId,
+						targetTipOid: oid,
+						headOid: oid,
+						review: z
+							.object({
+								provider: z.enum(["github", "bitbucket"]),
+								owner: z.string().min(1).max(256),
+								repo: z.string().min(1).max(256),
+								number: z.number().int().positive(),
+							})
+							.strict()
+							.optional(),
+					})
+					.strict()
+			)
 			.query(({ input, signal }) => snapshotCall(() => service.create(input, signal))),
 		getSnapshotFile: publicProcedure
 			.input(
@@ -35,6 +52,18 @@ export function createReviewExplanationRouter(service: ReviewSnapshotService) {
 					.strict()
 			)
 			.query(({ input, signal }) => snapshotCall(() => service.read(input, signal))),
+		getSnapshotContext: publicProcedure
+			.input(
+				z
+					.object({
+						workspaceId,
+						snapshotId: id,
+						path: z.string().min(1).max(4096),
+						side: z.enum(["base", "head"]),
+					})
+					.strict()
+			)
+			.query(({ input, signal }) => snapshotCall(() => service.readContext(input, signal))),
 	});
 }
 

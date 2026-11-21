@@ -48,6 +48,7 @@ export function StepDiffView({
 		isLoading,
 		unavailable,
 		binary,
+		contentMessage,
 		setEditor,
 		markdownPaneRef,
 		handleMarkdownPaneScroll,
@@ -165,6 +166,7 @@ export function StepDiffView({
 				loading={isLoading}
 				unavailable={unavailable}
 				binary={binary}
+				contentMessage={contentMessage}
 				onEditorReady={setEditor}
 				paneRef={markdownPaneRef}
 				onPaneScroll={handleMarkdownPaneScroll}
