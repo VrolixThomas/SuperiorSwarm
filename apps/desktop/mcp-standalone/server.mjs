@@ -1004,6 +1004,29 @@ if (isWorkspaceAgentOrCrossRepo) {
 			} catch {
 				parsed = { raw: text };
 			}
+			// A successful fetch precedes the receipt. A failed read never retires pending answers.
+			if (res.ok && path.startsWith("/workspaces.read_messages?") && ctx.queueReporter) {
+				const messageIds = (parsed.messages ?? [])
+					.filter((message) => message.kind === "answer")
+					.map((message) => message.id);
+				if (messageIds.length) {
+					const receipt = await fetch(`${baseUrl}/workspaces.acknowledge_answers`, {
+						method: "POST",
+						headers: {
+							Authorization: authHeader,
+							...callerHeader,
+							"X-Queue-Reporter": JSON.stringify(ctx.queueReporter),
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ messageIds }),
+					});
+					if (!receipt.ok)
+						throw new Error(
+							"Could not confirm inbox retrieval; the answer remains pending. Reconnect this conversation and retry."
+						);
+				}
+			}
+
 			if (res.ok && ["/workspaces.set_status", "/workspaces.send_message"].includes(path)) {
 				parsed.queue_identity = {
 					protocol: 1,

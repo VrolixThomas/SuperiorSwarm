@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { z } from "zod";
 import {
 	ForbiddenError,
 	NotFoundError,
@@ -59,6 +60,7 @@ import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-p
 import {
 	type CallerContext,
 	type SpawnFn,
+	acknowledgeQuestionAnswers,
 	createWorkspace,
 	dispatchAgent,
 	getWorkspace,
@@ -1324,7 +1326,30 @@ async function handleRequest(
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
 				}
-				respond(res, 200, requestId, await readMessages(caller, parsed.data));
+				respond(
+					res,
+					200,
+					requestId,
+					await readMessages({ ...caller, deferQueueRetrieval: true }, parsed.data)
+				);
+				return;
+			}
+
+			case "POST /workspaces.acknowledge_answers": {
+				const body = await readJson(req, 32_768);
+				const parsed = z
+					.object({ messageIds: z.array(z.string().min(1).max(200)).max(200) })
+					.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller || !caller.queueIdentityVerified) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, acknowledgeQuestionAnswers(caller, parsed.data.messageIds));
 				return;
 			}
 

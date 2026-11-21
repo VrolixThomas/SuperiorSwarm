@@ -211,6 +211,28 @@ test.skipIf(process.platform !== "darwin")(
 								}
 							);
 							expect((await unpinned.json()).messages).toEqual([]);
+							const fetched = await fetch(
+								`http://127.0.0.1:${server.port}/workspaces.read_messages?includeBroadcasts=false`,
+								{
+									headers: {
+										Authorization: `Bearer ${server.token}`,
+										"X-Workspace-Id": workspaceId,
+										"X-Terminal-Id": terminalId,
+										"X-Queue-Reporter": JSON.stringify(question.target),
+									},
+								}
+							);
+							expect(fetched.ok).toBe(true);
+							expect((await fetched.json()).messages).toHaveLength(1);
+							// Simulate lost/aborted handoff: no transport receipt means still pending.
+							expect(
+								getDb()
+									.select()
+									.from(agentMessages)
+									.where(eq(agentMessages.inReplyTo, question.question.messageId))
+									.get()?.retrievedAt
+							).toBeNull();
+
 							const read = await client.callTool({
 								name: "read_messages",
 								arguments: { include_broadcasts: false },

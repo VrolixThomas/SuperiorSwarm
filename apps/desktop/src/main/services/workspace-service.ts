@@ -698,10 +698,12 @@ export type CallerContext =
 			projectId: string;
 			terminalId?: string;
 			queueIdentityVerified?: boolean;
+			deferQueueRetrieval?: boolean;
 	  }
 	| {
 			kind: "xro";
 			queueIdentityVerified?: boolean;
+			deferQueueRetrieval?: boolean;
 			terminalId?: string;
 			xroId: string;
 			linkedProjectIds: string[];
@@ -1138,7 +1140,7 @@ export async function readMessages(
 				recipient.providerSessionId !== caller.providerSessionId
 			)
 				return false;
-			if (!row.retrievedAt)
+			if (!row.retrievedAt && !ctx.deferQueueRetrieval)
 				db.update(agentMessages)
 					.set({ retrievedAt: new Date() })
 					.where(eq(agentMessages.id, row.id))
@@ -1191,6 +1193,48 @@ export async function readMessages(
 		.all();
 
 	return { messages: visible(rows).map(messageRowToDto) };
+}
+
+/** HTTP callers confirm only after receiving the inbox payload; an aborted read is not delivery. */
+export function acknowledgeQuestionAnswers(
+	ctx: CallerContext,
+	messageIds: string[]
+): { retrieved: string[] } {
+	const owner =
+		ctx.queueIdentityVerified === false
+			? null
+			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
+	if (!owner) return { retrieved: [] };
+	const db = getDb();
+	return db.transaction(() => {
+		const retrieved: string[] = [];
+		for (const id of new Set(messageIds)) {
+			const answer = db.select().from(agentMessages).where(eq(agentMessages.id, id)).get();
+			const recipient = answer?.recipient;
+			if (
+				!answer ||
+				answer.kind !== "answer" ||
+				recipient?.type !== "terminal" ||
+				recipient.workspaceId !== owner.workspaceId ||
+				recipient.terminalId !== owner.terminalId ||
+				recipient.provider !== owner.provider ||
+				recipient.providerSessionId !== owner.providerSessionId
+			)
+				continue;
+			if (
+				ctx.kind === "xro"
+					? !ctx.linkedProjectIds.includes(answer.projectId)
+					: answer.projectId !== ctx.projectId
+			)
+				continue;
+			db.update(agentMessages)
+				.set({ retrievedAt: answer.retrievedAt ?? new Date() })
+				.where(eq(agentMessages.id, id))
+				.run();
+			retrieved.push(id);
+		}
+		return { retrieved };
+	});
 }
 
 export interface RespawnAgentArgs {

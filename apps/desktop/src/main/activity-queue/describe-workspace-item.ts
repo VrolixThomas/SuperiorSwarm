@@ -53,7 +53,7 @@ export function describeWorkspaceItem(
 		"agent-question": {
 			why: "Answer the question",
 			nextAction:
-				"Submit an explicit correlated answer. Ordinary chat input does not answer this MCP question.",
+				"Send an answer to this question. Ordinary chat input does not submit an answer here.",
 			openLabel: "Open question’s conversation",
 			detailLabel: "Question from the agent",
 			missingContext: "The question text is unavailable here. Open the workspace to read it.",
