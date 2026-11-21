@@ -56,7 +56,10 @@ function row(
 		clearsWhen: "Clears when the agent continues.",
 	};
 }
-async function mount(initial = [row("one"), row("two", "agent-ready")]) {
+async function mount(
+	initial = [row("one"), row("two", "agent-ready")],
+	answer?: import("../src/renderer/components/queue/QueueQuestionReply").AnswerQuestion
+) {
 	const host = document.createElement("div");
 	document.body.append(host);
 	root = createRoot(host);
@@ -77,6 +80,7 @@ async function mount(initial = [row("one"), row("two", "agent-ready")]) {
 	const draw = () =>
 		root?.render(
 			<QueueScreen
+				answer={answer}
 				data={data()}
 				pendingItems={rows}
 				view={view}
@@ -446,4 +450,47 @@ test("handling an item from narrow details returns focus to the visible next row
 		"absolute"
 	);
 	expect(document.activeElement?.getAttribute("data-queue-row")).toBe("two");
+});
+
+test("unconfirmed permission outcome is shown as unknown without invented success", async () => {
+	const item = row("permission");
+	item.situation = "agent-permission";
+	item.permission = { outcome: "unconfirmed" };
+	item.nextAction = "Review the conversation to determine the permission outcome.";
+	await mount([item]);
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	expect(panel?.textContent).toContain("Permission outcome unknown");
+	expect(panel?.textContent).toContain("does not confirm that the requested action ran");
+	expect(panel?.textContent).not.toContain("Permission: allowed");
+});
+
+test("an in-flight answer blocks other queue actions and preserves its draft on failure", async () => {
+	const item = row("question");
+	item.question = { messageId: "q", replyCapability: "mcp-inbox" };
+	let fail: () => void = () => {};
+	const response = new Promise<import("../src/shared/activity-queue").WorkspaceQueueAnswerResult>(
+		(_resolve, reject) => {
+			fail = () => reject(Error("Delivery failed"));
+		}
+	);
+	const f = await mount([item], async () => response);
+	const input = document.querySelector("textarea");
+	if (!input) throw Error("Missing answer input");
+	await act(() => {
+		Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set?.call(
+			input,
+			"Preserve this draft"
+		);
+		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+	});
+	await click("Send answer");
+	await key("e", document.querySelector("main"));
+	await key("Enter", document.querySelector("main"));
+	expect(f.calls).toHaveLength(0);
+	await act(async () => {
+		fail();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	expect(input.value).toBe("Preserve this draft");
+	expect(document.body.textContent).toContain("Delivery failed");
 });

@@ -467,6 +467,48 @@ async function run() {
 			.capturePage()
 			.then((c) => writeFileSync(join(root, `queue-${name}-context.png`), c.toPNG()));
 	}
+	step = "permission outcome remains unknown after uncorrelated Stop";
+	const permissionItem = (await listWorkspaceQueue()).items.find(
+		(item) => item.situation === "agent-permission"
+	);
+	if (!permissionItem) throw new Error("Missing native permission request");
+	manager.handleAgentEvent({
+		agent: "codex",
+		sessionId: "terminal-w3",
+		terminalId: "terminal-w3",
+		workspaceId: "w3",
+		providerSessionId: "provider-w3",
+		timestamp: Date.now(),
+		producerTimestamp: Date.now(),
+		cwd: root,
+		rawEvent: "Stop",
+		turnId: "permission",
+		alert: "task-complete",
+	});
+	const unconfirmed = (await listWorkspaceQueue()).items.find(
+		(item) => item.id === permissionItem.id
+	);
+	if (
+		unconfirmed?.permission?.outcome !== "unconfirmed" ||
+		unconfirmed.revision !== permissionItem.revision
+	)
+		throw new Error("Unconfirmed permission outcome lost attention or changed receipt");
+	await click("Refresh queue");
+	await js(
+		`[...document.querySelectorAll('[data-queue-row]')].find(row=>row.dataset.queueRow===${JSON.stringify(permissionItem.id)}).click()`
+	);
+	await until(() =>
+		js<boolean>("document.body.textContent.includes('Permission outcome unknown')")
+	);
+	if (
+		await js<boolean>(
+			"document.querySelector('[aria-label=\"Queue item details\"]').textContent.includes('choose whether to allow')"
+		)
+	)
+		throw new Error("Unknown outcome incorrectly asks for approval again");
+	await contents
+		.capturePage()
+		.then((c) => writeFileSync(join(root, "queue-permission-unconfirmed.png"), c.toPNG()));
 	step = "grouped report retains both revision receipts";
 	const grouped = (await listWorkspaceQueue()).items.find(
 		(item) => item.id === "agent-workspace:w2"

@@ -226,6 +226,20 @@ export function QueueScreen({
 			setBusy(false);
 		}
 	};
+	const sendAnswer: AnswerQuestion | undefined = answer
+		? async (input) => {
+				if (running.current)
+					return { status: "unavailable", reason: "Another queue action is still running." };
+				running.current = true;
+				setBusy(true);
+				try {
+					return await answer(input);
+				} finally {
+					running.current = false;
+					setBusy(false);
+				}
+			}
+		: undefined;
 	return (
 		<main
 			ref={root}
@@ -524,7 +538,7 @@ export function QueueScreen({
 							setDetailsOpen(false);
 							detailsButton.current?.focus();
 						}}
-						answer={answer}
+						answer={sendAnswer}
 						refresh={refresh}
 						item={selected}
 						later={view === "later"}

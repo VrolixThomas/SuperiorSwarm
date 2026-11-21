@@ -174,7 +174,9 @@ export function QueuePanel({
 					))}
 					{item.permission && (
 						<p className="text-[11px] text-[var(--text-tertiary)]">
-							Permission: {item.permission.outcome}
+							{item.permission.outcome === "unconfirmed"
+								? "Permission outcome unknown"
+								: `Permission: ${item.permission.outcome}`}
 							{item.permission.requestId ? ` · ${item.permission.requestId}` : ""}. This status does
 							not confirm that the requested action ran.
 						</p>
