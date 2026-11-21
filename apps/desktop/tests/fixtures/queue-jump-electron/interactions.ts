@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import type { BrowserWindow } from "electron";
+import { type BrowserWindow, app } from "electron";
 import {
 	bringBack,
 	later,
@@ -10,6 +10,7 @@ import {
 import { getDb } from "../../../src/main/db";
 import {
 	agentMessages,
+	agentSessions,
 	crossRepoOrchestrators,
 	terminalSessions,
 	ticketCache,
@@ -76,6 +77,84 @@ export async function checkJumpInteractions(
 		writes++;
 		return originalWrite(...args);
 	};
+	const checkChatMenu = async (scope: string, width: number, height: number) => {
+		step = `read-only ${scope} own-chat menu`;
+		app.focus({ steal: true });
+		win.focus();
+		web.focus();
+		win.setContentSize(width, height);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await until(() => js<boolean>("!!document.querySelector('[aria-label=\"New agent chat\"]')"));
+		const terminalIds = getDb()
+			.select()
+			.from(terminalSessions)
+			.all()
+			.map((row) => row.id)
+			.sort()
+			.join();
+		const agentIds = getDb()
+			.select()
+			.from(agentSessions)
+			.all()
+			.map((row) => row.terminalId)
+			.sort()
+			.join();
+		await click("New agent chat");
+		await until(() =>
+			js<boolean>("!!document.querySelector('[aria-label=\"Start an agent chat\"]')")
+		);
+		check(
+			await js<boolean>(
+				`(()=>{const menu=document.querySelector('[aria-label="Start an agent chat"]');const r=menu.getBoundingClientRect();const labels=[...menu.querySelectorAll('[role="menuitem"]')].map(b=>b.textContent.trim()).join('|');return labels==='New Claude chat|New Codex chat'&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&menu.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`
+			),
+			"Own-chat menu missing, clipped or obscured"
+		);
+		await until(() =>
+			js<boolean>("document.activeElement?.textContent.trim()==='New Claude chat'")
+		);
+		key("Down");
+		await until(() => js<boolean>("document.activeElement?.textContent.trim()==='New Codex chat'"));
+		await js("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+		await new Promise((resolve) => setTimeout(resolve, 160));
+		check(
+			await js<boolean>(
+				"(()=>{const menu=document.querySelector('[aria-label=\"Start an agent chat\"]');return !!menu&&getComputedStyle(menu).visibility==='visible'&&getComputedStyle(menu).opacity==='1'})()"
+			),
+			"Menu disappeared before paint"
+		);
+		await web
+			.capturePage()
+			.then((image) => writeFileSync(join(root, `owned-chat-menu-${scope}.png`), image.toPNG()));
+		key("Escape");
+		await until(() =>
+			js<boolean>("!document.querySelector('[aria-label=\"Start an agent chat\"]')")
+		);
+		check(
+			await js<boolean>("document.activeElement?.getAttribute('aria-label')==='New agent chat'"),
+			"Menu Escape failed to restore trigger focus"
+		);
+		check(
+			getDb()
+				.select()
+				.from(terminalSessions)
+				.all()
+				.map((row) => row.id)
+				.sort()
+				.join() === terminalIds,
+			"Viewing menu created a terminal row"
+		);
+		check(
+			getDb()
+				.select()
+				.from(agentSessions)
+				.all()
+				.map((row) => row.terminalId)
+				.sort()
+				.join() === agentIds,
+			"Viewing menu registered an agent"
+		);
+		check(creates === 0 && writes === 0, "Viewing menu launched or typed into a terminal");
+	};
 	step = "first jump";
 	key("j", ["meta"]);
 	await until(() =>
@@ -94,6 +173,7 @@ export async function checkJumpInteractions(
 		"Jump mutated receipts"
 	);
 	check(creates === 0, "Jump created a replacement terminal");
+	await checkChatMenu("workspace", 1440, 900);
 	await js(
 		"document.querySelector('[data-terminal-id=\"terminal-w1\"] .xterm-helper-textarea').focus()"
 	);
@@ -396,6 +476,7 @@ export async function checkJumpInteractions(
 	);
 	check(creates === 0 && writes === 0, "Coordinator navigation injected input or replaced shell");
 	await web.capturePage().then((c) => writeFileSync(join(root, "coordinator-bar.png"), c.toPNG()));
+	await checkChatMenu("coordinator", 800, 600);
 
 	manager.registerManagedSession({
 		terminalId: "coordinator-chat",
@@ -407,10 +488,39 @@ export async function checkJumpInteractions(
 	await refresh();
 	await until(() => js<boolean>("!document.querySelector('[aria-label=\"Queue navigation\"]')"));
 	check(creates === 0 && writes === 0, "Replaced conversation inherited bar actions");
+	step = "folder own-chat menu";
+	const folderPath = join(root, "folder-0");
+	mkdirSync(folderPath, { recursive: true });
+	getDb()
+		.insert(terminalSessions)
+		.values({
+			id: "folder-menu-chat",
+			workspaceId: "folder-0-default",
+			cwd: folderPath,
+			title: "Folder terminal",
+			sortOrder: 0,
+			updatedAt: new Date(),
+		})
+		.run();
+	await originalCreate(
+		"folder-menu-chat",
+		folderPath,
+		() => {},
+		() => {},
+		{ SHELL: "/bin/sh" }
+	);
+	await js(`window.queueFixture.showFolder(${JSON.stringify(folderPath)})`);
+	await until(() =>
+		js<boolean>(
+			"document.querySelector('[data-queue-header]')?.textContent.includes('Folder 1')??false"
+		)
+	);
+	await checkChatMenu("folder", 800, 600);
 	writeFileSync(
 		join(root, "result.json"),
 		JSON.stringify(
 			{
+				ownedChatMenus: true,
 				jump: true,
 				peek: true,
 				receipts: true,
