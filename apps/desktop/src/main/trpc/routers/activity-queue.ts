@@ -10,12 +10,17 @@ import { linkedWorkForEntity } from "../../activity-queue/linked-context";
 import { getActivityQueueService } from "../../activity-queue/service";
 import {
 	bringBack,
+	currentQueueAction,
 	later,
 	listWorkspaceQueue,
 	undoDone,
 	workspaceAnswer,
 	workspaceDone,
 } from "../../activity-queue/workspace-queue";
+import {
+	decideQueuePermission,
+	getQueuePermissionCapability,
+} from "../../agent-hooks/permission-runtime";
 import { publicProcedure, router } from "../index";
 
 const workspaceRevision = z.object({
@@ -28,6 +33,25 @@ const workspaceRevision = z.object({
 });
 
 export const activityQueueRouter = router({
+	workspacePermissionCapability: publicProcedure
+		.input(workspaceRevision)
+		.query(async ({ input }) => {
+			const item = await currentQueueAction(input);
+			return item
+				? getQueuePermissionCapability(item)
+				: {
+						capability: "unavailable" as const,
+						detail: "This queue update changed. Refresh before responding.",
+					};
+		}),
+	workspacePermissionDecision: publicProcedure
+		.input(
+			workspaceRevision.extend({
+				requestId: z.string().min(1).max(256),
+				action: z.enum(["allow-once", "deny", "open"]),
+			})
+		)
+		.mutation(({ input }) => decideQueuePermission(input)),
 	workspaceLinkedContext: publicProcedure
 		.input(z.object({ kind: z.enum(["workspace", "coordinator"]), id: z.string().min(1) }))
 		.query(({ input }) => linkedWorkForEntity(input)),

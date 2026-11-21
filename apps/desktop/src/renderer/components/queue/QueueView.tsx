@@ -22,7 +22,9 @@ import type { AnswerQuestion } from "./QueueQuestionReply";
 import { QueueRow, queueFocus } from "./QueueRow";
 
 import { useQueueConversationActions } from "../../hooks/useQueueConversationActions";
+import { useQueuePermissionActions } from "../../hooks/useQueuePermissionActions";
 import type { QueueConversationActions } from "./QueueConversationReply";
+import type { QueuePermissionActionsAPI } from "./QueuePermissionActions";
 
 const EMPTY: WorkspaceQueueItem[] = [];
 type Receipt = WorkspaceQueueRevisionInput;
@@ -45,6 +47,7 @@ export interface QueueScreenProps {
 	undoDone: (receipt: Receipt) => Promise<Result>;
 	answer?: AnswerQuestion;
 	conversationActions?: QueueConversationActions;
+	permissionActions?: QueuePermissionActionsAPI;
 }
 export function QueueScreen({
 	data,
@@ -63,6 +66,7 @@ export function QueueScreen({
 	undoDone,
 	answer,
 	conversationActions,
+	permissionActions,
 }: QueueScreenProps) {
 	const [filter, setFilter] = useState<WorkspaceQueueFilter>("all");
 	const [group, setGroup] = useState(false);
@@ -546,6 +550,7 @@ export function QueueScreen({
 						}}
 						answer={sendAnswer}
 						conversationActions={conversationActions}
+						permissionActions={permissionActions}
 						refresh={refresh}
 						item={selected}
 						later={view === "later"}
@@ -643,6 +648,7 @@ export function QueueScreen({
 
 export function QueueView() {
 	const conversationActions = useQueueConversationActions();
+	const permissionActions = useQueuePermissionActions();
 	const selectedId = useActivityQueueStore((s) => s.selectedWorkspaceItemId);
 	const [view, setView] = useState<"pending" | "later">("pending");
 	const query = useWorkspaceQueue(view);
@@ -680,6 +686,7 @@ export function QueueView() {
 			undoDone={(input) => undoDone.mutateAsync(input)}
 			answer={(input) => answer.mutateAsync(input)}
 			conversationActions={conversationActions}
+			permissionActions={permissionActions}
 		/>
 	);
 }
