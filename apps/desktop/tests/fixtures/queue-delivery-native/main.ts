@@ -7,7 +7,7 @@ db.pragma("journal_mode=WAL");
 db.exec(
 	"CREATE TABLE agent_messages(id TEXT PRIMARY KEY,kind TEXT,reporter TEXT,recipient TEXT,in_reply_to TEXT,project_id TEXT,from_workspace_id TEXT,to_workspace_id TEXT,created_at INTEGER,retrieved_at INTEGER,content TEXT);CREATE TABLE activity_queue_deliveries(request_id TEXT PRIMARY KEY,fingerprint TEXT,target TEXT,members TEXT,state TEXT,created_at INTEGER);CREATE TABLE agent_sessions(terminal_id TEXT PRIMARY KEY,workspace_id TEXT,entity_kind TEXT,provider TEXT,provider_session_id TEXT,state TEXT);CREATE TABLE terminal_sessions(id TEXT PRIMARY KEY,workspace_id TEXT);CREATE TABLE activity_queue_sources(source_id TEXT PRIMARY KEY,revision INTEGER,acknowledged_revision INTEGER,error TEXT,candidate TEXT);"
 );
-const target = {
+const target: import("../../../src/shared/queue-resume").QueueLaunchOwner = {
 	type: "terminal",
 	workspaceId: "w",
 	entity: { kind: "workspace", id: "w" },
@@ -71,6 +71,29 @@ assert.equal(
 	).revision,
 	2
 );
+
+db.prepare("UPDATE agent_sessions SET state='hibernating' WHERE terminal_id='t'").run();
+let signals = 0;
+assert.equal(
+	admission.signalSleep("t", target, () => {
+		signals++;
+		assert.throws(
+			() => other.prepare("UPDATE agent_sessions SET state='running' WHERE terminal_id='t'").run(),
+			/locked|busy/i
+		);
+		return true;
+	}),
+	true
+);
+other.prepare("UPDATE agent_sessions SET state='running' WHERE terminal_id='t'").run();
+assert.equal(
+	admission.signalSleep("t", target, () => {
+		signals++;
+		return true;
+	}),
+	false
+);
+assert.equal(signals, 1);
 other.close();
 db.close();
 console.log("native WAL lock, durable uncertainty, replay, and later occurrence: PASS");

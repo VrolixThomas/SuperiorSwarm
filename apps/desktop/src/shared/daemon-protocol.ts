@@ -67,7 +67,7 @@ export type ClientMessage =
 			providerSessionId: string;
 	  }
 	| {
-			type: "queue-sleep-complete" | "queue-park-root";
+			type: "queue-sleep-complete" | "queue-park-root" | "queue-stop-sleep";
 			id: string;
 			requestId: string;
 			generation: string;

@@ -36,6 +36,10 @@ export class ScrollbackStore {
 		return new QueueDeliveryAdmission(this.db).admit(requestId, terminalId, content, write, mode);
 	}
 
+	signalQueueSleep(id: string, owner: QueueLaunchOwner, signal: () => boolean) {
+		return new QueueDeliveryAdmission(this.db).signalSleep(id, owner, signal);
+	}
+
 	resumeQueueView(
 		id: string,
 		owner: QueueLaunchOwner,

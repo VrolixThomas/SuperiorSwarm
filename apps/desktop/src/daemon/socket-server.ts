@@ -228,6 +228,24 @@ export class SocketServer {
 				});
 				break;
 			}
+			case "queue-stop-sleep": {
+				const owner = this.ptyManager.fileInputs.sleepOwner(msg.id, msg.generation);
+				let stopped = false;
+				try {
+					stopped =
+						!!owner &&
+						this.scrollbackStore.signalQueueSleep(msg.id, owner, () =>
+							this.ptyManager.signalQueueSleep(msg.id, msg.generation)
+						);
+				} catch {}
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					delivery: stopped ? "admitted" : "rejected",
+				});
+				break;
+			}
+
 			case "queue-park-root": {
 				void this.ptyManager.parkQueueRoot(msg.id, msg.generation).then((ok) =>
 					this.send(socket, {

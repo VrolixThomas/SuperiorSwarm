@@ -186,6 +186,19 @@ export class PosixAgentProcessController implements AgentProcessController {
 		);
 		if (!session) return { ok: false, error: "Terminal session is no longer running" };
 
+		if (this.daemonClient.hasPreparedQueueSleep?.(terminalId)) {
+			if (!(await this.daemonClient.signalQueueSleep(terminalId)))
+				return { ok: false, error: "The chat changed before sleep; no signal was sent" };
+			const deadline = Date.now() + TERMINATE_TIMEOUT_MS;
+			while (Date.now() < deadline) {
+				const inspection = await this.inspectForeground(terminalId, provider);
+				if (inspection.status === "shell") return { ok: true };
+				if (inspection.status === "missing")
+					return { ok: false, error: "The retained terminal is unavailable" };
+				await wait(POLL_INTERVAL_MS);
+			}
+			return { ok: false, error: "The provider did not stop within the sleep deadline" };
+		}
 		if (session.processKind === "provider")
 			return (await this.daemonClient.parkQueueRoot(terminalId))
 				? { ok: true }

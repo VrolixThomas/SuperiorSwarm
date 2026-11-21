@@ -142,7 +142,7 @@ export class DaemonClient {
 				requestId: randomUUID(),
 			})
 		)?.target;
-		if (!lease?.supported) return null;
+		if (!lease?.supported || this.pendingInputTerminals.has(id)) return null;
 		this.sleepGuards.set(id, lease.generation);
 		return lease.generation;
 	}
@@ -162,6 +162,25 @@ export class DaemonClient {
 		} while (Date.now() < deadline);
 		return false;
 	}
+	hasPreparedQueueSleep(id: string): boolean {
+		return this.sleepGuards.has(id);
+	}
+	async signalQueueSleep(id: string): Promise<boolean> {
+		const generation = this.sleepGuards.get(id);
+		if (!this.supportsQueueResume || !generation || this.pendingInputTerminals.has(id))
+			return false;
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-stop-sleep",
+					id,
+					generation,
+					requestId: randomUUID(),
+				})
+			)?.delivery === "admitted"
+		);
+	}
+
 	async parkQueueRoot(id: string): Promise<boolean> {
 		const generation = this.sleepGuards.get(id);
 		if (!this.supportsQueueResume || !generation || this.pendingInputTerminals.has(id))
@@ -443,6 +462,7 @@ export class DaemonClient {
 					| "queue-sleep-prepare"
 					| "queue-sleep-complete"
 					| "queue-park-root"
+					| "queue-stop-sleep"
 					| "queue-resume-target"
 					| "queue-resume-input"
 					| "queue-resume-view";

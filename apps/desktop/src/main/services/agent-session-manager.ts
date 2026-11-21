@@ -906,6 +906,33 @@ export class AgentSessionManager {
 				session.provider,
 				session.providerSessionId
 			);
+			if (
+				getDb().select().from(agentSessions).where(eq(agentSessions.terminalId, terminalId)).get()
+					?.queueLaunchKnown &&
+				!sleepGuard
+			) {
+				if (automatic) return session;
+				throw Error(
+					"Finish the current turn and keep the composer empty before putting this chat to sleep."
+				);
+			}
+			const fresh = this.getSession(terminalId);
+			if (
+				!fresh ||
+				fresh.workspaceId !== session.workspaceId ||
+				fresh.provider !== session.provider ||
+				fresh.providerSessionId !== session.providerSessionId ||
+				fresh.state !== session.state ||
+				fresh.lastEventAt?.getTime() !== session.lastEventAt?.getTime()
+			) {
+				if (automatic) return fresh;
+				throw Error("The chat changed before sleep; try again after its current turn finishes.");
+			}
+			if (
+				automatic &&
+				(fresh.keepRunning || this.visibleTerminals.has(terminalId) || !this.getSettings().enabled)
+			)
+				return fresh;
 			if (canContinue && !canContinue()) return null;
 			this.updateState(terminalId, "hibernating", { lastError: null });
 			let result: AgentTerminationResult;

@@ -227,3 +227,69 @@ test("pending app policy binds only after its launchId and is consumed after suc
 	await Promise.resolve();
 	expect(registrations).toBe(1);
 });
+
+test("known launch without an exact clean sleep proof never terminates or changes live state", async () => {
+	const f = await fixture();
+	let terminated = 0;
+	Object.assign(f.daemon, { prepareQueueSleep: async () => null });
+	getDb()
+		.update(agentSessions)
+		.set({ queueLaunchKnown: true, state: "idle", lastError: null })
+		.where(eq(agentSessions.terminalId, f.id))
+		.run();
+	const manager = new AgentSessionManager({
+		daemonClient: f.daemon as unknown as DaemonClient,
+		processController: {
+			async inspectForeground() {
+				return { status: "agent" as const };
+			},
+			async terminateForeground() {
+				terminated++;
+				return { ok: true };
+			},
+		},
+		getSettings: () => ({ enabled: false, idleMinutes: 5, keepOrchestratorsAwake: true }),
+	});
+	managers.push(manager);
+	await expect(manager.sleepNow(f.id)).rejects.toThrow("composer empty");
+	expect(terminated).toBe(0);
+	expect(manager.getSession(f.id)?.state).toBe("idle");
+	expect(f.writes).toEqual([]);
+});
+
+test("a callback during sleep preparation prevents terminating the newly active chat", async () => {
+	const f = await fixture();
+	let killed = 0;
+	getDb()
+		.update(agentSessions)
+		.set({ queueLaunchKnown: true, state: "idle", lastError: null })
+		.where(eq(agentSessions.terminalId, f.id))
+		.run();
+	Object.assign(f.daemon, {
+		prepareQueueSleep: async () => {
+			getDb()
+				.update(agentSessions)
+				.set({ state: "running", lastEventAt: new Date(Date.now() + 100) })
+				.where(eq(agentSessions.terminalId, f.id))
+				.run();
+			return "lease";
+		},
+	});
+	const manager = new AgentSessionManager({
+		daemonClient: f.daemon as unknown as DaemonClient,
+		processController: {
+			async inspectForeground() {
+				return { status: "agent" as const };
+			},
+			async terminateForeground() {
+				killed++;
+				return { ok: true };
+			},
+		},
+		getSettings: () => ({ enabled: false, idleMinutes: 5, keepOrchestratorsAwake: true }),
+	});
+	managers.push(manager);
+	await expect(manager.sleepNow(f.id)).rejects.toThrow("changed before sleep");
+	expect(killed).toBe(0);
+	expect(manager.getSession(f.id)?.state).toBe("running");
+});

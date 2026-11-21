@@ -220,6 +220,11 @@ export class FileInputSessions {
 			!validQueueLaunch(descriptor)
 		)
 			return false;
+		try {
+			queueResumeArgs(descriptor, providerSessionId);
+		} catch {
+			return false;
+		}
 		const identity = session.inspect?.();
 		if (!identity || !this.providerIdentity(identity, descriptor.provider)) return false;
 		if (
@@ -305,6 +310,15 @@ export class FileInputSessions {
 		};
 		return { generation, supported: true, foreground: ready.foreground };
 	}
+	sleepOwner(id: string, generation: string): QueueLaunchOwner | null {
+		const s = this.sessions.get(id);
+		return s?.launch && this.canPark(id, generation) ? s.launch.owner : null;
+	}
+	sleepProcess(id: string, generation: string): TerminalProcessIdentity | null {
+		const s = this.sessions.get(id);
+		return s?.sleep && this.canPark(id, generation) ? s.sleep.runningIdentity : null;
+	}
+
 	canPark(id: string, generation: string): boolean {
 		const s = this.sessions.get(id);
 		const p = s?.sleep;

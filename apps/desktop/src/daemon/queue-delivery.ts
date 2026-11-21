@@ -97,6 +97,31 @@ export class QueueDeliveryAdmission {
 			.immediate();
 	}
 
+	signalSleep(id: string, owner: QueueLaunchOwner, signal: () => boolean): boolean {
+		return this.db
+			.transaction(() => {
+				const row = this.db
+					.prepare(
+						"SELECT a.*,t.workspace_id AS terminal_owner FROM agent_sessions a JOIN terminal_sessions t ON t.id=a.terminal_id WHERE a.terminal_id=?"
+					)
+					.get(id) as Record<string, unknown> | undefined;
+				if (
+					!row ||
+					owner.terminalId !== id ||
+					owner.entity?.id !== owner.workspaceId ||
+					row["state"] !== "hibernating" ||
+					row["workspace_id"] !== owner.workspaceId ||
+					row["terminal_owner"] !== owner.workspaceId ||
+					row["entity_kind"] !== owner.entity?.kind ||
+					row["provider"] !== owner.provider ||
+					row["provider_session_id"] !== owner.providerSessionId
+				)
+					return false;
+				return signal();
+			})
+			.immediate();
+	}
+
 	private current(
 		row: Intent,
 		terminalId: string,
@@ -174,6 +199,19 @@ export class QueueDeliveryAdmission {
 				!answerContinuationFits(content)
 			)
 				return false;
+			const boundAnswers = this.db
+				.prepare(
+					"SELECT id,recipient FROM agent_messages WHERE kind='answer' AND in_reply_to=? AND project_id=? AND to_workspace_id=? AND created_at>=?"
+				)
+				.all(q["id"], q["project_id"], q["from_workspace_id"], q["created_at"]) as {
+				id: string;
+				recipient: string | null;
+			}[];
+			const validAnswers = boundAnswers.filter((row) => {
+				const recipient = row.recipient ? JSON.parse(row.recipient) : null;
+				return recipient?.type === "terminal" && queueOwnerKey(recipient) === queueOwnerKey(target);
+			});
+			if (validAnswers.length !== 1 || validAnswers[0]?.id !== binding.answerId) return false;
 			questionSource = `agent-question:${binding.questionId}`;
 		}
 		// Message insertion is independent of lazy queue projection. Validate authoritative questions too.

@@ -60,6 +60,7 @@ export class PtyManager {
 			spawn?: typeof pty.spawn;
 			inspect?: (pid: number) => TerminalProcessIdentity | null;
 			replay?: () => TerminalReplayBuffer;
+			signal?: (pid: number) => void;
 		} = {}
 	) {}
 	private spawnProcess: typeof pty.spawn = (...args) => (this.backend.spawn ?? pty.spawn)(...args);
@@ -115,7 +116,9 @@ export class PtyManager {
 			shell,
 			() => ptyProcess.process ?? "",
 			(data) => ptyProcess.write(data),
-			process.platform === "darwin" ? () => this.inspectProcess(ptyProcess.pid) : undefined
+			this.backend.inspect || process.platform === "darwin"
+				? () => this.inspectProcess(ptyProcess.pid)
+				: undefined
 		);
 	}
 
@@ -208,6 +211,19 @@ export class PtyManager {
 			this.fileInputs.completeSleep(id, generation, entry.pty.pid)
 		);
 	}
+	signalQueueSleep(id: string, generation: string): boolean {
+		const entry = this.terminals.get(id);
+		const identity = this.fileInputs.sleepProcess(id, generation);
+		if (!entry || !identity) return false;
+		try {
+			if (this.backend.signal) this.backend.signal(identity.pid);
+			else process.kill(-identity.pid, "SIGTERM");
+			return true;
+		} catch (error) {
+			return (error as NodeJS.ErrnoException).code === "ESRCH";
+		}
+	}
+
 	async parkQueueRoot(id: string, generation: string): Promise<boolean> {
 		const entry = this.terminals.get(id);
 		if (!entry || entry.kind !== "provider" || !this.fileInputs.canPark(id, generation))

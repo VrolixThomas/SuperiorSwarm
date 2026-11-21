@@ -38,7 +38,13 @@ function setup(promptless = false) {
 		disposed: boolean;
 		flush: () => void;
 	}[] = [];
+	const signals: number[] = [];
 	const manager = new PtyManager({
+		signal: (pid) => {
+			signals.push(pid);
+			const p = processes.find((p) => p.pid === pid);
+			if (p) queueMicrotask(p.finish);
+		},
 		inspect: (pid) => identities.get(pid) ?? null,
 		replay: () => {
 			const r = {
@@ -207,6 +213,7 @@ function setup(promptless = false) {
 	};
 	return {
 		manager,
+		signals,
 		owner,
 		processes,
 		replays,
@@ -296,4 +303,23 @@ test("a post-spawn publication failure is uncertain and consumes the one-shot le
 test("promptless typed startup retires only its launcher boundary before the first manual turn", () => {
 	const f = setup(true);
 	expect(f.lease()).toBeTypeOf("string");
+});
+
+test("input arriving after preparation prevents daemon-owned sleep signalling", () => {
+	const f = setup();
+	const content = "task";
+	expect(f.manager.resumeQueueProcess("owner", "c", f.lease(), content, f.owner)).toBe("admitted");
+	const state = {
+		provider: "claude",
+		providerSessionId: f.owner.providerSessionId!,
+		turnId: "ready",
+		promptHash: createHash("sha256").update(content).digest("hex"),
+	};
+	f.manager.fileInputs.conversationState("owner", { ...state, phase: "prompt" });
+	f.manager.fileInputs.conversationState("owner", { ...state, phase: "idle" });
+	const sleep = f.manager.fileInputs.prepareSleep("owner", "c", "claude", state.providerSessionId);
+	if (!sleep) throw Error("Missing guard");
+	f.manager.write("owner", "new draft");
+	expect(f.manager.signalQueueSleep("owner", sleep.generation)).toBe(false);
+	expect(f.signals).toEqual([]);
 });
