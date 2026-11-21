@@ -27,6 +27,7 @@ import {
 import { listCurrentActivityQueue } from "./current-items";
 import { describeWorkspaceItem } from "./describe-workspace-item";
 import { queueEntities } from "./entities";
+import { linkedWorkByWorkspace } from "./linked-context";
 import { isQuestionAnswer } from "./question-answers";
 import { getActivityQueueService } from "./service";
 
@@ -87,6 +88,15 @@ async function currentWorkspaceItems(daemon?: Inventory) {
 			.map((source) => [source.sourceId, source])
 	);
 	const contexts = new Map([...queueEntities()].map(([id, row]) => [id, row.context]));
+	const linkedWork = linkedWorkByWorkspace(
+		[...contexts.values()]
+			.filter((context) => context.entity?.kind === "workspace")
+			.map((context) => context.workspaceId)
+	);
+	for (const context of contexts.values()) {
+		context.linkedWork =
+			context.entity?.kind === "workspace" ? (linkedWork.get(context.workspaceId) ?? []) : [];
+	}
 	const terminals = new Map(
 		db
 			.select()
