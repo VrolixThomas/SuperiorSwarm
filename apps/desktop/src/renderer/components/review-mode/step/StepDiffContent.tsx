@@ -13,6 +13,7 @@ interface Props {
 	loading: boolean;
 	unavailable: boolean;
 	binary: boolean;
+	contentMessage?: string | null;
 	onEditorReady: (editor: monaco.editor.IStandaloneDiffEditor | null) => void;
 	paneRef: RefObject<HTMLDivElement | null>;
 	onPaneScroll: () => void;
@@ -27,6 +28,7 @@ export function StepDiffContent({
 	loading,
 	unavailable,
 	binary,
+	contentMessage,
 	onEditorReady,
 	paneRef,
 	onPaneScroll,
@@ -36,13 +38,15 @@ export function StepDiffContent({
 			? "No files changed"
 			: loading
 				? "Loading file…"
-				: unavailable
-					? "File content is unavailable at this revision."
-					: binary
-						? "Binary file — no text preview available."
-						: !original && !modified
-							? "File is empty or unavailable at this revision."
-							: null;
+				: contentMessage
+					? contentMessage
+					: unavailable
+						? "File content is unavailable at this revision."
+						: binary
+							? "Binary file — no text preview available."
+							: !original && !modified
+								? "File is empty at this revision."
+								: null;
 	const previewOnly = mode === "rendered" || mode === "rich-diff";
 	return (
 		<div className="relative min-h-0 flex-1 overflow-hidden">

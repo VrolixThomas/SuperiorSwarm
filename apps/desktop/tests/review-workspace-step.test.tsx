@@ -52,8 +52,19 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 			additions: 1,
 			deletions: 1,
 		})),
-		headCommitOid: "head",
+		headCommitOid: "a".repeat(40),
+		baseCommitOid: "b".repeat(40),
 	} as unknown as GitHubPRDetails;
+	const snapshot = {
+		id: "c".repeat(64),
+		files: ["a.ts", "b.ts", "README.md"].map((path) => ({ id: path, path })),
+	};
+	const text = (content: string) => ({
+		kind: "text" as const,
+		content,
+		path: "fixture",
+		blobOid: "d".repeat(40),
+	});
 	const callbacks = {} as import(
 		"../src/renderer/components/review-mode/thread/ThreadCard"
 	).ThreadCallbacks;
@@ -93,7 +104,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 		}
 	});
 	test("file switch clears old content while either next side is loading", async () => {
-		let finish: ((value: { content: string }) => void) | undefined;
+		let finish: ((value: ReturnType<typeof text>) => void) | undefined;
 		const view = (filePath: string) => (
 			<StepDiff
 				workspaceId="w"
@@ -109,15 +120,15 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 		);
 		const h = await renderBrowserTest(view("a.ts"), [], false, {
 			request: (path, input) => {
-				if (path === "diff.getBranchDiff") return { mergeBase: "base", files: [] };
+				if (path === "reviewExplanation.resolveSnapshot") return snapshot;
 				if (path === "github.getViewedFiles") return [];
-				if (path === "diff.getFileContent") {
-					const q = input as { filePath: string; ref: string };
-					if (q.filePath === "b.ts" && q.ref === "feature")
+				if (path === "reviewExplanation.getSnapshotFile") {
+					const q = input as { fileId: string; side: string };
+					if (q.fileId === "b.ts" && q.side === "head")
 						return new Promise((resolve) => {
 							finish = resolve;
 						});
-					return { content: `${q.filePath} ${q.ref}` };
+					return text(`${q.fileId} ${q.side}`);
 				}
 				throw Error(path);
 			},
@@ -125,15 +136,15 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 		try {
 			await h.settle();
 			expect(h.container.querySelector("[data-diff]")?.getAttribute("data-modified")).toBe(
-				"a.ts feature"
+				"a.ts head"
 			);
 			await h.rerender(view("b.ts"));
 			expect(h.container.textContent).toContain("Loading");
 			expect(h.container.querySelector("[data-diff]")?.getAttribute("data-modified")).toBe("");
-			await act(async () => finish?.({ content: "b.ts feature" }));
+			await act(async () => finish?.(text("b.ts head")));
 			await h.settle();
 			expect(h.container.querySelector("[data-diff]")?.getAttribute("data-modified")).toBe(
-				"b.ts feature"
+				"b.ts head"
 			);
 		} finally {
 			await h.cleanup();
@@ -149,22 +160,29 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 			addedBy: "agent" as const,
 		};
 		const h = await renderBrowserTest(
-			<ContextFileView prCtx={prCtx} step={step} headRef="head" />,
+			<ContextFileView
+				workspaceId="w"
+				prCtx={prCtx}
+				step={step}
+				headRef={details.headCommitOid}
+				baseRef={details.baseCommitOid}
+			/>,
 			[],
 			false,
 			{
 				request: (path) => {
-					if (path === "diff.getFileContent") return { content: "" };
+					if (path === "reviewExplanation.resolveSnapshot") return snapshot;
+					if (path === "reviewExplanation.getSnapshotContext") return text("");
 					throw Error(path);
 				},
 			}
 		);
 		try {
 			await h.settle();
-			expect(h.container.textContent).toContain("empty or unavailable");
+			expect(h.container.textContent).toContain("File is empty at this revision");
 			expect(h.container.querySelector('input[type="checkbox"]')).toBeNull();
-			expect(h.calls.every((c) => c.path === "diff.getFileContent")).toBe(true);
-			expect(h.calls[0]?.input).toMatchObject({ ref: "head" });
+			expect(h.calls.every((c) => c.path.startsWith("reviewExplanation."))).toBe(true);
+			expect(h.calls[0]?.input).toMatchObject({ headOid: details.headCommitOid });
 		} finally {
 			await h.cleanup();
 		}
@@ -205,10 +223,10 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 			false,
 			{
 				request: (path) =>
-					path === "diff.getBranchDiff"
-						? { mergeBase: "base", files: [] }
-						: path === "diff.getFileContent"
-							? { content: "# Source" }
+					path === "reviewExplanation.resolveSnapshot"
+						? snapshot
+						: path === "reviewExplanation.getSnapshotFile"
+							? text("# Source")
 							: [],
 			}
 		);
@@ -259,10 +277,13 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 		}
 	});
 	test("context readiness is withheld until asynchronous content arrives", async () => {
-		let finish: ((value: { content: string }) => void) | undefined;
+		let finish: ((value: ReturnType<typeof text>) => void) | undefined;
 		let ready = 0;
 		const h = await renderBrowserTest(
 			<ContextFileView
+				workspaceId="w"
+				baseRef={details.baseCommitOid}
+				headRef={details.headCommitOid}
 				prCtx={prCtx}
 				step={{
 					id: "async-context",
@@ -279,15 +300,17 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review steps in isolation")) {
 			[],
 			false,
 			{
-				request: () =>
-					new Promise((resolve) => {
-						finish = resolve;
-					}),
+				request: (path) =>
+					path === "reviewExplanation.resolveSnapshot"
+						? snapshot
+						: new Promise((resolve) => {
+								finish = resolve;
+							}),
 			}
 		);
 		try {
 			expect(ready).toBe(0);
-			await act(async () => finish?.({ content: "export const ready = true;" }));
+			await act(async () => finish?.(text("export const ready = true;")));
 			await h.settle();
 			expect(ready).toBe(1);
 		} finally {

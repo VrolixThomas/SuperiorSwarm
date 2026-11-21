@@ -61,3 +61,35 @@ test("rejects arbitrary roots, ref expressions, unknown workspaces and invalid s
 	).rejects.toThrow();
 	await expect(api.getSnapshotFile({ ...read, workspaceId: "unknown" })).rejects.toThrow();
 });
+
+test("context router requires exact snapshot ownership and can reopen after a reader restart", async () => {
+	let api = caller();
+	const revision = {
+		workspaceId: "registered",
+		targetTipOid: fixture.target,
+		headOid: fixture.head,
+		review: { provider: "github" as const, owner: "org", repo: "repo", number: 1 },
+	};
+	const snapshot = await api.resolveSnapshot(revision);
+	const input = {
+		workspaceId: "registered",
+		snapshotId: snapshot.id,
+		path: "empty.txt",
+		side: "head" as const,
+	};
+	expect(await api.getSnapshotContext(input)).toMatchObject({ kind: "text", content: "" });
+	await expect(api.getSnapshotContext({ ...input, path: "../outside" })).rejects.toThrow();
+	await expect(
+		api.getSnapshotContext({ ...input, repoPath: "/" } as typeof input)
+	).rejects.toThrow();
+	await expect(api.getSnapshotContext({ ...input, workspaceId: "other" })).rejects.toThrow();
+	api = caller();
+	await expect(api.getSnapshotContext(input)).rejects.toThrow("Reopen the revision");
+	expect((await api.resolveSnapshot(revision)).id).toBe(snapshot.id);
+	expect(await api.getSnapshotContext(input)).toMatchObject({ kind: "text", content: "" });
+	const other = await api.resolveSnapshot({
+		...revision,
+		review: { ...revision.review, provider: "bitbucket" },
+	});
+	expect(other.id).not.toBe(snapshot.id);
+});

@@ -50,6 +50,7 @@ function lineCount(content: string): number {
 }
 
 export function useStepDiff({
+	workspaceId,
 	header,
 	prCtx,
 	details,
@@ -112,9 +113,10 @@ export function useStepDiff({
 		isLoading,
 		unavailable,
 		binary,
+		contentMessage,
 		validDiffLines,
 		validOriginalDiffLines,
-	} = useStepContent(prCtx, currentFilePath);
+	} = useStepContent(workspaceId, prCtx, details, currentFilePath);
 	const editorInstance = !hideEditor && !isLoading && !unavailable && !binary ? editor : null;
 	useEffect(() => {
 		onEditorReady?.(editorInstance);
@@ -282,6 +284,7 @@ export function useStepDiff({
 		isLoading,
 		unavailable,
 		binary,
+		contentMessage,
 		setEditor,
 		markdownPaneRef,
 		handleMarkdownPaneScroll,

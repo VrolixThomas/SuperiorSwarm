@@ -3,8 +3,10 @@ import { realpath } from "node:fs/promises";
 import type {
 	ReviewSnapshot,
 	ReviewSnapshotContent,
+	ReviewSnapshotContextRequest,
 	ReviewSnapshotFile,
 	ReviewSnapshotFileRequest,
+	ReviewSnapshotObject,
 	ReviewSnapshotRevision,
 } from "../../shared/review-snapshot-types";
 import { GitReadError, readGit } from "./git-reader";
@@ -156,7 +158,14 @@ export class ReviewSnapshotService {
 			const root = await this.root(input.workspaceId);
 			if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
 			const repositoryKey = hash(root);
-			const id = hash([1, input.workspaceId, repositoryKey, input.targetTipOid, input.headOid]);
+			const id = hash([
+				1,
+				input.workspaceId,
+				repositoryKey,
+				input.targetTipOid,
+				input.headOid,
+				input.review,
+			]);
 			const existing = this.cache.get(id);
 			if (existing) {
 				this.cache.delete(id);
@@ -255,15 +264,8 @@ export class ReviewSnapshotService {
 		callerSignal?: AbortSignal
 	): Promise<ReviewSnapshotContent> {
 		return this.run(async (signal) => {
-			const cached = this.cache.get(input.snapshotId);
-			if (!cached || cached.snapshot.workspaceId !== input.workspaceId)
-				throw new ReviewSnapshotError("SNAPSHOT_UNAVAILABLE");
-			const root = await this.root(input.workspaceId);
-			if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
-			if (root !== cached.root) throw new ReviewSnapshotError("WORKSPACE_CHANGED");
-			// Root lookup can yield while another request evicts this snapshot.
-			if (this.cache.get(input.snapshotId) !== cached)
-				throw new ReviewSnapshotError("SNAPSHOT_UNAVAILABLE");
+			const cached = await this.getCached(input, signal);
+			const root = cached.root;
 			const file = cached.snapshot.files.find((entry) => entry.id === input.fileId);
 			if (!file || (input.side !== "base" && input.side !== "head"))
 				throw new ReviewSnapshotError("FILE_UNAVAILABLE");
@@ -271,34 +273,101 @@ export class ReviewSnapshotService {
 			this.cache.set(input.snapshotId, cached);
 			const object = file[input.side];
 			if (!object) return { kind: "absent" };
-			const location = { path: object.path, blobOid: object.oid };
-			const omitted = (
-				reason: Extract<ReviewSnapshotContent, { kind: "omitted" }>["reason"]
-			): ReviewSnapshotContent => ({ kind: "omitted", reason, ...location });
-			if (object.mode === "120000") return omitted("symlink");
-			if (object.mode === "160000") return omitted("submodule");
-			if (object.mode !== "100644" && object.mode !== "100755") return omitted("unsupported-mode");
-			let bytes: Buffer;
-			try {
-				const size = Number(
-					decode(await readGit(root, ["cat-file", "-s", object.oid], signal)).trim()
-				);
-				if (!Number.isSafeInteger(size) || size < 0) throw new Error("Invalid blob size");
-				if (size > 1024 * 1024) return omitted("too-large");
-				bytes = await readGit(root, ["cat-file", "blob", object.oid], signal);
-			} catch {
-				return { kind: "unavailable", reason: "object-unavailable", ...location };
-			}
-			if (bytes.includes(0)) return omitted("binary");
-			let content: string;
-			try {
-				content = decode(bytes);
-			} catch {
-				return omitted("non-utf8");
-			}
-			if (content.startsWith("version https://git-lfs.github.com/spec/v1\n"))
-				return omitted("lfs-pointer");
-			return { kind: "text", content, ...location };
+			return this.readObject(root, object, signal);
 		}, callerSignal);
+	}
+
+	readContext(
+		input: ReviewSnapshotContextRequest,
+		callerSignal?: AbortSignal
+	): Promise<ReviewSnapshotContent> {
+		return this.run(async (signal) => {
+			if (
+				!input.path ||
+				Buffer.byteLength(input.path) > 4096 ||
+				/[\\\0]/.test(input.path) ||
+				input.path.split("/").some((part) => !part || part === "." || part === "..") ||
+				(input.side !== "base" && input.side !== "head")
+			)
+				throw new ReviewSnapshotError("FILE_UNAVAILABLE");
+			const cached = await this.getCached(input, signal);
+			const commit = input.side === "head" ? cached.snapshot.headOid : cached.snapshot.mergeBaseOid;
+			let raw: string;
+			try {
+				// Literal pathspecs never follow worktree symlinks or expand wildcard paths.
+				raw = decode(
+					await readGit(
+						cached.root,
+						["ls-tree", "-z", "--full-tree", commit, "--", `:(literal)${input.path}`],
+						signal
+					)
+				);
+			} catch {
+				throw new ReviewSnapshotError("OBJECT_UNAVAILABLE");
+			}
+			if (!raw) return { kind: "absent" };
+			const match = /^(\d{6}) (?:blob|tree|commit) ([0-9a-f]+)\t([^\0]+)\0$/.exec(raw);
+			if (!match || match[3] !== input.path || !match[1] || !match[2] || !OID.test(match[2]))
+				throw new ReviewSnapshotError("FILE_UNAVAILABLE");
+			return this.readObject(
+				cached.root,
+				{ mode: match[1], oid: match[2], path: input.path },
+				signal
+			);
+		}, callerSignal);
+	}
+
+	private async getCached(
+		input: { workspaceId: string; snapshotId: string },
+		signal: AbortSignal
+	): Promise<CachedSnapshot> {
+		const cached = this.cache.get(input.snapshotId);
+		if (!cached || cached.snapshot.workspaceId !== input.workspaceId)
+			throw new ReviewSnapshotError("SNAPSHOT_UNAVAILABLE");
+		const root = await this.root(input.workspaceId);
+		if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
+		if (root !== cached.root) throw new ReviewSnapshotError("WORKSPACE_CHANGED");
+		// Root lookup can yield while another request evicts this snapshot.
+		if (this.cache.get(input.snapshotId) !== cached)
+			throw new ReviewSnapshotError("SNAPSHOT_UNAVAILABLE");
+
+		this.cache.delete(input.snapshotId);
+		this.cache.set(input.snapshotId, cached);
+		return cached;
+	}
+
+	private async readObject(
+		root: string,
+		object: ReviewSnapshotObject,
+		signal: AbortSignal
+	): Promise<ReviewSnapshotContent> {
+		const location = { path: object.path, blobOid: object.oid };
+		const omitted = (
+			reason: Extract<ReviewSnapshotContent, { kind: "omitted" }>["reason"]
+		): ReviewSnapshotContent => ({ kind: "omitted", reason, ...location });
+		if (object.mode === "120000") return omitted("symlink");
+		if (object.mode === "160000") return omitted("submodule");
+		if (object.mode !== "100644" && object.mode !== "100755") return omitted("unsupported-mode");
+		let bytes: Buffer;
+		try {
+			const size = Number(
+				decode(await readGit(root, ["cat-file", "-s", object.oid], signal)).trim()
+			);
+			if (!Number.isSafeInteger(size) || size < 0) throw new Error("Invalid blob size");
+			if (size > 1024 * 1024) return omitted("too-large");
+			bytes = await readGit(root, ["cat-file", "blob", object.oid], signal);
+		} catch {
+			return { kind: "unavailable", reason: "object-unavailable", ...location };
+		}
+		if (bytes.includes(0)) return omitted("binary");
+		let content: string;
+		try {
+			content = decode(bytes);
+		} catch {
+			return omitted("non-utf8");
+		}
+		if (content.startsWith("version https://git-lfs.github.com/spec/v1\n"))
+			return omitted("lfs-pointer");
+		return { kind: "text", content, ...location };
 	}
 }
