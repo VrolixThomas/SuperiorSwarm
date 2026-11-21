@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,6 +11,7 @@ import { getDb } from "../db";
 import { reviewDrafts, terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import { getGitProvider } from "../providers/git-provider";
+import { requireLocalCommit } from "../review-explanation/git-reader";
 import { getTaskRegistry } from "../services/task-registry-handle";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import {
@@ -32,6 +32,7 @@ let runtime: ReviewPathRuntimePort | undefined;
 /** The router supplies its durable store; production construction never touches fixture state. */
 export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePort {
 	if (runtime) return runtime;
+	const pendingReads = new Map<string, AbortController>();
 	runtime = createReviewPathRuntime({
 		getRun: (id) => store.getRun(id),
 		fail: (run, error) => store.fail(run, error),
@@ -54,10 +55,21 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				throw new Error("Reading-path identity does not match the review workspace");
 			const cwd = getWorkspaceCwdOrThrow(workspace.id);
 			// Never reset a live review worktree or silently substitute its mutable HEAD.
-			execFileSync("git", ["cat-file", "-e", `${run.identity.headSha}^{commit}`], {
-				cwd,
-				stdio: "pipe",
-			});
+			const controller = new AbortController();
+			const terminalId = ownedTerminalId(run);
+			pendingReads.set(terminalId, controller);
+			// A newer run/head can supersede this run without calling stop on this instance.
+			const fence = setInterval(() => {
+				if (!sameActiveRun(store.getRun(run.id), run)) controller.abort();
+			}, 25);
+			try {
+				await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
+			} finally {
+				clearInterval(fence);
+				pendingReads.delete(terminalId);
+			}
+			if (controller.signal.aborted || !sameActiveRun(store.getRun(run.id), run))
+				throw new Error("Reading-path run is no longer active");
 			const settings = getSettings();
 			const cli = (
 				agentId === "claude-code" ? "claude" : (agentId ?? settings.cliPreset)
@@ -176,6 +188,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 			}
 		},
 		stop: async (terminalId) => {
+			pendingReads.get(terminalId)?.abort();
 			const daemon = getDaemonClient();
 			if (!daemon?.isConnected)
 				throw new Error("Cannot stop reading-path agent while terminal service is offline");
