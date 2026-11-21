@@ -1,6 +1,6 @@
 # Agent reading path — implementation handoff
 
-Implemented on `investigate/explainable-pr-review-flow`, replacing the existing PR review entry point by default. No preview preference is required. Work remains uncommitted in this worktree.
+Implemented on `investigate/explainable-pr-review-flow`, replacing the existing PR review entry point by default. No preview preference is required. Frontend checkpoint committed as `163c7059` to seed the follow-up worktrees. See `2026-11-21-agent-reading-path-followup-dispatch.md` for active backend assignments.
 
 ## Implementation
 
