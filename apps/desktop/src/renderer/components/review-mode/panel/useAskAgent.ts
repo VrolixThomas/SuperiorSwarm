@@ -1,5 +1,5 @@
 /** Stable Ask boundary. Fixture mode is explicit; live requests never receive sample answers. */
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import type { PRContext } from "../../../../shared/github-types";
 import type {
 	ReviewPathIdentity,
@@ -70,19 +70,35 @@ export function useAskAgent(
 	const key = reviewPathRegistryKey(prCtx, fixture);
 	const snapshot = useCallback(() => conversations.get(key) ?? empty, [key]);
 	const messages = useSyncExternalStore(subscribe, snapshot, snapshot);
+	const sending = useRef(new Set<typeof live.controller>());
+	const unacknowledged = useRef(
+		new Map<typeof live.controller, { id: string; signature: string }>()
+	);
 	const send = useCallback(
-		(text: string, anchor?: AskMessage["anchor"]) => {
-			if (!text.trim()) return;
+		async (text: string, anchor?: AskMessage["anchor"]): Promise<boolean> => {
+			if (!text.trim() || sending.current.has(live.controller)) return false;
 			if (!fixture) {
-				void live.controller?.ask(crypto.randomUUID(), text, anchor).then((result) => {
-					if (result?.launch && live.isCurrent()) options.onLaunch?.(result.launch);
-				});
-				return;
+				sending.current.add(live.controller);
+				try {
+					const signature = JSON.stringify([text, anchor, live.state.snapshot?.conversationId]);
+					let request = unacknowledged.current.get(live.controller);
+					if (!request || request.signature !== signature) {
+						request = { id: crypto.randomUUID(), signature };
+						unacknowledged.current.set(live.controller, request);
+					}
+					const result = await live.controller?.ask(request.id, text, anchor);
+					if (result) unacknowledged.current.delete(live.controller);
+					if (!live.isCurrent()) return false;
+					if (result?.launch) options.onLaunch?.(result.launch);
+					return !!result;
+				} finally {
+					sending.current.delete(live.controller);
+				}
 			}
 			const createdAt = new Date().toISOString();
 			const id = crypto.randomUUID();
 			const sample = PR129_ASK_SAMPLE.find((message) => message.role === "agent");
-			if (!sample) return;
+			if (!sample) return false;
 			const answer: AskMessage = { ...sample, id: `${id}:answer`, createdAt };
 			conversations.set(key, [
 				...snapshot(),
@@ -90,19 +106,33 @@ export function useAskAgent(
 				answer,
 			]);
 			for (const listener of listeners) listener();
+			return true;
 		},
-		[key, fixture, snapshot, live.controller, live.isCurrent, options.onLaunch]
+		[
+			key,
+			fixture,
+			snapshot,
+			live.controller,
+			live.isCurrent,
+			live.state.snapshot?.conversationId,
+			options.onLaunch,
+		]
 	);
 	const conversation = useMemo(
 		() => selectAskConversation(live.state.snapshot),
 		[live.state.snapshot]
 	);
+	const error =
+		live.state.mutationErrors?.["ask"]?.message ??
+		live.state.mutationErrors?.["cancelQuestion"]?.message ??
+		(live.controller ? live.state.pollError : live.state.error) ??
+		conversation.error;
 	return {
 		messages: fixture ? messages : conversation.messages,
 		send,
 		status: fixture
 			? ("idle" as const)
-			: live.state.error || conversation.error
+			: error
 				? ("error" as const)
 				: conversation.pending || live.state.pending
 					? ("pending" as const)
@@ -110,7 +140,7 @@ export function useAskAgent(
 						? ("idle" as const)
 						: ("unavailable" as const),
 		available: fixture || live.state.available,
-		error: fixture ? undefined : (live.state.error ?? conversation.error),
+		error: fixture ? undefined : error,
 		questions: conversation.questions,
 		cancel: (questionId: string) => {
 			void live.controller?.cancelQuestion(questionId);

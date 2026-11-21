@@ -349,6 +349,7 @@ test("bounds concurrent requests and recovers after completion", async () => {
 	const releases: Array<() => void> = [];
 	let pause = true;
 	service = new ReviewSnapshotService({
+		maxQueued: 0,
 		resolveRoot: async () => {
 			if (pause) await new Promise<void>((resolve) => releases.push(resolve));
 			return fixture.root;

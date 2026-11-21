@@ -50,6 +50,7 @@ export class ReviewPathApplication {
 		const before = this.deps.storage.get(resolved.identity);
 		const run = this.deps.storage.begin(resolved.identity, input.agent, resolved.changedFiles, {
 			auto: input.auto,
+			alsoReview: input.alsoReview,
 		});
 		if (before.runs.some((r) => r.id === run.id))
 			return { run, snapshot: this.deps.storage.peek(resolved.identity) };

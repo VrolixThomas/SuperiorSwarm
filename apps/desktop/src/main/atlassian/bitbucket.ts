@@ -187,7 +187,8 @@ export async function createPRComment(
 	prId: number,
 	body: string,
 	filePath?: string,
-	line?: number
+	line?: number,
+	side: "LEFT" | "RIGHT" = "RIGHT"
 ): Promise<{ id: number }> {
 	const payload: Record<string, unknown> = {
 		content: { raw: body },
@@ -196,7 +197,7 @@ export async function createPRComment(
 	if (filePath) {
 		const inline: Record<string, unknown> = { path: filePath };
 		if (line) {
-			inline["to"] = line;
+			inline[side === "LEFT" ? "from" : "to"] = line;
 		}
 		payload["inline"] = inline;
 	}

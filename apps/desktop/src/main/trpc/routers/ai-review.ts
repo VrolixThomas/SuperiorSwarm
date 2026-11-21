@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { CLI_PRESET_NAMES } from "../../../shared/cli-preset";
 import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
 import { startPolling } from "../../ai-review/commit-poller";
+import { addManualReviewComment } from "../../ai-review/manual-comment";
 import {
 	cancelReview,
 	getReviewDraft,
@@ -310,77 +310,15 @@ export const aiReviewRouter = router({
 					.string()
 					.regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/)
 					.optional(),
+				workspaceId: z.string().min(1).optional(),
+				reviewDraftId: z.string().min(1).optional(),
 				filePath: z.string(),
 				lineNumber: z.number().optional(),
 				side: z.enum(["LEFT", "RIGHT"]).optional(),
 				body: z.string(),
 			})
 		)
-		.mutation(({ input }) => {
-			const db = getDb();
-			const now = new Date();
-
-			// Revision provenance belongs to the entire draft. Never attach a current
-			// selection to an old (or unpinned) review, or pin legacy comments by accident.
-			let draft = db
-				.select()
-				.from(schema.reviewDrafts)
-				.where(
-					and(
-						eq(schema.reviewDrafts.prIdentifier, input.prIdentifier),
-						eq(schema.reviewDrafts.prProvider, input.prProvider)
-					)
-				)
-				.orderBy(desc(schema.reviewDrafts.updatedAt))
-				.all()
-				.find(
-					(candidate) =>
-						["ready", "queued", "in_progress"].includes(candidate.status) &&
-						candidate.commitSha === (input.commitSha ?? null)
-				);
-
-			if (!draft) {
-				const draftId = randomUUID();
-				db.insert(schema.reviewDrafts)
-					.values({
-						id: draftId,
-						prProvider: input.prProvider,
-						prIdentifier: input.prIdentifier,
-						prTitle: input.prTitle,
-						prAuthor: "",
-						sourceBranch: input.sourceBranch ?? "",
-						targetBranch: input.targetBranch ?? "",
-						status: "ready",
-						commitSha: input.commitSha ?? null,
-						createdAt: now,
-						updatedAt: now,
-					})
-					.run();
-				const createdDraft = db
-					.select()
-					.from(schema.reviewDrafts)
-					.where(eq(schema.reviewDrafts.id, draftId))
-					.get();
-				if (!createdDraft) throw new Error("Failed to create manual review draft");
-				draft = createdDraft;
-			}
-
-			const id = randomUUID();
-			db.insert(schema.draftComments)
-				.values({
-					id,
-					reviewDraftId: draft.id,
-					filePath: input.filePath,
-					lineNumber: input.lineNumber ?? null,
-					side: input.side ?? null,
-					body: input.body,
-					status: "user-pending",
-					createdAt: now,
-				})
-				.run();
-
-			return { id, status: "user-pending", reviewDraftId: draft.id, commitSha: draft.commitSha };
-		}),
+		.mutation(({ input }) => addManualReviewComment(input)),
 
 	submitReview: publicProcedure
 		.input(

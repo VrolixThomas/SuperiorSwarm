@@ -110,6 +110,8 @@ export interface SubmitReviewParams {
 
 export interface GitProvider {
 	readonly name: string;
+	/** False when the provider cannot atomically anchor file comments to commitId. */
+	readonly supportsPinnedInlineComments?: boolean;
 
 	isConnected(): boolean;
 

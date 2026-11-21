@@ -223,6 +223,9 @@ export function dedupBitbucketPRs(
 
 export class BitbucketAdapter implements GitProvider {
 	readonly name = "bitbucket" as const;
+	// Cloud's PR comment endpoint accepts inline from/to/path, but no revision pin.
+	// A separate head read cannot prevent a push racing the comment POST.
+	readonly supportsPinnedInlineComments = false;
 
 	isConnected(): boolean {
 		return getAuth("bitbucket") !== null;
@@ -277,13 +280,17 @@ export class BitbucketAdapter implements GitProvider {
 	}
 
 	async createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }> {
+		if (params.filePath && params.commitId != null) {
+			throw new Error("Bitbucket Cloud does not support revision-pinned inline comments");
+		}
 		const { id } = await createPRComment(
 			params.owner,
 			params.repo,
 			params.prNumber,
 			params.body,
 			params.filePath,
-			params.line
+			params.line,
+			params.side
 		);
 		return { id: String(id) };
 	}

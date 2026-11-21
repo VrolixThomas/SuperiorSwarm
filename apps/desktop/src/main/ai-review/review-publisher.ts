@@ -66,6 +66,8 @@ export async function publishReview(
 			throw new Error(
 				"Inline comments have no verified revision; recreate them against the current diff"
 			);
+		if (comments.length > 0 && git.supportsPinnedInlineComments === false)
+			throw new Error(`${git.name} does not support revision-pinned inline comments`);
 		const prState = await git.getPRState(owner, repo, prNumber);
 		if (commitId && prState.headSha !== commitId)
 			throw new Error(

@@ -59,7 +59,7 @@ function QueueRow({
 		matched.owner === pr.owner &&
 		matched.repo === pr.repo &&
 		matched.prNumber === pr.number
-			? projection.data.status
+			? projection.data?.status
 			: projection.data === null || projection.isError
 				? undefined
 				: remembered?.path?.status;

@@ -19,6 +19,7 @@ import type {
 	ReviewPathStatus,
 } from "../../shared/review-path-types";
 import { initializeReviewPathSettings } from "../stores/review-path-settings-store";
+import { observeReviewMapping } from "./review-draft-binding";
 import { PR129_MAPPING_FRAMES, PR129_PATH } from "./review-path-fixtures";
 import { isStale } from "./review-path-model";
 
@@ -262,7 +263,9 @@ export interface LiveReviewPathState {
 	snapshot: ReviewPathSnapshot | null;
 	available: boolean;
 	error?: string;
+	pollError?: string;
 	pending: boolean;
+	mutationErrors?: Partial<Record<string, { id?: string; message: string }>>;
 }
 export function reviewPathIdentityKey(identity: ReviewPathIdentity): string {
 	return JSON.stringify([
@@ -274,43 +277,78 @@ export function reviewPathIdentityKey(identity: ReviewPathIdentity): string {
 		identity.headSha,
 	]);
 }
-/** Polls and mutations share a sequence fence; late reads cannot overwrite a newer action. */
+/** Snapshot ordering is separate from delivery of each acknowledged mutation. */
 export function createLiveReviewPathController(
 	identity: ReviewPathIdentity,
 	transport: ReviewPathTransport
 ) {
 	let state: LiveReviewPathState = { snapshot: null, available: false, pending: false };
 	let sequence = 0;
+	let pendingMutations = 0;
+	const mutationSequences = new Map<string, number>();
 	const subscribers = new Set<() => void>();
 	const publish = (next: LiveReviewPathState) => {
-		state = next;
+		state = {
+			...next,
+			error:
+				next.pollError ?? Object.values(next.mutationErrors ?? {}).find((error) => error)?.message,
+		};
+		// Fence delayed comment acknowledgements before notifying renderer subscribers.
+		if (next.snapshot) {
+			const mapping = next.snapshot.runs
+				.filter(
+					(run) =>
+						run.kind === "mapping" &&
+						reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity)
+				)
+				.sort((a, b) => b.version - a.version)[0];
+			observeReviewMapping(identity, mapping?.id);
+		}
 		for (const subscriber of subscribers) subscriber();
 	};
 	async function perform<
 		T extends
 			| ReviewPathSnapshot
 			| { snapshot: ReviewPathSnapshot; launch?: ReviewPathLaunchResult },
-	>(operation: () => Promise<T>, mutation = false): Promise<T | undefined> {
+	>(operation: () => Promise<T>, mutation?: string, id?: string): Promise<T | undefined> {
 		const generation = ++sequence;
-		if (mutation) publish({ ...state, pending: true, error: undefined });
+		if (mutation) {
+			pendingMutations++;
+			mutationSequences.set(mutation, generation);
+			publish({
+				...state,
+				pending: true,
+				mutationErrors: { ...state.mutationErrors, [mutation]: undefined },
+			});
+		}
 		try {
 			const result = await operation();
 			const incoming: ReviewPathSnapshot =
 				"snapshot" in result ? result.snapshot : (result as ReviewPathSnapshot);
 			if (reviewPathIdentityKey(incoming.identity) !== reviewPathIdentityKey(identity))
-				throw new Error("Reading-path response identity mismatch");
-			if (generation !== sequence) return undefined;
-			publish({ snapshot: incoming, available: true, pending: false });
-			return result;
-		} catch (error) {
+				throw new Error(
+					"Reading-path response identity mismatch. Refresh the PR to use its current head."
+				);
 			if (generation === sequence)
-				publish({
-					...state,
-					available: false,
-					pending: false,
-					error: error instanceof Error ? error.message : String(error),
-				});
+				publish({ ...state, snapshot: incoming, available: true, pollError: undefined });
+			// A later operation can supersede this snapshot, but not its owned launch result.
+			return mutation || generation === sequence ? result : undefined;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (mutation) {
+				if (mutationSequences.get(mutation) === generation)
+					publish({
+						...state,
+						mutationErrors: { ...state.mutationErrors, [mutation]: { id, message } },
+					});
+			} else if (generation === sequence)
+				publish({ ...state, available: false, pollError: message });
 			return undefined;
+		} finally {
+			if (mutation) {
+				pendingMutations--;
+				publish({ ...state, pending: pendingMutations > 0 });
+			}
 		}
 	}
 	const scope = (run: ReviewPathRun): ReviewPathRunScope => ({
@@ -329,27 +367,29 @@ export function createLiveReviewPathController(
 		refresh: () =>
 			state.pending ? Promise.resolve(undefined) : perform(() => transport.get({ identity })),
 		start: (agent: ReviewPath["agent"], alsoReview: boolean) =>
-			perform(() => transport.start({ identity, agent, alsoReview }), true),
+			perform(() => transport.start({ identity, agent, alsoReview }), "start"),
 		stop: () => {
 			const run = state.snapshot?.runs.find(
 				(run) => run.kind === "mapping" && run.state === "running"
 			);
-			return run ? perform(() => transport.cancel(scope(run)), true) : Promise.resolve(undefined);
+			return run
+				? perform(() => transport.cancel(scope(run)), "cancel")
+				: Promise.resolve(undefined);
 		},
 		ask: (id: string, text: string, anchor?: AskMessage["anchor"]) =>
-			perform(() => transport.ask({ identity, id, text, anchor }), true),
+			perform(() => transport.ask({ identity, id, text, anchor }), "ask", id),
 		cancelQuestion: (id: string) => {
 			const run = state.snapshot?.runs.find(
 				(run) => run.questionId === id && run.state === "running"
 			);
 			return run
-				? perform(() => transport.cancelQuestion(scope(run)), true)
+				? perform(() => transport.cancelQuestion(scope(run)), "cancelQuestion", id)
 				: Promise.resolve(undefined);
 		},
 		addContext: (entryId: string, step: ContextFileStep) =>
-			perform(() => transport.addContext({ identity, entryId, step }), true),
+			perform(() => transport.addContext({ identity, entryId, step }), "addContext"),
 		removeContext: (stepId: string) =>
-			perform(() => transport.removeContext({ identity, stepId }), true),
+			perform(() => transport.removeContext({ identity, stepId }), "removeContext"),
 	};
 }
 
@@ -377,7 +417,10 @@ const noIdentityState: LiveReviewPathState = {
 };
 const noSubscribe = () => () => {};
 const noSnapshot = () => noIdentityState;
-export function useLiveReviewPath(identity: ReviewPathIdentity | undefined) {
+export function useLiveReviewPath(
+	identity: ReviewPathIdentity | undefined,
+	options: { observeOnly?: boolean } = {}
+) {
 	const key = identity ? reviewPathIdentityKey(identity) : undefined;
 	const controller = useMemo(() => {
 		if (!key || !identity) return undefined;
@@ -394,13 +437,13 @@ export function useLiveReviewPath(identity: ReviewPathIdentity | undefined) {
 		controller?.getSnapshot ?? noSnapshot
 	);
 	useEffect(() => {
-		if (!controller) return;
+		if (!controller || options.observeOnly) return;
 		void controller.refresh();
 		const timer = setInterval(() => {
 			void controller.refresh();
 		}, 1500);
 		return () => clearInterval(timer);
-	}, [controller]);
+	}, [controller, options.observeOnly]);
 	const lifecycle = useRef({ controller, mounted: true });
 	lifecycle.current.controller = controller;
 	useEffect(() => {
@@ -466,7 +509,10 @@ export function useReviewPath(
 		path,
 		status: path?.status ?? "none",
 		available: state.available && !state.pending,
-		unavailableReason: state.error,
+		unavailableReason:
+			Object.entries(state.mutationErrors ?? {}).find(
+				([operation, error]) => operation !== "ask" && operation !== "cancelQuestion" && error
+			)?.[1]?.message ?? (controller ? state.pollError : state.error),
 		start,
 		stop: () => {
 			void controller?.stop();

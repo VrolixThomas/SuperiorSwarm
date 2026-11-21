@@ -258,4 +258,33 @@ if (inIsolatedFileBrowserTest(import.meta.path, "authoritative review wiring ren
 			await h.cleanup();
 		}
 	});
+	test("a submitted workspace binding cannot hide a new current-head manual draft after reload", async () => {
+		const currentPr = { ...pr, number: 9 };
+		const currentScope = { ...identity, workspaceId: "manual-after-submit", prNumber: 9 };
+		const old = { ...draft("submitted-map", "submitted"), prIdentifier: "wire/repo#9" };
+		const manual = { ...draft("new-manual"), prIdentifier: "wire/repo#9" };
+		let observed: ReturnType<typeof useReviewData> | undefined;
+		function Probe() {
+			observed = useReviewData(currentScope.workspaceId, currentPr);
+			return null;
+		}
+		const h = await renderBrowserTest(<Probe />, [], false, {
+			request: (path, input) => {
+				if (path === "projects.getPRDetails") return details;
+				if (path === "reviewPath.status")
+					return { identity: currentScope, status: "ready", reviewDraftId: old.id };
+				if (path === "reviewPath.get") return { ...snapshot, identity: currentScope, runs: [] };
+				if (path === "aiReview.getReviewDrafts") return [old, manual];
+				if (path === "aiReview.getReviewDraft")
+					return (input as { draftId: string }).draftId === old.id ? old : manual;
+				return [];
+			},
+		});
+		try {
+			await h.settle();
+			expect(observed?.aiDraft?.id).toBe(manual.id);
+		} finally {
+			await h.cleanup();
+		}
+	});
 }

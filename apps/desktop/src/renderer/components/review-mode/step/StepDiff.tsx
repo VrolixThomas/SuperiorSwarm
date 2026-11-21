@@ -34,6 +34,7 @@ export interface StepDiffProps {
 	onComposerOpenChange?: (open: boolean) => void;
 	cancelCommentNonce?: number;
 	workspaceId: string;
+	reviewDraftId?: string;
 	prCtx: PRContext;
 	details: GitHubPRDetails;
 	threads: UnifiedThread[];
@@ -51,6 +52,7 @@ function lineCount(content: string): number {
 
 export function useStepDiff({
 	workspaceId,
+	reviewDraftId,
 	header,
 	prCtx,
 	details,
@@ -108,6 +110,7 @@ export function useStepDiff({
 	}, [activeFilePath, filePath, fileOrder, selectFile, sessionKey]);
 
 	const {
+		commitSha,
 		originalContent,
 		modifiedContent,
 		isLoading,
@@ -199,7 +202,10 @@ export function useStepDiff({
 		handleCancelNew,
 		startNewComment,
 	} = useStepComments(editorInstance, currentFilePath, validDiffLines, {
+		workspaceId,
+		reviewDraftId,
 		prCtx,
+		commitSha,
 		validOriginalDiffLines,
 		readOnly,
 		onSelection,

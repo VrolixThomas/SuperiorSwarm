@@ -27,6 +27,8 @@ export interface ReviewPathRun extends ReviewPathRunScope {
 	conversationId: string;
 	questionId?: string;
 	reviewDraftId?: string;
+	/** Whether this mapping is expected to initialize a local code-review draft. */
+	alsoReview?: boolean;
 	terminalId?: string;
 	error?: string;
 }

@@ -111,7 +111,7 @@ export function useReviewData(
 			detailsQuery.data?.headCommitOid,
 		]
 	);
-	const { state: pathState } = useLiveReviewPath(identity);
+	const { state: pathState } = useLiveReviewPath(identity, { observeOnly: true });
 	const localBinding = useReviewDraftBinding(identity);
 	const projection = trpc.reviewPath.status.useQuery(identity!, {
 		enabled: !!identity,
@@ -135,11 +135,21 @@ export function useReviewData(
 			? projection.data.reviewDraftId
 			: undefined;
 	const mappingBindingPending =
-		mapping?.state === "running" && !mapping.reviewDraftId && !localBinding;
+		mapping?.state === "running" &&
+		mapping.alsoReview !== false &&
+		!mapping.reviewDraftId &&
+		!localBinding;
+	// A completed/submitted binding is historical once a new manual draft exists.
+	// Unknown rows remain authoritative while their direct detail query is loading.
+	const usableBinding = (id: string | undefined) => {
+		if (!id) return undefined;
+		const row = reviewDraftsQuery.data?.find((draft) => draft.id === id);
+		return row && !["ready", "queued", "in_progress"].includes(row.status) ? undefined : id;
+	};
 	const boundId =
-		localBinding?.draftId ??
-		mapping?.reviewDraftId ??
-		(mappingBindingPending ? undefined : projectedDraftId);
+		usableBinding(localBinding?.draftId) ??
+		usableBinding(mapping?.reviewDraftId) ??
+		(mappingBindingPending ? undefined : usableBinding(projectedDraftId));
 	const matchingDraft = useMemo(() => {
 		if (mappingBindingPending) return undefined;
 		const candidates = reviewDraftsQuery.data?.filter(

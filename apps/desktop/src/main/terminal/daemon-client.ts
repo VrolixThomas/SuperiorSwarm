@@ -25,6 +25,11 @@ import {
 	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
 import {
+	TerminalCreateError,
+	isReviewPathTerminal,
+	terminalCreateErrorMessage,
+} from "../../shared/terminal-create";
+import {
 	FILE_PASTE_MAX_BYTES,
 	type FileDelivery,
 	type TerminalProcessIdentity,
@@ -896,7 +901,15 @@ export class DaemonClient {
 			case "error": {
 				this.legacyFileTargets.delete(msg.id);
 				console.error(`[daemon-client] error for terminal ${msg.id}: ${msg.message}`);
-				// If attach failed because the session wasn't found, fall back to create
+				// Owned review PTYs can die after inventory but before attach. Their
+				// deterministic IDs must never resurrect a shell or replay a prompt.
+				if (msg.message === "session not found" && isReviewPathTerminal(msg.id)) {
+					const error = new TerminalCreateError("REVIEW_TERMINAL_UNAVAILABLE");
+					this.callbacks.get(msg.id)?.onData(terminalCreateErrorMessage(error));
+					this.failSession(msg.id, "owned terminal unavailable", error);
+					break;
+				}
+				// Ordinary terminals retain their missing-session shell recovery.
 				if (msg.message === "session not found" && this.callbacks.has(msg.id)) {
 					const stored = this.callbacks.get(msg.id);
 					try {

@@ -15,6 +15,8 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 		"unpinned",
 		"metadata-error",
 		"missing-file",
+		"unsupported-pinned",
+		"unsupported-file-level",
 		"current-left",
 		"partial-retry",
 		"body-only",
@@ -29,8 +31,11 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 			let stateReads = 0;
 			let rejectSecond = scenario === "partial-retry";
 			const onlySummary = scenario === "body-only" || scenario === "verdict-only";
+			const unsupported =
+				scenario === "unsupported-pinned" || scenario === "unsupported-file-level";
 			registerGitProvider({
 				name: "provenance-test",
+				supportsPinnedInlineComments: !(unsupported || onlySummary),
 				getPRState: async () => {
 					if (scenario === "metadata-error") throw Error("metadata unavailable");
 					return {
@@ -79,7 +84,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 						targetBranch: "main",
 						status: "ready",
 						commitSha: scenario === "unpinned" || onlySummary ? null : head,
-						summaryMarkdown: scenario === "body-only" ? "Summary" : null,
+						summaryMarkdown: scenario === "body-only" || unsupported ? "Summary" : null,
 						createdAt: now,
 						updatedAt: now,
 					})
@@ -90,7 +95,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 							id: "first",
 							reviewDraftId: "draft",
 							filePath: "old.ts",
-							lineNumber: 12,
+							lineNumber: scenario === "unsupported-file-level" ? null : 12,
 							side: "LEFT",
 							body: "Accepted",
 							status: "approved",
@@ -111,7 +116,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 							})
 							.run();
 					// Known stale input must prevent replies/resolutions and verdict as well as inline writes.
-					if (scenario === "stale") {
+					if (scenario === "stale" || unsupported) {
 						db.insert(schema.draftComments)
 							.values({
 								id: "original",
@@ -139,6 +144,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 				}
 				const result = await publishReview("draft", "APPROVE");
 				if (
+					unsupported ||
 					["stale", "head-drift", "unpinned", "metadata-error", "missing-file"].includes(scenario)
 				) {
 					expect(result.success).toBe(false);
@@ -146,6 +152,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "publisher provenance preflight"
 					expect(writes).toEqual([]);
 					expect(verdicts).toEqual([]);
 					expect(replies).toBe(0);
+					if (unsupported) expect(result.errors[0]).toContain("revision-pinned inline comments");
 					expect(
 						db
 							.select()

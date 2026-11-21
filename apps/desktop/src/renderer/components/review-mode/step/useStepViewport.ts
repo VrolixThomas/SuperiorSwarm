@@ -60,7 +60,7 @@ export function useStepViewport(
 
 	useEffect(() => {
 		if (!activeThreadOnThisFile) return;
-		if (!activeThreadOnThisFile.isAIDraft && activeThreadOnThisFile.isOutdated) {
+		if (activeThreadOnThisFile.isOutdated) {
 			setShowOutdated(true);
 			return;
 		}

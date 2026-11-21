@@ -40,6 +40,7 @@ const snapshot: any = {
 let viewed: string[] = [];
 const draft: any = {
 	id: "draft",
+	commitSha: pr.headCommitOid,
 	prProvider: "github",
 	prIdentifier: "fixture/repo#1",
 	status: "ready",
@@ -150,6 +151,15 @@ async function start() {
 				deleteDraftComment: mutate("aiReview.deleteDraftComment", () => ({ success: true })),
 			}),
 			reviewPath: router({
+				status: record("reviewPath.status", (i) =>
+					i.provider === "github" && i.owner === "fixture" && i.repo === "repo" && i.prNumber === 1
+						? {
+								identity: { ...snapshot.identity, headSha: i.headSha },
+								status: snapshot.path?.status ?? "none",
+								reviewDraftId: draft.commitSha === i.headSha ? draft.id : undefined,
+							}
+						: null
+				),
 				get: record("reviewPath.get", () => snapshot),
 				getSettings: record("reviewPath.getSettings", () => settings),
 				importLegacySettings: mutate("reviewPath.importLegacySettings", () => settings),

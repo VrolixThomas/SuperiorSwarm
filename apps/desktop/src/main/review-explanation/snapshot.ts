@@ -49,6 +49,8 @@ interface SnapshotOptions {
 	resolveRoot: (workspaceId: string) => Promise<string>;
 	maxSnapshots?: number;
 	maxFiles?: number;
+	maxQueued?: number;
+	requestTimeoutMs?: number;
 }
 
 /** Pure metadata decoding: NUL separation preserves spaces, tabs and newlines in paths. */
@@ -101,12 +103,46 @@ function parseManifest(raw: Buffer, maxFiles: number): ReviewSnapshotFile[] {
 export class ReviewSnapshotService {
 	private readonly cache = new Map<string, CachedSnapshot>();
 	private active = 0;
+	private readonly queue: Array<() => void> = [];
+	private readonly maxQueued: number;
+	private readonly requestTimeoutMs: number;
 	private readonly maxSnapshots: number;
 	private readonly maxFiles: number;
 
 	constructor(private readonly options: SnapshotOptions) {
 		this.maxSnapshots = Math.max(1, Math.min(8, options.maxSnapshots ?? 8));
+		this.maxQueued = Math.max(0, Math.min(32, options.maxQueued ?? 16));
+		this.requestTimeoutMs = Math.max(1, Math.min(15_000, options.requestTimeoutMs ?? 15_000));
 		this.maxFiles = Math.max(1, Math.min(10_000, options.maxFiles ?? 10_000));
+	}
+
+	/** Reserve at most two readers; queued work shares the request deadline. */
+	private acquire(signal: AbortSignal): Promise<void> {
+		if (signal.aborted) return Promise.reject(new ReviewSnapshotError("CANCELLED"));
+		if (this.active < 2) {
+			this.active++;
+			return Promise.resolve();
+		}
+		if (this.queue.length >= this.maxQueued) return Promise.reject(new ReviewSnapshotError("BUSY"));
+		return new Promise((resolve, reject) => {
+			const start = () => {
+				signal.removeEventListener("abort", cancel);
+				this.active++;
+				resolve();
+			};
+			const cancel = () => {
+				const index = this.queue.indexOf(start);
+				if (index >= 0) this.queue.splice(index, 1);
+				reject(new ReviewSnapshotError("CANCELLED"));
+			};
+			this.queue.push(start);
+			signal.addEventListener("abort", cancel, { once: true });
+		});
+	}
+
+	private release() {
+		this.active--;
+		this.queue.shift()?.();
 	}
 
 	private async run<T>(
@@ -114,22 +150,31 @@ export class ReviewSnapshotService {
 		callerSignal?: AbortSignal
 	): Promise<T> {
 		if (callerSignal?.aborted) throw new ReviewSnapshotError("CANCELLED");
-		if (this.active >= 2) throw new ReviewSnapshotError("BUSY");
-		this.active++;
 		const deadline = new AbortController();
-		const timer = setTimeout(() => deadline.abort(), 15_000);
+		const timer = setTimeout(() => deadline.abort(), this.requestTimeoutMs);
 		timer.unref();
 		const signal = callerSignal
 			? AbortSignal.any([deadline.signal, callerSignal])
 			: deadline.signal;
 		let onAbort = () => {};
-		const cancelled = new Promise<never>((_resolve, reject) => {
-			onAbort = () => reject(new ReviewSnapshotError("CANCELLED"));
-			signal.addEventListener("abort", onAbort, { once: true });
-			if (signal.aborted) onAbort();
-		});
 		try {
-			const result = await Promise.race([action(signal), cancelled]);
+			await this.acquire(signal);
+			// Retain the slot until the underlying action settles, even if the caller
+			// has already received cancellation. A slow root lookup must not oversubscribe Git.
+			const work = Promise.resolve().then(() => {
+				if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
+				return action(signal);
+			});
+			void work.then(
+				() => this.release(),
+				() => this.release()
+			);
+			const cancelled = new Promise<never>((_resolve, reject) => {
+				onAbort = () => reject(new ReviewSnapshotError("CANCELLED"));
+				signal.addEventListener("abort", onAbort, { once: true });
+				if (signal.aborted) onAbort();
+			});
+			const result = await Promise.race([work, cancelled]);
 			if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
 			return result;
 		} catch (error) {
@@ -139,7 +184,6 @@ export class ReviewSnapshotService {
 		} finally {
 			clearTimeout(timer);
 			signal.removeEventListener("abort", onAbort);
-			this.active--;
 		}
 	}
 

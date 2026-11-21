@@ -11,7 +11,9 @@ export interface AskTabProps {
 	pending?: boolean;
 	questions?: ReviewPathQuestion[];
 	onCancelQuestion?: (id: string) => void;
-	onSend: (text: string, anchor?: AskMessage["anchor"]) => void;
+	onSend:
+		| ((text: string, anchor?: AskMessage["anchor"]) => void)
+		| ((text: string, anchor?: AskMessage["anchor"]) => Promise<boolean>);
 	onReference: (ref: CodeReference) => void;
 	onAddComment?: (body: string, anchor: NonNullable<AskMessage["anchor"]>) => void;
 	initialQuestion?: string;
@@ -32,15 +34,29 @@ export function AskTab({
 }: AskTabProps) {
 	const [question, setQuestion] = useState(initialQuestion);
 	const [copyStatus, setCopyStatus] = useState("");
+	const [sending, setSending] = useState(false);
+	const sendingRef = useRef(false);
+	const [sendError, setSendError] = useState<string>();
 	const input = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => {
 		setQuestion(initialQuestion);
 		input.current?.focus();
 	}, [initialQuestion]);
-	const send = () => {
-		if (!available || pending || !question.trim()) return;
-		onSend(question.trim(), anchor ?? undefined);
-		setQuestion("");
+	const send = async (text = question, context = anchor ?? undefined, clearDraft = true) => {
+		if (!available || pending || sendingRef.current || !text.trim()) return;
+		sendingRef.current = true;
+		setSending(true);
+		setSendError(undefined);
+		try {
+			const acknowledged = await onSend(text.trim(), context);
+			if (acknowledged !== false && clearDraft)
+				setQuestion((current) => (current === text ? "" : current));
+		} catch (error) {
+			setSendError(error instanceof Error ? error.message : String(error));
+		} finally {
+			sendingRef.current = false;
+			setSending(false);
+		}
 	};
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -53,9 +69,9 @@ export function AskTab({
 						{anchor.path.split("/").pop()} · {anchor.startLine}–{anchor.endLine}
 					</div>
 				)}
-				{error && (
+				{(error || sendError) && (
 					<div role="alert" className="mb-3 text-[13px] text-[var(--color-danger)]">
-						{error}
+						{error || sendError}
 					</div>
 				)}
 				{!available && !error && (
@@ -138,8 +154,8 @@ export function AskTab({
 							{item.state === "failed" && available && (
 								<button
 									type="button"
-									disabled={pending}
-									onClick={() => onSend(item.message.text, item.message.anchor)}
+									disabled={pending || sending}
+									onClick={() => void send(item.message.text, item.message.anchor, false)}
 									className="text-[var(--accent-hover)]"
 								>
 									Retry
@@ -172,8 +188,8 @@ export function AskTab({
 				<button
 					type="button"
 					aria-label="Send question"
-					disabled={!available || pending || !question.trim()}
-					onClick={send}
+					disabled={!available || pending || sending || !question.trim()}
+					onClick={() => void send()}
 					className="rounded-lg bg-[var(--accent)] px-3 py-2 text-[13px] text-[var(--accent-foreground)] disabled:opacity-40"
 				>
 					↑

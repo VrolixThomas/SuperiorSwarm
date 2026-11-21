@@ -2,7 +2,12 @@ import { structuredPatch } from "diff";
 import { useMemo } from "react";
 import type { GitHubPRDetails, PRContext } from "../../../../shared/github-types";
 import { trpc } from "../../../trpc/client";
-import { SNAPSHOT_REFRESH, snapshotContentMessage, useReviewSnapshot } from "./useReviewSnapshot";
+import {
+	snapshotContentMessage,
+	snapshotErrorMessage,
+	snapshotQueryOptions,
+	useReviewSnapshot,
+} from "./useReviewSnapshot";
 
 export function useStepContent(
 	workspaceId: string,
@@ -18,7 +23,7 @@ export function useStepContent(
 	);
 	const file = revision.snapshot?.files.find((file) => file.path === currentFilePath);
 	const input = { workspaceId, snapshotId: revision.snapshot?.id ?? "", fileId: file?.id ?? "" };
-	const options = { enabled: !!file, staleTime: 0, retry: false, refetchOnWindowFocus: false };
+	const options = { ...snapshotQueryOptions, enabled: !!file };
 	const originalQuery = trpc.reviewExplanation.getSnapshotFile.useQuery(
 		{ ...input, side: "base" },
 		options
@@ -51,7 +56,7 @@ export function useStepContent(
 	const modifiedContent =
 		!isLoading && !unavailable && modified?.kind === "text" ? modified.content : "";
 	const contentMessage = failed
-		? SNAPSHOT_REFRESH
+		? snapshotErrorMessage(revision.error, originalQuery.error, modifiedQuery.error)
 		: !isLoading && !file && currentFilePath !== null
 			? "File is not part of this snapshot. Refresh the PR to update its file list."
 			: !isLoading
@@ -85,6 +90,7 @@ export function useStepContent(
 		return { validDiffLines: right, validOriginalDiffLines: left };
 	}, [isLoading, unavailable, file, originalContent, modifiedContent]);
 	return {
+		commitSha: revision.snapshot?.headOid,
 		originalContent,
 		modifiedContent,
 		isLoading,

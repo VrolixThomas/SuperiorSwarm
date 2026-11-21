@@ -6,6 +6,7 @@ import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import {
 	TerminalCreateError,
 	type TerminalCreateResult,
+	isReviewPathTerminal,
 	terminalCreateFailure,
 } from "../../shared/terminal-create";
 import { WorkspaceError } from "../../shared/workspace-errors";
@@ -25,6 +26,7 @@ import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 import { registerTerminalInputIPC } from "./input-ipc";
 import { rendererTrust } from "./renderer-trust";
+import { reviewTerminalOwnership } from "./review-terminal-ownership";
 import { type FileCaller, terminalFileOwners } from "./terminal-files";
 import { TerminalViewSessions } from "./view-sessions";
 
@@ -70,6 +72,10 @@ export function setupTerminalIPC(
 					typeof workspaceId === "string" && workspaceId.length > 0 ? workspaceId : undefined;
 				const db = getDb();
 				const row = db.select().from(terminalSessions).where(eq(terminalSessions.id, id)).get();
+				const ownedReview = isReviewPathTerminal(id);
+				if (ownedReview && (!row || row.workspaceId !== wsId))
+					throw new TerminalCreateError("REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
+				const reviewOwner = ownedReview ? reviewTerminalOwnership(db, id, wsId) : undefined;
 				let wasAttached = daemonClient.hasLiveSession(id);
 				if ((row && row.workspaceId !== wsId) || (wasAttached && !row))
 					throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
@@ -80,13 +86,16 @@ export function setupTerminalIPC(
 				if (wsId) {
 					owner = terminalFileOwners.attach(id, caller, wsId, cwd);
 				}
-				if (wasAttached) {
+				if (wasAttached || ownedReview) {
 					const sessions = await daemonClient.listSessionsStrict();
 					const live = sessions.find((session) => session.id === id);
 					if (live && canonicalWorkspaceDirectory(live.cwd) !== cwd)
 						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 					wasAttached = Boolean(live);
+					if (ownedReview && !live) throw new TerminalCreateError("REVIEW_TERMINAL_UNAVAILABLE");
 				}
+				if (ownedReview && reviewTerminalOwnership(db, id, wsId) !== reviewOwner)
+					throw new TerminalCreateError("REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
 				// The daemon inventory query yields. Recheck both record identity and
 				// the directory inode before handing the bound root to the daemon.
 				if (wsId && owner) {

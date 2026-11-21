@@ -1,6 +1,11 @@
 import type { PRContext } from "../../../../shared/github-types";
 import { trpc } from "../../../trpc/client";
-import { SNAPSHOT_REFRESH, snapshotContentMessage, useReviewSnapshot } from "./useReviewSnapshot";
+import {
+	snapshotContentMessage,
+	snapshotErrorMessage,
+	snapshotQueryOptions,
+	useReviewSnapshot,
+} from "./useReviewSnapshot";
 
 export function useContextContent(
 	workspaceId: string | undefined,
@@ -12,11 +17,11 @@ export function useContextContent(
 	const revision = useReviewSnapshot(workspaceId, prCtx, baseRef, headRef);
 	const query = trpc.reviewExplanation.getSnapshotContext.useQuery(
 		{ workspaceId: workspaceId ?? "", snapshotId: revision.snapshot?.id ?? "", path, side: "head" },
-		{ enabled: !!revision.snapshot, staleTime: 0, retry: false, refetchOnWindowFocus: false }
+		{ ...snapshotQueryOptions, enabled: !!revision.snapshot }
 	);
 	const message =
 		!revision.available || revision.isError || query.isError
-			? SNAPSHOT_REFRESH
+			? snapshotErrorMessage(revision.error, query.error)
 			: revision.isPending || query.isPending
 				? "Loading context file…"
 				: snapshotContentMessage(query.data);

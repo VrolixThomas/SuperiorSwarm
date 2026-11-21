@@ -2,6 +2,10 @@ import type * as monaco from "monaco-editor";
 import { useCallback, useEffect, useState } from "react";
 import { formatPrIdentifier } from "../../../../shared/pr-identifier";
 import type { AskMessage } from "../../../../shared/review-path-types";
+import {
+	reviewDraftBindingVersion,
+	setReviewDraftBinding,
+} from "../../../lib/review-draft-binding";
 import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { trpc } from "../../../trpc/client";
 import { useGutterPlusButton } from "../hooks/useGutterPlusButton";
@@ -11,7 +15,11 @@ function pickNewCommentLine(
 	editor: monaco.editor.IStandaloneCodeEditor,
 	validDiffLines: Set<number> | undefined
 ): number | null {
-	let line = editor.getPosition()?.lineNumber ?? null;
+	const selection = editor.getSelection();
+	let line =
+		selection && !selection.isEmpty()
+			? selection.endLineNumber
+			: (editor.getPosition()?.lineNumber ?? null);
 	if (line && (!validDiffLines || validDiffLines.has(line))) return line;
 
 	line = null;
@@ -35,6 +43,8 @@ function pickNewCommentLine(
 type Options = Pick<
 	StepDiffProps,
 	| "prCtx"
+	| "workspaceId"
+	| "reviewDraftId"
 	| "readOnly"
 	| "onSelection"
 	| "onAsk"
@@ -42,13 +52,15 @@ type Options = Pick<
 	| "onCommentRequestHandled"
 	| "onComposerOpenChange"
 	| "cancelCommentNonce"
-> & { validOriginalDiffLines?: Set<number> };
+> & { validOriginalDiffLines?: Set<number>; commitSha?: string };
 export function useStepComments(
 	editorInstance: monaco.editor.IStandaloneDiffEditor | null,
 	currentFilePath: string | null,
 	validDiffLines: Set<number> | undefined,
 	{
 		prCtx,
+		workspaceId,
+		reviewDraftId,
 		readOnly = false,
 		onSelection,
 		onAsk,
@@ -57,6 +69,7 @@ export function useStepComments(
 		onComposerOpenChange,
 		cancelCommentNonce,
 		validOriginalDiffLines,
+		commitSha,
 	}: Options
 ) {
 	const utils = trpc.useUtils();
@@ -69,23 +82,24 @@ export function useStepComments(
 	// biome-ignore lint/correctness/useExhaustiveDependencies: read-only transition closes any pending composer
 	useEffect(() => {
 		setPendingLine((line) => (currentFilePath === null || line !== null ? null : line));
-	}, [currentFilePath, readOnly]);
+	}, [currentFilePath, readOnly, commitSha]);
 
 	const ask = useCallback((anchor: AskMessage["anchor"]) => onAsk?.(anchor), [onAsk]);
 	const comment = useCallback(
 		(anchor: AskMessage["anchor"]) => {
 			if (!readOnly && anchor) {
-				if (validDiffLines && !validDiffLines.has(anchor.endLine)) {
+				const allowed = anchor.side === "LEFT" ? validOriginalDiffLines : validDiffLines;
+				if (allowed && !allowed.has(anchor.endLine)) {
 					setCommentError("Select a line included in the PR diff to comment.");
 					return;
 				}
 				setCommentError("");
 				setInitialBody("");
-				setPendingSide("RIGHT");
+				setPendingSide(anchor.side);
 				setPendingLine(anchor.endLine);
 			}
 		},
-		[readOnly, validDiffLines]
+		[readOnly, validDiffLines, validOriginalDiffLines]
 	);
 	useSelectionActions(onAsk || onSelection ? editorInstance : null, {
 		filePath: currentFilePath ?? "",
@@ -93,6 +107,8 @@ export function useStepComments(
 		onSelection,
 		onComment: readOnly ? undefined : comment,
 		commentLines: validDiffLines,
+		originalCommentLines: validOriginalDiffLines,
+		revision: commitSha,
 	});
 	useEffect(() => {
 		onComposerOpenChange?.(pendingLine !== null);
@@ -133,21 +149,42 @@ export function useStepComments(
 	}, [utils]);
 
 	const addUserComment = trpc.aiReview.addUserComment.useMutation({
-		onSuccess: () => {
-			setPendingLine(null);
+		onMutate: (variables) => {
+			const identity = {
+				workspaceId,
+				provider: prCtx.provider,
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				prNumber: prCtx.number,
+				headSha: variables.commitSha ?? "",
+			};
+			return { identity, bindingVersion: reviewDraftBindingVersion(identity) };
+		},
+		onError: (error) => setCommentError(error.message),
+		onSuccess: (result, variables, context) => {
+			const accepted =
+				context &&
+				result.reviewDraftId &&
+				result.commitSha === context.identity.headSha &&
+				setReviewDraftBinding(context.identity, result.reviewDraftId, context.bindingVersion);
+			if (accepted && variables.commitSha === commitSha && variables.filePath === currentFilePath)
+				setPendingLine(null);
 			invalidateDrafts();
 		},
 	});
 
 	const handleSaveNew = useCallback(
 		(body: string) => {
-			if (readOnly || pendingLine === null || currentFilePath === null) return;
+			if (readOnly || pendingLine === null || currentFilePath === null || !commitSha) return;
 			const allowed = pendingSide === "LEFT" ? validOriginalDiffLines : validDiffLines;
 			if (allowed && !allowed.has(pendingLine)) {
 				setCommentError("This line is no longer in the current PR diff.");
 				return;
 			}
 			addUserComment.mutate({
+				workspaceId,
+				reviewDraftId,
+				commitSha,
 				prProvider: prCtx.provider,
 				prIdentifier: formatPrIdentifier(prCtx),
 				prTitle: prCtx.title,
@@ -161,6 +198,9 @@ export function useStepComments(
 		},
 		[
 			addUserComment,
+			workspaceId,
+			reviewDraftId,
+			commitSha,
 			currentFilePath,
 			pendingLine,
 			pendingSide,
@@ -177,16 +217,19 @@ export function useStepComments(
 	}, []);
 
 	const startNewComment = useCallback(() => {
-		if (readOnly) return;
-		const modEditor = editorInstance?.getModifiedEditor();
-		if (!modEditor) return;
-		const line = pickNewCommentLine(modEditor, validDiffLines);
+		if (readOnly || !editorInstance) return;
+		const original = editorInstance.getOriginalEditor();
+		const side = original.hasTextFocus() ? "LEFT" : "RIGHT";
+		const selectedEditor = side === "LEFT" ? original : editorInstance.getModifiedEditor();
+		const allowed = side === "LEFT" ? validOriginalDiffLines : validDiffLines;
+		const line = pickNewCommentLine(selectedEditor, allowed);
 		if (line !== null) {
+			setCommentError("");
 			setInitialBody("");
-			setPendingSide("RIGHT");
+			setPendingSide(side);
 			setPendingLine(line);
 		}
-	}, [editorInstance, readOnly, validDiffLines]);
+	}, [editorInstance, readOnly, validDiffLines, validOriginalDiffLines]);
 
 	const startAtLine = useCallback((line: number) => {
 		setInitialBody("");
@@ -201,20 +244,9 @@ export function useStepComments(
 			clearIntent();
 			return;
 		}
-		const modEditor = editorInstance?.getModifiedEditor();
-		if (!modEditor) {
-			clearIntent();
-			return;
-		}
-
-		const line = pickNewCommentLine(modEditor, validDiffLines);
-		if (line !== null) {
-			setInitialBody("");
-			setPendingSide("RIGHT");
-			setPendingLine(line);
-		}
+		startNewComment();
 		clearIntent();
-	}, [clearIntent, editorInstance, intent, readOnly, validDiffLines]);
+	}, [clearIntent, intent, readOnly, startNewComment]);
 
 	return {
 		commentError,

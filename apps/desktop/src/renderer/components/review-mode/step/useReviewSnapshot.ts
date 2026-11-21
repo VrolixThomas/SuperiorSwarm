@@ -6,6 +6,27 @@ const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 export const SNAPSHOT_REFRESH =
 	"Revision content is unavailable. Refresh the PR after acquiring its exact commits locally.";
 
+export function isSnapshotBusy(error: unknown): boolean {
+	if (!error || typeof error !== "object") return false;
+	const value = error as { data?: { code?: string }; message?: string };
+	return (
+		value.data?.code === "TOO_MANY_REQUESTS" ||
+		value.message === "Review snapshot reader is busy. Retry shortly"
+	);
+}
+export const snapshotQueryOptions = {
+	staleTime: 30_000,
+	retry: (count: number, error: unknown) => count < 3 && isSnapshotBusy(error),
+	retryDelay: (attempt: number) => Math.min(1000, 250 * 2 ** attempt),
+	refetchOnWindowFocus: false,
+	trpc: { abortOnUnmount: true },
+};
+export function snapshotErrorMessage(...errors: unknown[]): string {
+	return errors.some(isSnapshotBusy)
+		? "Revision reader is busy. Try refreshing again shortly."
+		: SNAPSHOT_REFRESH;
+}
+
 /** A missing revision stays missing; never substitute source/target branches. */
 export function useReviewSnapshot(
 	workspaceId: string | undefined,
@@ -26,7 +47,7 @@ export function useReviewSnapshot(
 				number: prCtx.number,
 			},
 		},
-		{ enabled, staleTime: 0, retry: false, refetchOnWindowFocus: false }
+		{ ...snapshotQueryOptions, enabled }
 	);
 	return {
 		...query,

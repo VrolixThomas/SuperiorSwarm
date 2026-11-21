@@ -241,7 +241,7 @@ export class ReviewPathStorage {
 		identity: ReviewPathIdentity,
 		agent: ReviewPath["agent"],
 		changedFiles: string[],
-		options: { auto?: boolean } = {}
+		options: { auto?: boolean; alsoReview?: boolean } = {}
 	): ReviewPathRun {
 		for (const p of changedFiles) repoPathSchema.parse(p);
 		if (new Set(changedFiles).size !== changedFiles.length)
@@ -261,6 +261,7 @@ export class ReviewPathStorage {
 				id: randomUUID(),
 				version: ++doc.nextVersion,
 				kind: "mapping",
+				alsoReview: options.alsoReview,
 				state: "running",
 				conversationId: doc.conversationId,
 			};

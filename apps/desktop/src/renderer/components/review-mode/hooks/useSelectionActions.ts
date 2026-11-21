@@ -9,9 +9,11 @@ interface SelectionActionsOptions {
 	onComment?: (anchor: Anchor) => void;
 	onSelection?: (anchor: Anchor | null) => void;
 	commentLines?: ReadonlySet<number>;
+	originalCommentLines?: ReadonlySet<number>;
+	revision?: string;
 }
 
-/** A single disposable view zone, tied to the modified model and current file. */
+/** One action zone across both editors; focus and model changes invalidate the old anchor. */
 export function useSelectionActions(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
 	options: SelectionActionsOptions
@@ -23,18 +25,27 @@ export function useSelectionActions(
 	useEffect(() => {
 		if (!editor) return;
 		const modified = editor.getModifiedEditor();
+		const original = editor.getOriginalEditor?.();
+		let owner = modified;
 		let zone: string | null = null;
 		let lastSelection = "";
 		const clear = () => {
 			if (zone) {
-				modified.changeViewZones((accessor) => {
+				owner.changeViewZones((accessor) => {
 					if (zone) accessor.removeZone(zone);
 				});
 				zone = null;
 			}
 		};
-		const update = () => {
-			const selection = modified.getSelection();
+		const reset = () => {
+			clear();
+			lastSelection = "";
+			callbacks.current.onSelection?.(null);
+		};
+		const update = (source: monaco.editor.IStandaloneCodeEditor, side: "LEFT" | "RIGHT") => {
+			const opposite = side === "LEFT" ? modified : original;
+			if (opposite?.hasTextFocus?.() && !source.hasTextFocus?.()) return;
+			const selection = source.getSelection();
 			if (!selection || selection.isEmpty()) {
 				clear();
 				lastSelection = "";
@@ -43,14 +54,15 @@ export function useSelectionActions(
 			}
 			const anchor: Anchor = {
 				path: options.filePath,
-				side: "RIGHT",
+				side,
 				startLine: selection.startLineNumber,
 				endLine: selection.endLineNumber,
 			};
-			const signature = `${anchor.startLine}:${anchor.endLine}`;
+			const signature = `${options.revision}:${side}:${anchor.startLine}:${anchor.endLine}`;
 			if (lastSelection === signature) return;
 			lastSelection = signature;
 			clear();
+			owner = source;
 			callbacks.current.onSelection?.(anchor);
 			const node = document.createElement("div");
 			node.className = "flex items-center gap-2 bg-[var(--bg-base)] px-3 text-[12px]";
@@ -73,23 +85,35 @@ export function useSelectionActions(
 				node.appendChild(button);
 			};
 			if (canAsk) addButton("Ask agent", () => callbacks.current.onAsk?.(anchor), true);
-			if (canComment && (!options.commentLines || options.commentLines.has(anchor.endLine)))
+			const allowed = side === "LEFT" ? options.originalCommentLines : options.commentLines;
+			if (canComment && (!allowed || allowed.has(anchor.endLine)))
 				addButton("Comment · c", () => callbacks.current.onComment?.(anchor), false);
-			modified.changeViewZones((accessor) => {
+			owner.changeViewZones((accessor) => {
 				zone = accessor.addZone({ afterLineNumber: anchor.endLine, heightInPx: 40, domNode: node });
 			});
 		};
-		const selectionSubscription = modified.onDidChangeCursorSelection(update);
-		const modelSubscription = modified.onDidChangeModel(() => {
-			clear();
-			lastSelection = "";
-			callbacks.current.onSelection?.(null);
-		});
+		const subscriptions: monaco.IDisposable[] = [];
+		for (const [source, side] of [
+			[original, "LEFT"],
+			[modified, "RIGHT"],
+		] as const) {
+			if (!source) continue;
+			subscriptions.push(source.onDidChangeCursorSelection(() => update(source, side)));
+			subscriptions.push(source.onDidChangeModel(reset));
+			const focus = source.onDidFocusEditorText?.(() => update(source, side));
+			if (focus) subscriptions.push(focus);
+		}
 		return () => {
-			selectionSubscription.dispose();
-			modelSubscription.dispose();
-			clear();
-			callbacks.current.onSelection?.(null);
+			for (const subscription of subscriptions) subscription.dispose();
+			reset();
 		};
-	}, [editor, options.filePath, options.commentLines, canAsk, canComment]);
+	}, [
+		editor,
+		options.filePath,
+		options.commentLines,
+		options.originalCommentLines,
+		options.revision,
+		canAsk,
+		canComment,
+	]);
 }

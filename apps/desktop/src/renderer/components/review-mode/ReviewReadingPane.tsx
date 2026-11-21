@@ -130,6 +130,12 @@ export function ReviewReadingPane({
 				) : (
 					<StepDiff
 						workspaceId={active.workspaceId}
+						reviewDraftId={
+							data.aiDraft?.commitSha === data.details.headCommitOid &&
+							["ready", "queued", "in_progress"].includes(data.aiDraft.status)
+								? data.aiDraft.id
+								: undefined
+						}
 						prCtx={active.prCtx}
 						details={data.details}
 						threads={data.allThreads}
