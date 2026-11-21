@@ -235,7 +235,9 @@ export function shouldHydrateTabStore(
 	hasLayouts: boolean,
 	extraState: Record<string, string>
 ): boolean {
-	return hasSessions || hasLayouts || extraState["sidebarSegment"] === "hermes";
+	return (
+		hasSessions || hasLayouts || ["hermes", "queue"].includes(extraState["sidebarSegment"] ?? "")
+	);
 }
 
 function workspaceHistoryEntriesEqual(a: WorkspaceHistoryEntry, b: WorkspaceHistoryEntry): boolean {
@@ -615,8 +617,8 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	baseBranchByWorkspace: {},
 	workspaceMetadata: {},
 	_paneVersion: 0,
-	sidebarSegment: "repos" as SidebarSegment,
-	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+	sidebarSegment: "queue" as SidebarSegment,
+	activeWorkspaceBySegment: { queue: null, repos: null, tickets: null, prs: null, hermes: null },
 	selectedHermesSession: null,
 	hermesSessionPane: "chat",
 
@@ -738,7 +740,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const { [workspaceId]: _, ...rest } = state.workspaceMetadata;
 
 		const updatedBySegment = { ...state.activeWorkspaceBySegment };
-		for (const seg of ["repos", "tickets", "prs", "hermes"] as SidebarSegment[]) {
+		for (const seg of ["queue", "repos", "tickets", "prs", "hermes"] as SidebarSegment[]) {
 			if (updatedBySegment[seg]?.id === workspaceId) {
 				updatedBySegment[seg] = null;
 			}
@@ -763,7 +765,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	setSidebarSegment: (segment) => {
 		set({ sidebarSegment: segment });
-		const entry = get().activeWorkspaceBySegment[segment];
+		const entry = segment === "queue" ? null : get().activeWorkspaceBySegment[segment];
 		if (entry) {
 			get().setActiveWorkspace(entry.id, entry.cwd);
 		} else {
@@ -1563,13 +1565,14 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 
 		// Restore sidebar segment (validate against known values)
-		const validSegments = new Set<string>(["repos", "tickets", "prs", "hermes"]);
+		const validSegments = new Set<string>(["queue", "repos", "tickets", "prs", "hermes"]);
 		let sidebarSegment: SidebarSegment = validSegments.has(extraState?.["sidebarSegment"] ?? "")
 			? (extraState?.["sidebarSegment"] as SidebarSegment)
 			: "repos";
 
 		// Restore per-segment active workspace
 		let activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null> = {
+			queue: null,
 			repos: null,
 			tickets: null,
 			prs: null,
@@ -1593,6 +1596,8 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				sidebarSegment = segment;
 			}
 		}
+
+		activeWorkspaceBySegment.queue = null;
 
 		if (extraState?.["activeTicketProject"]) {
 			try {
@@ -1640,9 +1645,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		// Derive right panel from the active workspace for the restored segment
 		const activeEntry = activeWorkspaceBySegment[sidebarSegment];
-		const activeId = sidebarSegment === "hermes" ? null : (activeEntry?.id ?? activeWs);
+		const activeId =
+			sidebarSegment === "hermes" || sidebarSegment === "queue"
+				? null
+				: (activeEntry?.id ?? activeWs);
 		const activeMeta = activeId ? workspaceMetadata[activeId] : undefined;
-		const activeCwdResolved = sidebarSegment === "hermes" ? "" : (activeEntry?.cwd ?? activeCwd);
+		const activeCwdResolved =
+			sidebarSegment === "hermes" || sidebarSegment === "queue"
+				? ""
+				: (activeEntry?.cwd ?? activeCwd);
 		const rightPanel = panelForWorkspace(activeId ?? "", activeCwdResolved, activeMeta);
 		const selectedHermesSession = deserializeHermesSessionSelection(
 			extraState?.["selectedHermesSession"]

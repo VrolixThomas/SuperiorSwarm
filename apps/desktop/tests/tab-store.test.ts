@@ -95,7 +95,7 @@ function resetStore() {
 		workspaceForwardStack: [],
 		pendingWorkspaceHistoryEntry: null,
 		sidebarSegment: "repos",
-		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+		activeWorkspaceBySegment: { queue: null, repos: null, tickets: null, prs: null, hermes: null },
 		activeTicketProject: "all",
 		activeTicketScope: { kind: "current" },
 		selectedTicketId: null,
@@ -922,5 +922,23 @@ describe("openDiffFile with commit contexts", () => {
 		openDiffFile("ws-1", commit, "src/main.ts", "typescript");
 
 		expect(getTabsForWorkspace("ws-1")).toHaveLength(2);
+	});
+});
+
+describe("queue destination", () => {
+	test("opening Queue preserves each workspace route for return", () => {
+		const store = useTabStore.getState();
+		store.navigateToWorkspace("queue-return", "/repo");
+		store.setSidebarSegment("queue");
+		expect(useTabStore.getState().sidebarSegment).toBe("queue");
+		expect(useTabStore.getState().activeWorkspaceId).toBeNull();
+		expect(useTabStore.getState().activeWorkspaceBySegment.queue).toBeNull();
+		store.setSidebarSegment("repos");
+		expect(useTabStore.getState().activeWorkspaceId).toBe("queue-return");
+	});
+	test("a queue route restores without borrowing the previously active workspace", () => {
+		useTabStore.getState().hydrate([], null, "previous", "/repo", { sidebarSegment: "queue" });
+		expect(useTabStore.getState().sidebarSegment).toBe("queue");
+		expect(useTabStore.getState().activeWorkspaceId).toBeNull();
 	});
 });

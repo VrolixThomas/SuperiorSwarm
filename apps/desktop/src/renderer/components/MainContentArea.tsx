@@ -9,6 +9,7 @@ import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionCon
 import { QuickActionPopover } from "./QuickActionPopover";
 import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
+import { QueueView } from "./queue/QueueView";
 import { ReviewModeShell } from "./review-mode/ReviewModeShell";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
@@ -55,6 +56,8 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		setShowQuickActionPopover(false);
 		setEditAction(undefined);
 	}
+
+	if (sidebarSegment === "queue") return <QueueView />;
 
 	if (sidebarSegment === "tickets") {
 		return <TicketsCanvas />;

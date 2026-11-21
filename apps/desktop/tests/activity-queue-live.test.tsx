@@ -150,8 +150,8 @@ test("Codex and Claude repeated ready/input occurrences converge without transie
 		await publish([row(provider, 4, "agent-input")]);
 		expect(document.body.textContent).toContain(`${provider} turn 4`);
 	}
-	expect(useTabStore.getState().activeWorkspaceId).toBe("unrelated");
-	expect(useTabStore.getState().sidebarSegment).toBe("tickets");
+	expect(useTabStore.getState().activeWorkspaceId).toBeNull();
+	expect(useTabStore.getState().sidebarSegment).toBe("queue");
 	expect(calls.every((c) => c.path === "activityQueue.list")).toBe(true);
 });
 
@@ -247,7 +247,7 @@ test("destination focus selects the exact terminal while the dock stays open", a
 	);
 });
 
-test("Queue command opens the panel without selecting a workspace or segment", async () => {
+test("Queue command selects the dedicated queue destination without opening a workspace", async () => {
 	Object.defineProperty(globalThis, "matchMedia", {
 		value: browser.matchMedia.bind(browser),
 		configurable: true,
@@ -264,6 +264,6 @@ test("Queue command opens the panel without selecting a workspace or segment", a
 	await flush();
 	expect(!!document.querySelector("aside")).toBe(true);
 	expect(useProjectStore.getState().sidebarView).toBe("main");
-	expect(useTabStore.getState().activeWorkspaceId).toBe("ongoing");
-	expect(useTabStore.getState().sidebarSegment).toBe("hermes");
+	expect(useTabStore.getState().activeWorkspaceId).toBeNull();
+	expect(useTabStore.getState().sidebarSegment).toBe("queue");
 });

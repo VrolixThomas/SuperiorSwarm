@@ -193,7 +193,7 @@ export interface QuickActionsAPI {
 	) => () => void;
 }
 
-export type SidebarSegment = "repos" | "tickets" | "prs" | "hermes";
+export type SidebarSegment = "queue" | "repos" | "tickets" | "prs" | "hermes";
 
 export type RepoChangeKind = "working-tree" | "index" | "head" | "refs" | "state";
 

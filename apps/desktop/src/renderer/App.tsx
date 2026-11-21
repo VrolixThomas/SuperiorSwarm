@@ -4,7 +4,6 @@ import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
 import { registerReviewActions } from "./actions/review-actions";
-import { ActivityQueueDock } from "./components/ActivityQueueDock";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
@@ -18,6 +17,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
+import { NavRail } from "./components/NavRail";
 import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -29,6 +29,7 @@ import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoor
 import { useUpdaterStatus } from "./hooks/use-updater";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
+import { WorkspaceQueueSync } from "./hooks/useWorkspaceQueue";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -39,7 +40,6 @@ import {
 	deserializeLayout,
 	isSessionSnapshotPersistable,
 } from "./session-snapshot";
-import { useActivityQueueStore } from "./stores/activity-queue-store";
 import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
@@ -447,9 +447,6 @@ function AuthenticatedApp() {
 
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();
-	const queueOpen = useActivityQueueStore((s) => s.open);
-	const closeQueue = useActivityQueueStore((s) => s.close);
-	const previousUtilitySize = useRef<number | null>(null);
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const sidebarView = useProjectStore((s) => s.sidebarView);
@@ -462,37 +459,15 @@ function AuthenticatedApp() {
 		storage: localStorage,
 	});
 
-	// Sync panel collapse/expand with store state.
-	// Global canvas routes do not use the repository diff panel.
+	// The Queue is a main destination; repository tools retain their own panel.
 	useEffect(() => {
-		if (sidebarView === "settings") {
-			previousUtilitySize.current = null;
-			return;
-		}
-		if (!diffPanelRef.current) return;
-		if (queueOpen) {
-			if (previousUtilitySize.current === null) {
-				previousUtilitySize.current = diffPanelRef.current.getSize().inPixels;
-				diffPanelRef.current.expand();
-				diffPanelRef.current.resize("360px");
-			}
-			return;
-		}
-		if (previousUtilitySize.current !== null) {
-			if (rightPanelOpen && previousUtilitySize.current > 0)
-				diffPanelRef.current.resize(previousUtilitySize.current);
-			previousUtilitySize.current = null;
-		}
-		if (sidebarSegment === "tickets" || sidebarSegment === "hermes") {
-			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
-			return;
-		}
-		if (rightPanelOpen && diffPanelRef.current.isCollapsed()) {
-			diffPanelRef.current.expand();
-		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
-			diffPanelRef.current.collapse();
-		}
-	}, [queueOpen, rightPanelOpen, diffPanelRef, sidebarSegment, sidebarView]);
+		const panel = diffPanelRef.current;
+		if (!panel || sidebarView === "settings") return;
+		if (["queue", "tickets", "hermes"].includes(sidebarSegment)) {
+			if (!panel.isCollapsed()) panel.collapse();
+		} else if (rightPanelOpen && panel.isCollapsed()) panel.expand();
+		else if (!rightPanelOpen && !panel.isCollapsed()) panel.collapse();
+	}, [rightPanelOpen, diffPanelRef, sidebarSegment, sidebarView]);
 
 	// Handle toggle-sidebar action from keyboard shortcut
 	useEffect(() => {
@@ -554,123 +529,124 @@ function AuthenticatedApp() {
 	return (
 		<>
 			<TicketRefreshCoordinator />
-			{sidebarView === "settings" ? (
-				<SettingsPage />
-			) : (
-				<>
-					<Group
-						orientation="horizontal"
-						defaultLayout={defaultLayout}
-						onLayoutChanged={onLayoutChanged}
-						className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
-					>
-						<Panel
-							id="sidebar"
-							panelRef={sidebarPanelRef}
-							defaultSize="288px"
-							minSize="232px"
-							maxSize="360px"
-							collapsible
-							collapsedSize="56px"
-							onResize={() => {
-								const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
-								setSidebarCollapsed(isCollapsed);
-							}}
-							className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
+			<WorkspaceQueueSync />
+			<NavRail />
+			<div className="ml-[72px] min-w-0">
+				{sidebarView === "settings" ? (
+					<SettingsPage />
+				) : (
+					<>
+						<Group
+							orientation="horizontal"
+							defaultLayout={defaultLayout}
+							onLayoutChanged={onLayoutChanged}
+							className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
 						>
-							<Sidebar
-								collapsed={sidebarCollapsed}
-								onExpand={() => sidebarPanelRef.current?.expand()}
-							/>
-						</Panel>
+							{sidebarSegment !== "queue" && (
+								<>
+									<Panel
+										id="sidebar"
+										panelRef={sidebarPanelRef}
+										defaultSize={sidebarCollapsed ? "0px" : "288px"}
+										minSize="232px"
+										maxSize="360px"
+										collapsible
+										collapsedSize="0px"
+										onResize={() => {
+											const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
+											setSidebarCollapsed(isCollapsed);
+										}}
+										className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
+									>
+										<Sidebar
+											collapsed={sidebarCollapsed}
+											onExpand={() => sidebarPanelRef.current?.expand()}
+										/>
+									</Panel>
 
-						<Separator className="panel-resize-handle" />
+									<Separator className="panel-resize-handle" />
+								</>
+							)}
 
-						<Panel
-							id="main"
-							minSize={queueOpen ? "240px" : "360px"}
-							className="min-w-0 overflow-hidden"
-						>
-							<MainContentArea savedScrollback={savedScrollback} />
-						</Panel>
+							<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
+								<MainContentArea savedScrollback={savedScrollback} />
+							</Panel>
 
-						<Separator className="panel-resize-handle" />
-						<Panel
-							id="diff"
-							panelRef={diffPanelRef}
-							defaultSize="19.4%"
-							minSize={queueOpen ? "280px" : 200}
-							maxSize={queueOpen ? "480px" : "40%"}
-							collapsible
-							collapsedSize="0%"
-							onResize={() => {
-								const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
-								if (collapsed && queueOpen && previousUtilitySize.current !== null) closeQueue();
-								else if (collapsed && rightPanelOpen) closeDiffPanel();
-							}}
-						>
-							<ActivityQueueDock />
-							{!queueOpen && <DiffPanel onClose={closeDiffPanel} />}
-						</Panel>
-					</Group>
-					{!rightPanelOpen &&
-						!queueOpen &&
-						sidebarSegment === "repos" &&
-						!activeWorkspaceId?.startsWith("xro-") && (
-							<button
-								type="button"
-								onClick={openRightPanel}
-								className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-								title="Open panel"
+							<Separator className="panel-resize-handle" />
+							<Panel
+								id="diff"
+								panelRef={diffPanelRef}
+								defaultSize="19.4%"
+								minSize={200}
+								maxSize="40%"
+								collapsible
+								collapsedSize="0%"
+								onResize={() => {
+									const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
+									if (collapsed && rightPanelOpen && sidebarSegment === "repos") closeDiffPanel();
+								}}
 							>
-								<svg
-									width="8"
-									height="14"
-									viewBox="0 0 8 14"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="1.5"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									aria-hidden="true"
+								<DiffPanel onClose={closeDiffPanel} />
+							</Panel>
+						</Group>
+						{!rightPanelOpen &&
+							sidebarSegment === "repos" &&
+							!activeWorkspaceId?.startsWith("xro-") && (
+								<button
+									type="button"
+									onClick={openRightPanel}
+									className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+									title="Open panel"
 								>
-									<path d="M7 1L1 7l6 6" />
-								</svg>
-							</button>
+									<svg
+										width="8"
+										height="14"
+										viewBox="0 0 8 14"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="1.5"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										aria-hidden="true"
+									>
+										<path d="M7 1L1 7l6 6" />
+									</svg>
+								</button>
+							)}
+						<AddRepositoryModal />
+						<CreateCrossRepoOrchestratorModal />
+						<CreateWorktreeModal />
+						<CreateFolderWorkspaceModal />
+						<SharedFilesPanel />
+						<DaemonStatus />
+						<CommandPalette />
+						<SearchEverywherePopup />
+						<PRReviewKeyboardListener />
+						{activeProjectId && (
+							<BranchPalette
+								projectId={activeProjectId}
+								onOpenActionMenu={(branch, currentBranch, position, mergeRef, isRemote) => {
+									setActionMenu({ branch, currentBranch, position, mergeRef, isRemote });
+								}}
+							/>
 						)}
-					<AddRepositoryModal />
-					<CreateCrossRepoOrchestratorModal />
-					<CreateWorktreeModal />
-					<CreateFolderWorkspaceModal />
-					<SharedFilesPanel />
-					<DaemonStatus />
-					<CommandPalette />
-					<SearchEverywherePopup />
-					<PRReviewKeyboardListener />
-					{activeProjectId && (
-						<BranchPalette
-							projectId={activeProjectId}
-							onOpenActionMenu={(branch, currentBranch, position, mergeRef, isRemote) => {
-								setActionMenu({ branch, currentBranch, position, mergeRef, isRemote });
-							}}
-						/>
-					)}
-					{activeProjectId && actionMenu && (
-						<BranchActionMenu
-							projectId={activeProjectId}
-							branch={actionMenu.branch}
-							currentBranch={actionMenu.currentBranch}
-							position={actionMenu.position}
-							mergeRef={actionMenu.mergeRef}
-							isRemote={actionMenu.isRemote}
-							onClose={() => setActionMenu(null)}
-							onMerge={handleMerge}
-							onRebase={handleRebase}
-							isMerging={isMerging}
-						/>
-					)}
-				</>
-			)}
+						{activeProjectId && actionMenu && (
+							<BranchActionMenu
+								projectId={activeProjectId}
+								branch={actionMenu.branch}
+								currentBranch={actionMenu.currentBranch}
+								position={actionMenu.position}
+								mergeRef={actionMenu.mergeRef}
+								isRemote={actionMenu.isRemote}
+								onClose={() => setActionMenu(null)}
+								onMerge={handleMerge}
+								onRebase={handleRebase}
+								isMerging={isMerging}
+							/>
+						)}
+					</>
+				)}
+			</div>
 			<InstallingOverlay />
 			<UpdateToast />
 			<WhatsNewModal />

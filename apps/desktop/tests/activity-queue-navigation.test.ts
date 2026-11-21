@@ -11,7 +11,7 @@ beforeEach(() => {
 		sidebarSegment: "repos",
 		workspaceMetadata: {},
 		terminalCreateIntents: {},
-		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+		activeWorkspaceBySegment: { queue: null, repos: null, tickets: null, prs: null, hermes: null },
 		workspaceBackStack: [],
 		workspaceForwardStack: [],
 		pendingWorkspaceHistoryEntry: null,
@@ -28,6 +28,7 @@ describe("direct Queue navigation", () => {
 			useTabStore.setState({
 				sidebarSegment: segment,
 				activeWorkspaceBySegment: {
+					queue: null,
 					repos: { id: "unrelated", cwd: "/unrelated" },
 					tickets: null,
 					prs: null,

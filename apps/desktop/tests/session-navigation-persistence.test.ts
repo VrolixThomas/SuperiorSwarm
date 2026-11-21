@@ -32,7 +32,7 @@ function resetStores(): void {
 		rightPanel: PANEL_CLOSED,
 		workspaceMetadata: {},
 		sidebarSegment: "repos",
-		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+		activeWorkspaceBySegment: { queue: null, repos: null, tickets: null, prs: null, hermes: null },
 		selectedHermesSession: null,
 		hermesSessionPane: "chat",
 		activeTicketProject: "all",

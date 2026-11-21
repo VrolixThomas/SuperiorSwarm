@@ -8,9 +8,9 @@ test("event option comes first, calendar options use local time and input is unc
 	expect(options.map((option) => option.label)).toEqual([
 		"Until it changes",
 		"In 1 hour",
-		"This evening",
-		"Tomorrow",
-		"Next Monday",
+		"This evening at 18:00",
+		"Tomorrow at 09:00",
+		"Next Monday at 09:00",
 	]);
 	expect(options[0]).toEqual({ id: "until-change", label: "Until it changes", untilChange: true });
 	expect(options.map((option) => option.until)).toEqual([
@@ -27,6 +27,7 @@ test("event option comes first, calendar options use local time and input is unc
 test("at/after 18h evening moves to tomorrow; Monday means the following Monday", () => {
 	for (const hour of [18, 23]) {
 		const now = new Date(2026, 10, 23, hour);
+		expect(laterOptions(now)[2]?.label).toBe("Tomorrow at 18:00");
 		expect(laterOptions(now)[2]?.until).toBe(new Date(2026, 10, 24, 18).getTime());
 		expect(laterOptions(now)[4]?.until).toBe(new Date(2026, 10, 30, 9).getTime());
 	}

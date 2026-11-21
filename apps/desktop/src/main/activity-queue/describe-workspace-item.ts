@@ -33,23 +33,23 @@ export function describeWorkspaceItem(
 	const descriptions = {
 		"agent-question": [
 			"The agent asked a question.",
-			"Clears when a correlated answer is recorded, the source is removed, or you mark it Done.",
+			"Clears when this question is answered, or you mark it Done.",
 		],
 		"agent-failed": [
 			"The agent reported a failed turn.",
-			"Clears when the agent reports new activity, the source is removed, or you mark it Done.",
+			"Clears when the agent continues, or you mark it Done.",
 		],
 		"agent-permission": [
 			"The agent requested permission in its terminal.",
-			"Clears when the agent reports new activity, the source is removed, or you mark it Done.",
+			"Clears when the agent continues, or you mark it Done.",
 		],
 		"agent-done": [
 			"The agent reported completion.",
-			"Clears when new work is reported, the source is removed, or you mark it Done.",
+			"Clears when you continue the task, or mark it Done.",
 		],
 		"agent-input": [
 			"The agent needs input.",
-			"Clears when the agent reports new activity, the source is removed, or you mark it Done.",
+			"Clears when the agent continues, or you mark it Done.",
 		],
 	} as const;
 	const [why, clearsWhen] = descriptions[situation];
@@ -64,8 +64,8 @@ export function describeWorkspaceItem(
 		why,
 		clearsWhen,
 		context,
-		evidence: [...new Set([item.summary, ...item.reasons.map((reason) => reason.label)])].filter(
-			(value) => value.trim().length > 0
-		),
+		evidence: [...new Set([item.summary, ...item.reasons.map((reason) => reason.label)])]
+			.filter((value) => value.trim().length > 0)
+			.slice(0, 4),
 	};
 }
