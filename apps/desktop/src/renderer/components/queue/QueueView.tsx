@@ -6,7 +6,8 @@ import type {
 } from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
 import { useWorkspaceQueue } from "../../hooks/useWorkspaceQueue";
-import { focusQueueDestination, openQueueTarget } from "../../lib/activity-queue-navigation";
+import { focusQueueDestination } from "../../lib/activity-queue-navigation";
+import { openQueueItem } from "../../lib/queue-item-open";
 import {
 	type WorkspaceQueueFilter,
 	nextQueueSelection,
@@ -675,7 +676,7 @@ export function QueueView() {
 			setView={setView}
 			refresh={refresh}
 			open={async (item) => {
-				const dest = await openQueueTarget(item.target);
+				const dest = await openQueueItem(item);
 				useQueueNavigationStore.getState().select(item, pending.data?.items ?? []);
 				useActivityQueueStore.setState({ open: false });
 				focusQueueDestination(dest);

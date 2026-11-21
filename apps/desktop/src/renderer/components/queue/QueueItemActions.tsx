@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { WorkspaceQueueItem } from "../../../shared/activity-queue";
 import { useQueueConversationActions } from "../../hooks/useQueueConversationActions";
 import { useQueuePermissionActions } from "../../hooks/useQueuePermissionActions";
-import { focusQueueDestination, openQueueTarget } from "../../lib/activity-queue-navigation";
+import { focusQueueDestination } from "../../lib/activity-queue-navigation";
+import { openQueueItem } from "../../lib/queue-item-open";
 import { QueueConversationReply } from "./QueueConversationReply";
 import { QueuePermissionActions } from "./QueuePermissionActions";
 /** Shared connected actions for jump/peek; all mutations retain the displayed receipt. */
@@ -23,7 +24,7 @@ export function QueueItemActions({
 	const open =
 		onOpen ??
 		(() => {
-			void openQueueTarget(item.target)
+			void openQueueItem(item)
 				.then(focusQueueDestination)
 				.catch(() =>
 					setOpenError("The chat could not be opened. Refresh the queue and try again.")
