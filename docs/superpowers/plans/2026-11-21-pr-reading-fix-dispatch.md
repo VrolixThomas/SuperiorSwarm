@@ -51,3 +51,7 @@ Initial MCP dispatches returned started while the running development app displa
 F1 proposed durable per-scope metadata generation/CAS in existing JSON, reserving before async resolution and fencing direct head transitions/new runs. Parent approved, including fail-closed403 for any supplied invalid task token and updating the old insecure replay expectation. Independent validators stay intact.
 
 F4 proposed max2 active snapshot readers with finite cancellable/deadline-bound queue and transient-only retry. Parent approved default-queue tests plus maxQueued:0 for explicit legacy overload testing, retaining all independent native assertions.
+
+## Integration outcome
+
+Integrated and locally verified at production checkpoint `bb328ca3`. See [remediation verification](2026-11-21-pr-reading-remediation-verification.md) for all 14 dispositions, independent approval, native results and provider limits. SuperiorSwarm went offline; F4 work was recovered without changing its source worktree and local Codex subagents completed the two remaining boundaries. Original worktree/app status may be stale; do not reapply those source patches without reconciling against this branch.
