@@ -10,7 +10,16 @@ import type {
 import { getDb } from "../db";
 import { activityQueueSources } from "../db/schema-activity-queue";
 
-const priority = { "agent-input": 0, "pr-review": 1, "pr-update": 2, "agent-ready": 3 };
+const priority = {
+	"agent-input": 0,
+	"pr-review": 1,
+	"pr-update": 2,
+	"agent-ready": 3,
+	"pr-feedback": 1,
+	"ticket-start": 2,
+	"ticket-feedback": 1,
+	"project-hook": 2,
+};
 function item(source: ActivityQueueSource): ActivityQueueItem | null {
 	return source.candidate
 		? {

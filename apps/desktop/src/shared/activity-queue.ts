@@ -6,6 +6,10 @@ export const ACTIVITY_QUEUE_KINDS = [
 	"agent-ready",
 	"pr-review",
 	"pr-update",
+	"pr-feedback",
+	"ticket-start",
+	"ticket-feedback",
+	"project-hook",
 ] as const;
 export type ActivityQueueKind = (typeof ACTIVITY_QUEUE_KINDS)[number];
 
@@ -26,6 +30,8 @@ export type ActivityQueueTarget =
 	  }
 	| {
 			type: "pr";
+			accountId?: string;
+			host?: string;
 			provider: "github" | "bitbucket";
 			owner: string;
 			repo: string;
@@ -35,6 +41,25 @@ export type ActivityQueueTarget =
 			targetBranch?: string;
 			projectId?: string;
 			workspaceId?: string;
+	  }
+	| {
+			type: "ticket";
+			provider: "linear" | "jira";
+			accountId: string;
+			siteId: string;
+			ticketId: string;
+			identifier: string;
+			url: string;
+			groupId: string;
+			workspaceId?: string;
+	  }
+	| {
+			type: "project-hook";
+			projectId: string;
+			hookId: string;
+			key: string;
+			url?: string;
+			fixPrompt?: string;
 	  }
 	| { type: "hermes"; profileId: string; sessionId: string; workspaceId?: string }
 	| { type: "unavailable"; reason: string };
@@ -188,3 +213,34 @@ export interface WorkspaceQueueReplyInput extends WorkspaceQueueRevisionInput {
 export type WorkspaceQueueReplyResult =
 	| { status: "admitted" | "uncertain" | "received"; requestId: string; detail: string }
 	| { status: "conflict" | "not-found" | "unavailable" | "rejected"; reason: string };
+
+/** External attention never invents a workspace or conversation owner. */
+export interface ExternalQueueItem extends ActivityQueueItem {
+	category: "tickets" | "prs" | "hooks";
+	situation: string;
+	subject: string;
+	why: string;
+	clearsWhen: string;
+	sourceLabel: string;
+	nextAction: string;
+	openLabel: string;
+	detailLabel: string;
+	missingContext?: string;
+	evidence: string[];
+	context: {
+		projectId?: string;
+		projectName: string;
+		projectTint: number;
+		projectColor?: string | null;
+		workspaceId?: string;
+		workspaceName?: string;
+	};
+	snoozed?: { until: number | null; untilChange: boolean };
+	/** Absent on external rows; keeps common display code safe without false ownership. */
+	members?: never;
+	question?: never;
+}
+export type QueueViewItem = WorkspaceQueueItem | ExternalQueueItem;
+export interface QueueViewListResult extends Omit<WorkspaceQueueListResult, "items"> {
+	items: QueueViewItem[];
+}
