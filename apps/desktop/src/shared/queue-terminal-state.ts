@@ -3,5 +3,6 @@ export interface QueueTerminalState {
 	provider: string;
 	providerSessionId: string;
 	turnId: string;
+	promptHash?: string;
 	phase: "prompt" | "idle" | "blocked" | "reset";
 }

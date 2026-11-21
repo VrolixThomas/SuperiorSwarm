@@ -100,6 +100,134 @@ export class DaemonClient {
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
 	private queueReplyCapable = false;
+	private queueResumeCapable = false;
+	private sleepGuards = new Map<string, string>();
+	get supportsQueueResume(): boolean {
+		return this.isConnected && this.queueResumeCapable;
+	}
+	async queueRegisterLaunch(
+		id: string,
+		owner: import("../../shared/queue-resume").QueueLaunchOwner,
+		descriptor: import("../../shared/queue-resume").QueueLaunchDescriptor
+	): Promise<boolean> {
+		if (!this.supportsQueueResume) return false;
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-register-launch",
+					id,
+					owner,
+					descriptor,
+					requestId: randomUUID(),
+				})
+			)?.delivery === "admitted"
+		);
+	}
+	async prepareQueueSleep(
+		id: string,
+		provider: string,
+		providerSessionId: string
+	): Promise<string | null> {
+		if (!this.supportsQueueResume || this.pendingInputTerminals.has(id)) return null;
+		const lease = (
+			await this.fileRequest({
+				type: "queue-sleep-prepare",
+				id,
+				provider,
+				providerSessionId,
+				requestId: randomUUID(),
+			})
+		)?.target;
+		if (!lease?.supported) return null;
+		this.sleepGuards.set(id, lease.generation);
+		return lease.generation;
+	}
+	async completeQueueSleep(id: string, generation: string): Promise<boolean> {
+		if (!this.supportsQueueResume || this.pendingInputTerminals.has(id)) return false;
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-sleep-complete",
+					id,
+					generation,
+					requestId: randomUUID(),
+				})
+			)?.delivery === "admitted"
+		);
+	}
+	async parkQueueRoot(id: string): Promise<boolean> {
+		const generation = this.sleepGuards.get(id);
+		if (!this.supportsQueueResume || !generation || this.pendingInputTerminals.has(id))
+			return false;
+		return (
+			(await this.fileRequest({ type: "queue-park-root", id, generation, requestId: randomUUID() }))
+				?.delivery === "admitted"
+		);
+	}
+	async queueResumeTarget(
+		id: string,
+		provider: string,
+		providerSessionId: string,
+		reserve = true,
+		allowPending = false
+	): Promise<DaemonFileTarget | null> {
+		if (!this.supportsQueueResume || (!allowPending && this.pendingInputTerminals.has(id)))
+			return null;
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-resume-target",
+					id,
+					provider,
+					providerSessionId,
+					reserve,
+					requestId: randomUUID(),
+				})
+			)?.target ?? null
+		);
+	}
+	async resumeQueueView(
+		id: string,
+		generation: string,
+		owner: import("../../shared/queue-resume").QueueLaunchOwner,
+		prompt?: string
+	): Promise<"admitted" | "rejected" | "uncertain"> {
+		if (!this.supportsQueueResume) return "rejected";
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-resume-view",
+					id,
+					generation,
+					owner,
+					prompt,
+					requestId: randomUUID(),
+				})
+			)?.delivery ?? "uncertain"
+		);
+	}
+
+	async submitQueueResume(
+		id: string,
+		generation: string,
+		deliveryId: string,
+		content: string
+	): Promise<"admitted" | "rejected" | "uncertain"> {
+		if (!this.supportsQueueResume || this.pendingInputTerminals.has(id)) return "rejected";
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-resume-input",
+					id,
+					generation,
+					deliveryId,
+					content,
+					requestId: randomUUID(),
+				})
+			)?.delivery ?? "uncertain"
+		);
+	}
+
 	queueProviderState(
 		id: string,
 		state: import("../../shared/queue-terminal-state").QueueTerminalState
@@ -299,7 +427,20 @@ export class DaemonClient {
 	private async fileRequest(
 		message: Extract<
 			ClientMessage,
-			{ type: "file-target" | "file-input" | "queue-target" | "queue-input" }
+			{
+				type:
+					| "file-target"
+					| "file-input"
+					| "queue-target"
+					| "queue-input"
+					| "queue-register-launch"
+					| "queue-sleep-prepare"
+					| "queue-sleep-complete"
+					| "queue-park-root"
+					| "queue-resume-target"
+					| "queue-resume-input"
+					| "queue-resume-view";
+			}
 		>
 	): Promise<Extract<DaemonMessage, { type: "file-result" }> | null> {
 		if (!this.canSendFileInput() || this.fileRequests.size >= 64) return null;
@@ -350,6 +491,8 @@ export class DaemonClient {
 			this.fileInputCapable = false;
 			this.fileSubmitCapable = false;
 			this.queueReplyCapable = false;
+			this.queueResumeCapable = false;
+			this.sleepGuards.clear();
 			this.snapshotCapable = false;
 			for (const resolve of this.fileRequests.values()) resolve(null);
 		}
@@ -391,6 +534,7 @@ export class DaemonClient {
 		this.fileInputCapable = ready.capabilities?.includes("file-input-v1") === true;
 		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
 		this.queueReplyCapable = ready.capabilities?.includes("queue-reply-v1") === true;
+		this.queueResumeCapable = ready.capabilities?.includes("queue-resume-v1") === true;
 		this.snapshotCapable = ready.capabilities?.includes(TERMINAL_SNAPSHOT_CAPABILITY) === true;
 		this.binaryInputSupported =
 			(ready.protocolVersion === 2 || ready.protocolVersion === DAEMON_PROTOCOL_VERSION) &&
@@ -541,7 +685,9 @@ export class DaemonClient {
 		return this.liveSessions.has(id);
 	}
 
-	async listSessions(): Promise<Array<{ id: string; cwd: string; pid: number }>> {
+	async listSessions(): Promise<
+		Array<{ id: string; cwd: string; pid: number; processKind?: "provider" }>
+	> {
 		if (!this.isConnected) return [];
 		return this.listSessionsStrict();
 	}
@@ -550,7 +696,9 @@ export class DaemonClient {
 	 * List sessions only when the daemon is provably connected. Recovery code
 	 * must use this instead of treating an unavailable daemon as an empty one.
 	 */
-	async listSessionsStrict(): Promise<Array<{ id: string; cwd: string; pid: number }>> {
+	async listSessionsStrict(): Promise<
+		Array<{ id: string; cwd: string; pid: number; processKind?: "provider" }>
+	> {
 		if (!this.isConnected) throw new Error("Terminal daemon is not connected");
 		this.send({ type: "list" });
 		const msg = await this.waitForMessage("sessions");

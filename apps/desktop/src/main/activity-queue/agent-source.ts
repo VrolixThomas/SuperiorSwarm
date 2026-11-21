@@ -178,7 +178,7 @@ export function observeValidatedAgentEvent(
 	// its attention until a prompt or actual tool activity is observed.
 	if (
 		event.rawEvent === "SessionStart" &&
-		event.sessionSource === "resume" &&
+		(event.sessionSource === "resume" || known?.state === "resuming") &&
 		previous?.candidate &&
 		known?.provider === event.agent &&
 		known.providerSessionId === providerSessionId

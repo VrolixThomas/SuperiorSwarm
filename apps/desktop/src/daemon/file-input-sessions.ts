@@ -1,6 +1,16 @@
+import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { basename } from "node:path";
 import { QUEUE_REPLY_MAX_CHARACTERS } from "../shared/activity-queue";
+import { answerContinuationFits } from "../shared/queue-answer-continuation";
+import {
+	type QueueLaunchDescriptor,
+	type QueueLaunchOwner,
+	queueOwnerKey,
+	queueResumeArgs,
+	validQueueLaunch,
+} from "../shared/queue-resume";
 import {
 	FILE_PASTE_MAX_BYTES,
 	type FileDelivery,
@@ -15,6 +25,25 @@ export interface FileInputTarget {
 	supported: boolean;
 }
 interface Session {
+	launch?: {
+		descriptor: QueueLaunchDescriptor;
+		providerSessionId: string;
+		owner: QueueLaunchOwner;
+		executable: string;
+		identity?: TerminalProcessIdentity;
+		trustedPid?: number;
+		binaryStamp: string;
+	};
+	sleep?: {
+		generation: string;
+		provider: string;
+		providerSessionId: string;
+		version: number;
+		runningIdentity: TerminalProcessIdentity;
+		identity?: TerminalProcessIdentity;
+	};
+	argvPrompt?: { provider: string; providerSessionId: string; hash: string; version: number };
+
 	inputVersion: number;
 	submittedVersions: number[];
 	ambiguousInput?: boolean;
@@ -27,7 +56,12 @@ interface Session {
 	inspect?: () => TerminalProcessIdentity | null;
 	clients: Map<
 		string,
-		(FileInputTarget & { identity?: TerminalProcessIdentity; conversation?: boolean }) | null
+		| (FileInputTarget & {
+				identity?: TerminalProcessIdentity;
+				conversation?: boolean;
+				resume?: boolean;
+		  })
+		| null
 	>;
 }
 function recordSubmission(session: Session): void {
@@ -143,7 +177,22 @@ export class FileInputSessions {
 			session.readyKey = undefined;
 			if (session.prompt?.key === key) return;
 			const identity = session.inspect?.();
-			const version = session.submittedVersions.shift();
+			const argv = session.argvPrompt;
+			if (
+				argv &&
+				(argv.provider !== state.provider ||
+					argv.providerSessionId !== state.providerSessionId ||
+					argv.hash !== state.promptHash)
+			)
+				return;
+			const version =
+				argv &&
+				argv.provider === state.provider &&
+				argv.providerSessionId === state.providerSessionId &&
+				argv.hash === state.promptHash
+					? argv.version
+					: session.submittedVersions.shift();
+			if (argv) session.argvPrompt = undefined;
 			session.prompt = identity && version !== undefined ? { key, version, identity } : undefined;
 			return;
 		}
@@ -159,6 +208,241 @@ export class FileInputSessions {
 			session.readyKey = key;
 		}
 	}
+	registerLaunch(id: string, owner: QueueLaunchOwner, descriptor: QueueLaunchDescriptor): boolean {
+		const session = this.sessions.get(id);
+		const providerSessionId = owner.providerSessionId;
+		if (
+			!session ||
+			!owner.entity ||
+			owner.terminalId !== id ||
+			!providerSessionId ||
+			owner.provider !== descriptor.provider ||
+			!validQueueLaunch(descriptor)
+		)
+			return false;
+		const identity = session.inspect?.();
+		if (!identity || !this.providerIdentity(identity, descriptor.provider)) return false;
+		if (
+			session.launch &&
+			session.launch.providerSessionId === providerSessionId &&
+			(JSON.stringify(session.launch.descriptor) !== JSON.stringify(descriptor) ||
+				queueOwnerKey(session.launch.owner) !== queueOwnerKey(owner))
+		)
+			return false;
+		if (
+			session.launch &&
+			session.launch.providerSessionId === providerSessionId &&
+			!this.launchIdentity(session, identity)
+		)
+			return false;
+		let binaryStamp: string;
+		try {
+			binaryStamp = this.binaryStamp(identity.executable);
+		} catch {
+			return false;
+		}
+		session.launch = {
+			descriptor: structuredClone(descriptor),
+			providerSessionId,
+			owner: structuredClone(owner),
+			executable: identity.executable,
+			identity,
+			binaryStamp,
+		};
+		return true;
+	}
+
+	private binaryStamp(executable: string): string {
+		const s = statSync(executable);
+		return JSON.stringify([s.dev, s.ino, s.size, s.mtimeMs]);
+	}
+	private launchIdentity(session: Session, identity: TerminalProcessIdentity): boolean {
+		const launch = session.launch;
+		if (!launch) return false;
+		if (launch.identity) return sameTerminalProcess(launch.identity, identity);
+		if (launch.trustedPid !== identity.pid || launch.executable !== identity.executable)
+			return false;
+		launch.identity = identity;
+		launch.trustedPid = undefined;
+		return true;
+	}
+	trustedLaunchProcess(id: string, pid: number): void {
+		const launch = this.sessions.get(id)?.launch;
+		if (launch) {
+			launch.identity = undefined;
+			launch.trustedPid = pid;
+		}
+	}
+	private providerIdentity(identity: TerminalProcessIdentity, provider: string): boolean {
+		return provider === "claude"
+			? name(identity.executable) === "claude" || nativeClaude(identity.executable)
+			: provider === "codex" && name(identity.executable) === "codex";
+	}
+	prepareSleep(
+		id: string,
+		client: string,
+		provider: string,
+		providerSessionId: string
+	): FileInputTarget | null {
+		const session = this.sessions.get(id);
+		const ready = this.conversationTarget(id, client, provider, providerSessionId, false);
+		if (
+			!session?.launch ||
+			session.launch.providerSessionId !== providerSessionId ||
+			!ready?.supported
+		)
+			return null;
+		const identity = session.inspect?.();
+		if (!identity || !this.launchIdentity(session, identity)) return null;
+		const generation = randomUUID();
+		session.sleep = {
+			generation,
+			provider,
+			providerSessionId,
+			version: session.inputVersion,
+			runningIdentity: identity,
+		};
+		return { generation, supported: true, foreground: ready.foreground };
+	}
+	canPark(id: string, generation: string): boolean {
+		const s = this.sessions.get(id);
+		const p = s?.sleep;
+		const current = s?.inspect?.();
+		return (
+			!!s &&
+			!!p &&
+			p.generation === generation &&
+			p.version === s.inputVersion &&
+			!!current &&
+			sameTerminalProcess(p.runningIdentity, current)
+		);
+	}
+	completeSleep(id: string, generation: string, rootPid: number): boolean {
+		const session = this.sessions.get(id);
+		const proof = session?.sleep;
+		const identity = session?.inspect?.();
+		if (
+			!session ||
+			!proof ||
+			proof.generation !== generation ||
+			proof.version !== session.inputVersion ||
+			!identity ||
+			identity.pid !== rootPid ||
+			!POSIX.has(name(identity.executable))
+		)
+			return false;
+		proof.identity = identity;
+		session.readyKey = undefined;
+		session.prompt = undefined;
+		session.inputDirty = true;
+		return true;
+	}
+	replaceTransport(
+		id: string,
+		foreground: () => string,
+		write: (data: string) => void,
+		inspect: () => TerminalProcessIdentity | null
+	): void {
+		const s = this.sessions.get(id);
+		if (!s) return;
+		s.foreground = foreground;
+		s.write = write;
+		s.inspect = inspect;
+		s.readyKey = undefined;
+		s.prompt = undefined;
+		s.argvPrompt = undefined;
+		for (const client of s.clients.keys()) s.clients.set(client, null);
+	}
+	resumeTarget(
+		id: string,
+		client: string,
+		provider: string,
+		providerSessionId: string,
+		reserve = true
+	): FileInputTarget | null {
+		const s = this.sessions.get(id);
+		const proof = s?.sleep;
+		const identity = s?.inspect?.();
+		if (!s?.clients.has(client) || !s.launch) return null;
+		const target = {
+			generation: randomUUID(),
+			foreground: identity?.name ?? "",
+			supported:
+				!!s.launch &&
+				s.launch.providerSessionId === providerSessionId &&
+				s.launch.descriptor.provider === provider &&
+				!!proof?.identity &&
+				proof.provider === provider &&
+				proof.providerSessionId === providerSessionId &&
+				proof.version === s.inputVersion &&
+				!!identity &&
+				sameTerminalProcess(proof.identity, identity),
+		};
+		if (reserve)
+			s.clients.set(client, { ...target, identity: identity ?? undefined, resume: true });
+		return target;
+	}
+	takeResume(
+		id: string,
+		client: string,
+		generation: string,
+		prompt: string | undefined,
+		owner: QueueLaunchOwner
+	): { executable: string; args: string[]; provider: string; providerSessionId: string } | null {
+		const s = this.sessions.get(id);
+		const lease = s?.clients.get(client);
+		const proof = s?.sleep;
+		const identity = s?.inspect?.();
+		if (
+			!s ||
+			!lease?.resume ||
+			lease.generation !== generation ||
+			!lease.supported ||
+			!s.launch ||
+			queueOwnerKey(s.launch.owner) !== queueOwnerKey(owner) ||
+			!proof?.identity ||
+			proof.version !== s.inputVersion ||
+			!identity ||
+			!sameTerminalProcess(proof.identity, identity)
+		)
+			return null;
+		for (const owner of s.clients.keys()) s.clients.set(owner, null);
+		try {
+			if (this.binaryStamp(s.launch.executable) !== s.launch.binaryStamp) return null;
+		} catch {
+			return null;
+		}
+		const args = queueResumeArgs(s.launch.descriptor, s.launch.providerSessionId, prompt);
+		return {
+			executable: s.launch.executable,
+			args,
+			provider: s.launch.descriptor.provider,
+			providerSessionId: s.launch.providerSessionId,
+		};
+	}
+	admittedArgvPrompt(
+		id: string,
+		provider: string,
+		providerSessionId: string,
+		prompt: string | undefined
+	): void {
+		const s = this.sessions.get(id);
+		if (!s) return;
+		s.sleep = undefined;
+		s.submittedVersions = [];
+		s.ambiguousInput = false;
+		s.inputDirty = true;
+		s.argvPrompt =
+			prompt === undefined
+				? undefined
+				: {
+						provider,
+						providerSessionId,
+						hash: createHash("sha256").update(prompt).digest("hex"),
+						version: s.inputVersion,
+					};
+	}
+
 	/** No shell/runtime heuristics: require OS-inspected native provider identity. */
 	conversationTarget(
 		id: string,
@@ -198,7 +482,8 @@ export class FileInputSessions {
 		id: string,
 		client: string,
 		generation: string,
-		text: string
+		text: string,
+		answer = false
 	): Exclude<FileDelivery, "unconfirmed"> {
 		const session = this.sessions.get(id);
 		const target = session?.clients.get(client);
@@ -214,8 +499,8 @@ export class FileInputSessions {
 			typeof text !== "string" ||
 			!text.trim() ||
 			/^[!/]/.test(text.trimStart()) ||
-			text.length > QUEUE_REPLY_MAX_CHARACTERS ||
-			Buffer.byteLength(text) > 16000 ||
+			(answer ? !answerContinuationFits(text) : text.length > QUEUE_REPLY_MAX_CHARACTERS) ||
+			Buffer.byteLength(text) > (answer ? 56000 : 16000) ||
 			hasUnsafeTerminalText(text.replaceAll("\n", ""))
 		)
 			return "rejected";
@@ -262,7 +547,13 @@ export class FileInputSessions {
 	): Exclude<FileDelivery, "unconfirmed"> {
 		const session = this.sessions.get(id);
 		const target = session?.clients.get(client);
-		if (!session || !target || target.conversation || target.generation !== generation)
+		if (
+			!session ||
+			!target ||
+			target.conversation ||
+			target.resume ||
+			target.generation !== generation
+		)
 			return "rejected";
 		session.clients.set(client, null); // consume before any handoff, never retry
 		const current = target.identity ? session.inspect?.() : undefined;

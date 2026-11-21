@@ -29,6 +29,7 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
+import { defaultQueueLaunch } from "../../shared/queue-resume";
 import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
 import {
 	type WorkspaceReporter,
@@ -553,7 +554,12 @@ export function buildLaunchScript(opts: {
 	// Per-preset invocation shape. Most CLIs accept a positional prompt; opencode
 	// reserves the positional slot for `[project]` (a directory) and requires the
 	// `run` subcommand to deliver a prompt as a message.
-	const invocation = opts.cliPreset === "opencode" ? "opencode run" : opts.cliPreset;
+	const invocation =
+		opts.cliPreset === "opencode"
+			? "opencode run"
+			: opts.cliPreset === "codex"
+				? "codex --no-daemon"
+				: opts.cliPreset;
 	if (
 		opts.queueLaunchId &&
 		!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(opts.queueLaunchId)
@@ -563,6 +569,7 @@ export function buildLaunchScript(opts: {
 		? `AGENT_NOTIFY_LAUNCH_ID='${opts.queueLaunchId.toLowerCase()}' `
 		: "";
 	const cmd = `${launchEnv}${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
@@ -776,6 +783,7 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 				provider: args.agent.provider,
 				providerSessionId: args.agent.providerSessionId,
 				skipPermissions: args.agent.skipPermissions,
+				queueLaunch: defaultQueueLaunch(args.agent.provider, args.agent.skipPermissions),
 				queueLaunchId: args.agent.queueLaunchId,
 			});
 		}

@@ -8,6 +8,7 @@ import {
 	type AgentSessionStatusEvent,
 	type AgentSleepSettings,
 } from "../../shared/agent-session";
+import { type QueueLaunchDescriptor, validQueueLaunch } from "../../shared/queue-resume";
 import { observeValidatedAgentEvent, workspaceReporter } from "../activity-queue/agent-source";
 import { queueEntities } from "../activity-queue/entities";
 import { queueReplyContinuationTime } from "../activity-queue/reply-continuation";
@@ -36,6 +37,8 @@ export interface RegisterManagedAgentInput {
 	provider: AgentProvider;
 	providerSessionId: string | null;
 	skipPermissions: boolean;
+	queueLaunch?: QueueLaunchDescriptor;
+ queueLaunchId?:string;
 }
 
 interface AgentSessionManagerOptions {
@@ -100,6 +103,69 @@ function rowToInfo(row: typeof agentSessions.$inferSelect): AgentSessionInfo {
 }
 
 export class AgentSessionManager {
+	private queueLaunches = new Map<
+		string,
+		{
+			descriptor: QueueLaunchDescriptor;
+			workspaceId: string;
+			createdAt: number;
+ launchId?:string;authorized:boolean;
+			providerSessionId: string | null;
+		}
+	>();
+	async registerQueueLaunch(
+		terminalId: string,
+		descriptor: QueueLaunchDescriptor, launchId?:string
+	): Promise<boolean> {
+		const session = this.getSession(terminalId);
+		if (
+			!session?.managed ||
+			session.provider !== descriptor.provider ||
+			!validQueueLaunch(descriptor)
+		)
+			return false;
+		const persisted = getDb()
+			.select()
+			.from(agentSessions)
+			.where(eq(agentSessions.terminalId, terminalId))
+			.get();
+		if (!persisted) return false;
+		this.queueLaunches.set(terminalId, {
+			descriptor: structuredClone(descriptor),launchId,authorized:!launchId,
+			workspaceId: session.workspaceId,
+			createdAt: persisted.createdAt.getTime(),
+			providerSessionId: session.providerSessionId,
+		});
+		return this.syncQueueLaunch(terminalId);
+	}
+	private async syncQueueLaunch(terminalId: string,launchId?:string): Promise<boolean> {
+		const launch = this.queueLaunches.get(terminalId);
+		const current = this.getSession(terminalId);
+		if (!launch || !current) return false;
+ if(!launch.authorized){if(!launchId||launchId!==launch.launchId)return false;launch.authorized=true;}
+		if (
+			!current.managed ||
+			current.workspaceId !== launch.workspaceId ||
+			getDb()
+				.select()
+				.from(agentSessions)
+				.where(eq(agentSessions.terminalId, terminalId))
+				.get()
+				?.createdAt.getTime() !== launch.createdAt ||
+			current.provider !== launch.descriptor.provider ||
+			(launch.providerSessionId && current.providerSessionId !== launch.providerSessionId)
+		) {
+			this.queueLaunches.delete(terminalId);
+			return false;
+		}
+		if (!current.providerSessionId) return false;
+		launch.providerSessionId = current.providerSessionId;
+		const owner = workspaceReporter(current.workspaceId, terminalId);
+const registered=!!owner && !!this.options.daemonClient.queueRegisterLaunch && await this.options.daemonClient.queueRegisterLaunch(terminalId,owner,launch.descriptor);
+  if(registered && this.queueLaunches.get(terminalId)===launch)this.queueLaunches.delete(terminalId);
+  return registered;
+	}
+
 	private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly visibleTerminals = new Set<string>();
 	private readonly transitions = new Set<string>();
@@ -179,6 +245,7 @@ export class AgentSessionManager {
 		if (reporter) reporterAdmissions.record(reporter);
 		publishCurrentHookEndpoint(input.terminalId);
 		this.emit(session);
+		if (input.queueLaunch) void this.registerQueueLaunch(input.terminalId, input.queueLaunch,input.queueLaunchId);
 		return session;
 	}
 
@@ -214,7 +281,9 @@ export class AgentSessionManager {
 				break;
 			case "task-complete":
 				state =
-					existing?.state === "hibernating" || existing?.state === "hibernated"
+					existing?.state === "hibernating" ||
+					existing?.state === "hibernated" ||
+					existing?.state === "resuming"
 						? existing.state
 						: "idle";
 				break;
@@ -282,6 +351,7 @@ export class AgentSessionManager {
 				provider: event.agent,
 				providerSessionId,
 				turnId: identifiedTurn,
+				promptHash: event.promptHash,
 				phase:
 					event.rawEvent === "UserPromptSubmit" && confirmedPrompt
 						? "prompt"
@@ -336,6 +406,7 @@ export class AgentSessionManager {
 			this.emit(session);
 		}
 
+		void this.syncQueueLaunch(resolved.terminalId,event.launchId);
 		recordAcceptedHookEvent(event);
 		publishCurrentHookEndpoint(resolved.terminalId);
 		return {
@@ -371,7 +442,7 @@ export class AgentSessionManager {
 			this.visibleTerminals.add(terminalId);
 			this.cancelTimer(terminalId);
 			await this.waitForTransition(terminalId);
-			await this.wake(terminalId);
+			await this.wake(terminalId, undefined, undefined, true);
 			return;
 		}
 		this.visibleTerminals.delete(terminalId);
@@ -417,7 +488,8 @@ export class AgentSessionManager {
 	async wake(
 		terminalId: string,
 		prompt?: string,
-		canContinue?: () => boolean
+		canContinue?: () => boolean,
+		allowPendingInput = false
 	): Promise<AgentSessionInfo | null> {
 		let session = this.getSession(terminalId);
 		if (this.transitions.has(terminalId)) {
@@ -436,10 +508,54 @@ export class AgentSessionManager {
 			);
 			if (canContinue && (!canContinue() || this.getSession(terminalId)?.state !== "hibernated"))
 				return null;
+			const current = this.getSession(terminalId);
+			if (
+				!current ||
+				current.state !== "hibernated" ||
+				current.provider !== session.provider ||
+				current.providerSessionId !== session.providerSessionId
+			)
+				return current;
 			if (!daemonSession) {
 				return this.updateState(terminalId, "error", {
 					lastError: "Terminal shell is no longer available",
 				});
+			}
+			if (this.options.daemonClient.supportsQueueResume) {
+				const lease = await this.options.daemonClient.queueResumeTarget(
+					terminalId,
+					session.provider,
+					session.providerSessionId ?? "",
+					true,
+					allowPendingInput
+				);
+				const current = this.getSession(terminalId);
+				if (
+					!current ||
+					current.state !== "hibernated" ||
+					current.providerSessionId !== session.providerSessionId ||
+					(canContinue && !canContinue())
+				)
+					return current;
+				if (lease) {
+					if (!lease.supported)
+						throw Error("The sleeping terminal changed. Open it to inspect before resuming.");
+					const owner = workspaceReporter(session.workspaceId, terminalId);
+					if (!owner) throw Error("Conversation ownership unavailable");
+					const delivery = await this.options.daemonClient.resumeQueueView(
+						terminalId,
+						lease.generation,
+						owner,
+						prompt
+					);
+					if (delivery !== "admitted")
+						throw Error(
+							delivery === "uncertain"
+								? "Resume could not be confirmed. Inspect the conversation before retrying."
+								: "The sleeping terminal changed before resume."
+						);
+					return this.getSession(terminalId);
+				}
 			}
 			const command = buildAgentResumeCommand(session, prompt);
 			this.updateState(terminalId, "resuming", { lastError: null });
@@ -490,7 +606,7 @@ export class AgentSessionManager {
 		if (sleeping.state !== "hibernated" || (canContinue && !canContinue()))
 			return { status: "none" };
 		const result = await this.wake(sleeping.terminalId, prompt, canContinue);
-		if (result?.state === "running") {
+		if (result?.state === "running" || result?.state === "resuming") {
 			return { status: "woke", terminalId: sleeping.terminalId };
 		}
 		return {
@@ -505,7 +621,10 @@ export class AgentSessionManager {
 	}
 
 	removeSessions(terminalIds: readonly string[]): void {
-		for (const id of terminalIds) reporterAdmissions.invalidate(id);
+		for (const id of terminalIds) {
+			reporterAdmissions.invalidate(id);
+			this.queueLaunches.delete(id);
+		}
 		const uniqueTerminalIds = [...new Set(terminalIds)];
 		for (const terminalId of uniqueTerminalIds) {
 			this.cancelTimer(terminalId);
@@ -563,6 +682,7 @@ export class AgentSessionManager {
 		this.disposed = true;
 		for (const terminalId of this.timers.keys()) this.cancelTimer(terminalId);
 		this.transitions.clear();
+		this.queueLaunches.clear();
 		this.visibleTerminals.clear();
 	}
 
@@ -715,6 +835,12 @@ export class AgentSessionManager {
 		this.transitions.add(terminalId);
 		this.cancelTimer(terminalId);
 		try {
+			const sleepGuard = await this.options.daemonClient.prepareQueueSleep?.(
+				terminalId,
+				session.provider,
+				session.providerSessionId
+			);
+			if (canContinue && !canContinue()) return null;
 			this.updateState(terminalId, "hibernating", { lastError: null });
 			let result: AgentTerminationResult;
 			try {
@@ -739,13 +865,14 @@ export class AgentSessionManager {
 					}) ?? session
 				);
 			}
-			return (
+			const sleeping =
 				this.updateState(terminalId, "hibernated", {
 					hibernatedAt: new Date(),
 					idleSince: null,
 					lastError: null,
-				}) ?? session
-			);
+				}) ?? session;
+			if (sleepGuard) await this.options.daemonClient.completeQueueSleep?.(terminalId, sleepGuard);
+			return sleeping;
 		} finally {
 			this.transitions.delete(terminalId);
 		}

@@ -45,7 +45,9 @@ export function matchesProviderCommand(command: string, provider: AgentProvider)
 	switch (provider) {
 		case "claude":
 			return (
-				normalized.includes("/.claude/versions/") || normalized.includes("\\.claude\\versions\\")
+				normalized.includes("/.local/share/claude/versions/") ||
+				normalized.includes("/.claude/versions/") ||
+				normalized.includes("\\.claude\\versions\\")
 			);
 		case "codex":
 			return normalized.includes("/@openai/codex/") || normalized.includes("\\@openai\\codex\\");
@@ -150,7 +152,16 @@ export class PosixAgentProcessController implements AgentProcessController {
 				error: "Could not inspect the terminal foreground process",
 			};
 		}
-		if (snapshot.foregroundPgid === snapshot.shellPgid) return { status: "shell" };
+		if (snapshot.foregroundPgid === snapshot.shellPgid) {
+			if (session.processKind === "provider")
+				return matchesProviderProcessGroup(
+					await inspectProcessGroup(snapshot.foregroundPgid),
+					provider
+				)
+					? { status: "agent" }
+					: { status: "other" };
+			return { status: "shell" };
+		}
 		if (snapshot.commands.length === 0) {
 			// A terminated foreground group can briefly remain as the TTY's tpgid
 			// before the shell reclaims it. No surviving process means there is no
@@ -175,6 +186,10 @@ export class PosixAgentProcessController implements AgentProcessController {
 		);
 		if (!session) return { ok: false, error: "Terminal session is no longer running" };
 
+		if (session.processKind === "provider")
+			return (await this.daemonClient.parkQueueRoot(terminalId))
+				? { ok: true }
+				: { ok: false, error: "Could not safely park this provider process" };
 		const snapshot = await inspectForegroundSnapshot(session.pid);
 		if (!snapshot) return { ok: false, error: "Could not inspect the terminal foreground process" };
 		if (snapshot.foregroundPgid === snapshot.shellPgid) {
