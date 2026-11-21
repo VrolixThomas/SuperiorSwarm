@@ -129,3 +129,26 @@ test("explicit Open releases wait before navigation", async () => {
 	await act(async () => button("Open conversation").click());
 	expect(sequence).toEqual(["open", "navigate"]);
 });
+
+test("a stable request expires in place and Open navigates without a stale decision", async () => {
+	const capability = {
+		capability: "hook-response" as const,
+		allowOnce: true,
+		requestId: "expiring",
+		state: "waiting" as const,
+		expiresAt: Date.now() + 80,
+		summary: "Bash: printf safe",
+		detail: "Waiting",
+	};
+	const f = await mount({ capability });
+	expect(button("Allow once")).toBeDefined();
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 120));
+	});
+	expect(button("Allow once")).toBeUndefined();
+	expect(button("Deny")).toBeUndefined();
+	expect(document.body.textContent).toContain("expired");
+	await act(async () => button("Open conversation").click());
+	expect(f.calls).toEqual([]);
+	expect(f.opens()).toBe(1);
+});
