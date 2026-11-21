@@ -1,11 +1,14 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { CliPresetName } from "../../../shared/cli-preset";
 import {
 	renderReviewFollowUpFullPrompt,
 	renderReviewFullPrompt,
 } from "../../../shared/prompt-preview";
 import { DEFAULT_REVIEW_PROMPT } from "../../../shared/review-prompt";
-import { useReviewPathSettingsStore } from "../../stores/review-path-settings-store";
+import {
+	initializeReviewPathSettings,
+	useReviewPathSettingsStore,
+} from "../../stores/review-path-settings-store";
 import { trpc } from "../../trpc/client";
 import { type FullPromptVariant, PromptEditor } from "./PromptEditor";
 import { PageHeading, SectionLabel } from "./SectionHeading";
@@ -19,6 +22,9 @@ const REVIEW_PROMPT_VARIANTS: FullPromptVariant[] = [
 export function AIReviewerSettings() {
 	const utils = trpc.useUtils();
 	const pathSettings = useReviewPathSettingsStore();
+	useEffect(() => {
+		void initializeReviewPathSettings();
+	}, []);
 
 	const { data: aiSettings } = trpc.aiReview.getSettings.useQuery(undefined, {
 		staleTime: 30_000,
@@ -62,9 +68,14 @@ export function AIReviewerSettings() {
 					</select>
 				</div>
 
+				{pathSettings.error && (
+					<output className="px-4 py-2 text-[12px] text-[var(--text-tertiary)]">
+						Reading-path settings unavailable: {pathSettings.error}
+					</output>
+				)}
 				<ToggleRow
 					label="Map PRs when I am asked to review"
-					description="Save your preference for automatic reading paths when the agent connection is available"
+					description="Automatically map new review requests in linked repositories"
 					checked={pathSettings.autoMapOnReviewRequest}
 					onChange={() =>
 						pathSettings.setAutoMapOnReviewRequest(!pathSettings.autoMapOnReviewRequest)

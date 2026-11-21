@@ -35,8 +35,17 @@ if (inIsolatedFileBrowserTest(import.meta.path, "reading path rail in isolation"
 		onSelect: () => {},
 	};
 	const options = {
-		request: (path: string) => {
+		request: (path: string, input: unknown) => {
 			if (path === "aiReview.getSettings") return { cliPreset: "codex" };
+			if (path === "reviewPath.getSettings" || path === "reviewPath.importLegacySettings") {
+				const state = useReviewPathSettingsStore.getState();
+				return {
+					autoMapOnReviewRequest: state.autoMapOnReviewRequest,
+					alsoReview: state.alsoReview,
+					defaultRailMode: state.defaultRailMode,
+				};
+			}
+			if (path === "reviewPath.updateSettings") return input;
 			throw new Error(path);
 		},
 	};
@@ -213,6 +222,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "reading path rail in isolation"
 					.querySelector<HTMLInputElement>('input[aria-label="Also review the code"]')
 					?.click()
 			);
+			await h.settle();
 			expect(useReviewPathSettingsStore.getState().alsoReview).toBe(true);
 		} finally {
 			await h.cleanup();
