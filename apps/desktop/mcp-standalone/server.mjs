@@ -14,6 +14,7 @@ import {
 	withAutomaticHermesSessionAdmission,
 } from "./hermes-session-admission.mjs";
 import { handleHermesReusableTagTool, handleHermesSessionTagTool } from "./hermes-session-tags.mjs";
+import { createReporterAdmission } from "./reporter-admission.mjs";
 import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
@@ -170,6 +171,7 @@ Coordination rules:
   - Use send_message to ask the orchestrator questions or post notes; the orchestrator sees broadcasts and DMs through its event stream.
   - read_messages returns the most recent inbox entries — check it if you were resumed without an obvious task in context.`;
 
+let startQueueAdmission = () => {};
 const server = new McpServer(
 	{
 		name: "superiorswarm",
@@ -965,28 +967,39 @@ if (isWorkspaceAgentOrCrossRepo) {
 		return parsed;
 	}
 
+	const ensureQueueReporter = createReporterAdmission(ctx, baseUrl, authHeader);
+	function callerHeaders() {
+		return isCrossRepoMode
+			? {
+					"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
+					...(process.env.AGENT_NOTIFY_TERMINAL_ID
+						? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
+						: {}),
+					...(isExternalManagerMode && process.env.SUPERIORSWARM_MANAGER_TOKEN
+						? { "X-Manager-Token": process.env.SUPERIORSWARM_MANAGER_TOKEN }
+						: {}),
+				}
+			: {
+					"X-Workspace-Id": WORKSPACE_ID,
+					...(process.env.AGENT_NOTIFY_TERMINAL_ID
+						? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
+						: {}),
+				};
+	}
+	// Start after transport connection, without blocking initialize. A failed/pending attempt
+	// is retried by the first tool within the same immutable lease, never against latest state.
+	startQueueAdmission = () => {
+		void ensureQueueReporter(callerHeaders()).catch(() => {});
+	};
+
 	async function call(method, path, body) {
 		try {
 			// In cross-repo mode we identify via X-Cross-Repo-Orchestrator-Id.
 			// In workspace-agent mode we identify via X-Workspace-Id.
 			// Never send both at once. External managers additionally prove
 			// identity per-request with X-Manager-Token.
-			const callerHeader = isCrossRepoMode
-				? {
-						"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
-						...(process.env.AGENT_NOTIFY_TERMINAL_ID
-							? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
-							: {}),
-						...(isExternalManagerMode && process.env.SUPERIORSWARM_MANAGER_TOKEN
-							? { "X-Manager-Token": process.env.SUPERIORSWARM_MANAGER_TOKEN }
-							: {}),
-					}
-				: {
-						"X-Workspace-Id": WORKSPACE_ID,
-						...(process.env.AGENT_NOTIFY_TERMINAL_ID
-							? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
-							: {}),
-					};
+			const callerHeader = callerHeaders();
+			await ensureQueueReporter(callerHeader);
 			const res = await fetch(`${baseUrl}${path}`, {
 				method,
 				headers: {
@@ -1029,10 +1042,10 @@ if (isWorkspaceAgentOrCrossRepo) {
 
 			if (res.ok && ["/workspaces.set_status", "/workspaces.send_message"].includes(path)) {
 				parsed.queue_identity = {
-					protocol: 1,
+					protocol: ctx.queueProtocol ?? 1,
 					capability: ctx.queueReporter ? "exact-conversation" : "missing-owner",
 					detail: ctx.queueReporter
-						? "Bound to the conversation registered when this MCP process started."
+						? "Bound to this MCP process’s first admitted conversation."
 						: "Conversation identity was unavailable at MCP startup. Exact question replies are unavailable; restart MCP after the conversation is registered.",
 				};
 			}
@@ -1411,6 +1424,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 async function main() {
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
+	startQueueAdmission();
 }
 
 main().catch((err) => {

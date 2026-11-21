@@ -8,8 +8,9 @@ import {
 	type AgentSessionStatusEvent,
 	type AgentSleepSettings,
 } from "../../shared/agent-session";
-import { observeValidatedAgentEvent } from "../activity-queue/agent-source";
+import { observeValidatedAgentEvent, workspaceReporter } from "../activity-queue/agent-source";
 import { queueEntities } from "../activity-queue/entities";
+import { reporterAdmissions } from "../activity-queue/reporter-admission";
 import { recordAcceptedHookEvent } from "../agent-hooks/diagnostics";
 import { publishCurrentHookEndpoint } from "../agent-hooks/endpoint";
 import { getDb } from "../db";
@@ -173,6 +174,8 @@ export class AgentSessionManager {
 		});
 		const session = this.getSession(input.terminalId);
 		if (!session) throw new Error("Failed to persist managed agent session");
+		const reporter = workspaceReporter(input.workspaceId, input.terminalId);
+		if (reporter) reporterAdmissions.record(reporter);
 		publishCurrentHookEndpoint(input.terminalId);
 		this.emit(session);
 		return session;
@@ -296,6 +299,8 @@ export class AgentSessionManager {
 		}
 
 		const session = this.getSession(resolved.terminalId);
+		const reporter = workspaceReporter(resolved.workspaceId, resolved.terminalId);
+		if (reporter) reporterAdmissions.record(reporter);
 		if (session) {
 			if (state === "idle") this.scheduleIfEligible(session);
 			else this.cancelTimer(session.terminalId);
@@ -471,6 +476,7 @@ export class AgentSessionManager {
 	}
 
 	removeSessions(terminalIds: readonly string[]): void {
+		for (const id of terminalIds) reporterAdmissions.invalidate(id);
 		const uniqueTerminalIds = [...new Set(terminalIds)];
 		for (const terminalId of uniqueTerminalIds) {
 			this.cancelTimer(terminalId);

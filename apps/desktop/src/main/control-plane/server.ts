@@ -29,7 +29,10 @@ import {
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
 import { workspaceReporter } from "../activity-queue/agent-source";
+import { queueEntities } from "../activity-queue/entities";
+import { reporterAdmissions } from "../activity-queue/reporter-admission";
 import { getDb } from "../db";
+import { agentSessions } from "../db/schema";
 import {
 	crossRepoOrchestrators,
 	hermesConnections,
@@ -80,6 +83,43 @@ import { hashToken, isValidBearer, tokenMatchesHash } from "./auth";
 import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
+
+async function queueContextIdentity(
+	entityId: string,
+	terminalHeader: string | string[] | undefined
+) {
+	const terminalId = typeof terminalHeader === "string" ? terminalHeader : undefined;
+	const reporter = workspaceReporter(entityId, terminalId);
+	const base = { queueReporter: reporter, queueProtocol: 2 };
+	if (reporter || !terminalId) return base;
+	const entity = queueEntities().get(entityId);
+	const terminal = getDb()
+		.select()
+		.from(terminalSessions)
+		.where(eq(terminalSessions.id, terminalId))
+		.get();
+	const session = getDb()
+		.select()
+		.from(agentSessions)
+		.where(eq(agentSessions.terminalId, terminalId))
+		.get();
+	if (
+		!entity ||
+		terminal?.workspaceId !== entityId ||
+		(session &&
+			(session.workspaceId !== entityId ||
+				session.entityKind !== entity.entity.kind ||
+				session.providerSessionId))
+	)
+		return base;
+	const queueAdmission = reporterAdmissions.issue(entity.entity, terminalId, session?.provider);
+	const admitted = await reporterAdmissions.wait(queueAdmission.token, entityId, terminalId, () =>
+		workspaceReporter(entityId, terminalId)
+	);
+	return admitted.status === "admitted"
+		? { ...base, queueReporter: admitted.reporter }
+		: { ...base, queueAdmission };
+}
 
 function workspaceAgentContext(row: {
 	projectId: string;
@@ -591,6 +631,36 @@ async function handleRequest(
 
 	try {
 		switch (route) {
+			case "POST /context.admit": {
+				const parsed = z
+					.object({ token: z.string().min(1).max(200) })
+					.safeParse(await readJson(req, 1024));
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				const terminalId = req.headers["x-terminal-id"];
+				if ("error" in caller || typeof terminalId !== "string") {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				const entityId = caller.kind === "xro" ? caller.xroId : caller.workspaceId;
+				const result = reporterAdmissions.resolve(
+					parsed.data.token,
+					entityId,
+					terminalId,
+					workspaceReporter(entityId, terminalId)
+				);
+				respond(
+					res,
+					result.status === "pending" ? 202 : result.status === "admitted" ? 200 : 409,
+					requestId,
+					result
+				);
+				return;
+			}
+
 			case "GET /context.resolve": {
 				const cwd = url.searchParams.get("cwd") ?? "";
 				// Task tokens outrank manager tokens: a review/solve/quick-action
@@ -668,13 +738,7 @@ async function handleRequest(
 					if (workspace) {
 						respond(res, 200, requestId, {
 							...workspaceAgentContext(workspace),
-							queueReporter: workspaceReporter(
-								workspaceId,
-								typeof req.headers["x-terminal-id"] === "string"
-									? req.headers["x-terminal-id"]
-									: undefined
-							),
-							queueProtocol: 1,
+							...(await queueContextIdentity(workspaceId, req.headers["x-terminal-id"])),
 						});
 						return;
 					}
@@ -696,13 +760,7 @@ async function handleRequest(
 					if (coordinator) {
 						respond(res, 200, requestId, {
 							...crossRepoContext(coordinator),
-							queueReporter: workspaceReporter(
-								workspaceId,
-								typeof req.headers["x-terminal-id"] === "string"
-									? req.headers["x-terminal-id"]
-									: undefined
-							),
-							queueProtocol: 1,
+							...(await queueContextIdentity(workspaceId, req.headers["x-terminal-id"])),
 						});
 						return;
 					}
