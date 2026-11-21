@@ -226,7 +226,7 @@ function validateCurrent(
 		!source.candidate
 	)
 		return { status: "conflict" } as const;
-	return { status: "current", source, item } as const;
+	return { status: "current", source } as const;
 }
 
 export async function workspaceDone(
@@ -263,7 +263,11 @@ export async function later(
 	return db.transaction(() => {
 		const checked = validateCurrent(input, current);
 		if (checked.status !== "current") return checked;
-		if (checked.item.acknowledged || (input.until !== undefined && input.until <= Date.now()))
+		// Done can change the receipt without changing the source revision while inventory is awaited.
+		if (
+			checked.source.acknowledgedRevision === input.revision ||
+			(input.until !== undefined && input.until <= Date.now())
+		)
 			return { status: "conflict" };
 		const snooze = {
 			sourceId: input.id,
