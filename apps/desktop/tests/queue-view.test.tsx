@@ -432,3 +432,14 @@ test("provider request evidence keeps provenance and does not claim permission e
 	expect(panel?.textContent).toContain("does not confirm that the requested action ran");
 	expect(panel?.textContent).toContain("incomplete ordering information");
 });
+
+test("handling an item from narrow details returns focus to the visible next row", async () => {
+	await mount();
+	await click("Details / reply");
+	await key("e");
+	expect(selected()).toBe("two");
+	expect(document.querySelector('[aria-label="Queue item details"]')?.className).not.toContain(
+		"absolute"
+	);
+	expect(document.activeElement?.getAttribute("data-queue-row")).toBe("two");
+});

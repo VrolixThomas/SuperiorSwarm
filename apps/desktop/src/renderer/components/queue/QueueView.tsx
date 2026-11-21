@@ -79,6 +79,14 @@ export function QueueScreen({
 	const effectiveId = nextQueueSelection(ordered, selectedId, previousIndex.current);
 	const selected = ordered.find((i) => i.id === effectiveId);
 	const index = ordered.findIndex((i) => i.id === effectiveId);
+	const detailsItem = useRef(effectiveId);
+	useEffect(() => {
+		// Removal/selection must not leave keyboard focus behind a narrow details overlay.
+		if (detailsItem.current !== effectiveId) {
+			detailsItem.current = effectiveId;
+			setDetailsOpen(false);
+		}
+	}, [effectiveId]);
 	useLayoutEffect(() => {
 		const pending = returnFocus.current;
 		if (
