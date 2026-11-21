@@ -8,11 +8,19 @@ interface ThreadsTabProps {
 	threads: UnifiedThread[];
 	path: ReviewPath | null;
 	currentUser?: string;
+	currentUserId?: string;
 	onOpen: (thread: UnifiedThread) => void;
 	onAsk: (question: string) => void;
 }
 
-export function ThreadsTab({ threads, path, currentUser, onOpen, onAsk }: ThreadsTabProps) {
+export function ThreadsTab({
+	threads,
+	path,
+	currentUser,
+	currentUserId,
+	onOpen,
+	onAsk,
+}: ThreadsTabProps) {
 	const [filter, setFilter] = useState<"open" | "resolved" | "mine">("open");
 	const groups = useMemo(() => {
 		const numbers = path ? numberSteps(path) : new Map<string, number>();
@@ -23,7 +31,11 @@ export function ThreadsTab({ threads, path, currentUser, onOpen, onAsk }: Thread
 			if (filter === "resolved" && !thread.isResolved) continue;
 			if (
 				filter === "mine" &&
-				(!currentUser || !thread.comments.some((c) => c.author === currentUser))
+				!thread.comments.some((c) =>
+					c.authorId && currentUserId
+						? c.authorId === currentUserId
+						: !!currentUser && c.author === currentUser
+				)
 			)
 				continue;
 			const step = stepForPath(path, thread.path);
@@ -36,7 +48,7 @@ export function ThreadsTab({ threads, path, currentUser, onOpen, onAsk }: Thread
 				(Number.parseInt(a) || Number.POSITIVE_INFINITY) -
 				(Number.parseInt(b) || Number.POSITIVE_INFINITY)
 		);
-	}, [threads, path, filter, currentUser]);
+	}, [threads, path, filter, currentUser, currentUserId]);
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex gap-1 border-b border-[var(--border-subtle)] p-3">
@@ -46,9 +58,11 @@ export function ThreadsTab({ threads, path, currentUser, onOpen, onAsk }: Thread
 						type="button"
 						data-filter={value}
 						aria-pressed={filter === value}
-						disabled={value === "mine" && !currentUser}
+						disabled={value === "mine" && !currentUser && !currentUserId}
 						title={
-							value === "mine" && !currentUser ? "Current reviewer identity unavailable" : undefined
+							value === "mine" && !currentUser && !currentUserId
+								? "Current reviewer identity unavailable"
+								: undefined
 						}
 						onClick={() => setFilter(value)}
 						className={`rounded-md px-3 py-1 text-[12px] capitalize disabled:opacity-50 ${filter === value ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)]"}`}

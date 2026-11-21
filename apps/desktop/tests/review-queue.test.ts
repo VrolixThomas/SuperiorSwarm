@@ -135,7 +135,10 @@ describe("review queue", () => {
 		expect(nextPr({ needsReview: [], waitingOnAuthor: [] }, "missing")).toBeNull();
 	});
 	test("reports progress and new commits only from explicit evidence", () => {
-		expect(queueStatus({ headCommitSha: "new" })).toEqual({ label: "Not mapped", tone: "muted" });
+		expect(queueStatus({ headCommitSha: "new" })).toEqual({
+			label: "Status unavailable",
+			tone: "muted",
+		});
 		expect(queueStatus({ headCommitSha: "new", lastViewedHeadSha: "old" }).label).toBe(
 			"New commits"
 		);

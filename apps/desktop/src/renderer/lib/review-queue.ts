@@ -150,5 +150,8 @@ export function queueStatus(facts: ReviewQueueFacts): {
 	if (facts.pathStatus === "ready") return { label: "Path ready", tone: "muted" };
 	if (facts.pathStatus === "stale") return { label: "Path outdated", tone: "warning" };
 	if (facts.pathStatus === "failed") return { label: "Mapping unavailable", tone: "muted" };
-	return { label: "Not mapped", tone: "muted" };
+	return {
+		label: facts.pathStatus === "none" ? "Not mapped" : "Status unavailable",
+		tone: "muted",
+	};
 }

@@ -2,7 +2,6 @@ import type * as monaco from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { GitHubPRFile } from "../../../shared/github-types";
 import type { CodeReference } from "../../../shared/review-path-types";
-import { useReviewPath } from "../../lib/review-path-source";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
 import { ReviewReadingPane } from "./ReviewReadingPane";
@@ -10,11 +9,11 @@ import { ReviewWorkspaceTopBar } from "./ReviewWorkspaceTopBar";
 import { TerminalDrawer } from "./TerminalDrawer";
 import { useReadingNavigation } from "./hooks/useReadingNavigation";
 import { useReadingThreads } from "./hooks/useReadingThreads";
+import { useReviewConnections } from "./hooks/useReviewConnections";
 import { useReviewKeymap } from "./hooks/useReviewKeymap";
 import { AskTab } from "./panel/AskTab";
 import { SidePanel } from "./panel/SidePanel";
 import { ThreadsTab } from "./panel/ThreadsTab";
-import { useAskAgent } from "./panel/useAskAgent";
 import { AllPRsDrawer } from "./queue/AllPRsDrawer";
 import { useReviewQueue } from "./queue/useReviewQueue";
 import { ReviewRail } from "./rail/ReviewRail";
@@ -30,8 +29,12 @@ export function ReviewWorkspace({
 }: { active: ActiveReview; fixture?: boolean }) {
 	const { workspaceId, prCtx } = active;
 	const data = useReviewWorkspaceData(workspaceId, prCtx, { manageFileOrder: false });
-	const source = useReviewPath(prCtx, data.details, { fixture });
-	const askAgent = useAskAgent(prCtx, { fixture });
+	const { source, askAgent, reviewer, attachmentError } = useReviewConnections(
+		workspaceId,
+		prCtx,
+		data.details,
+		fixture
+	);
 	const queue = useReviewQueue(prCtx);
 	const panel = useReviewModeStore((s) => s.panel);
 	const queueOpen = useReviewModeStore((s) => s.queueOpen);
@@ -164,6 +167,11 @@ export function ReviewWorkspace({
 				onNextPR={nextPR}
 				openTerminal={openTerminal}
 			/>
+			{attachmentError && (
+				<div role="alert" className="px-4 py-2 text-[12px] text-[var(--color-danger)]">
+					{attachmentError}
+				</div>
+			)}
 			{queue.error && !queueOpen && (
 				<div role="alert" className="shrink-0 px-4 py-2 text-[12px] text-[var(--color-danger)]">
 					{queue.error}
@@ -218,6 +226,8 @@ export function ReviewWorkspace({
 								<ThreadsTab
 									threads={data.allThreads}
 									path={source.path}
+									currentUser={reviewer?.login ?? undefined}
+									currentUserId={reviewer?.id}
 									onOpen={openThread}
 									onAsk={(question) => nav.ask(undefined, question)}
 								/>
@@ -226,6 +236,10 @@ export function ReviewWorkspace({
 									messages={askAgent.messages}
 									anchor={askAnchor}
 									available={askAgent.available}
+									error={askAgent.error}
+									pending={askAgent.status === "pending"}
+									questions={askAgent.questions}
+									onCancelQuestion={askAgent.cancel}
 									initialQuestion={nav.question}
 									onSend={askAgent.send}
 									onReference={onReference}

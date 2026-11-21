@@ -42,7 +42,7 @@ function QueueRow({
 	);
 	const status = queueStatus({
 		headCommitSha: pr.headCommitSha,
-		pathStatus: source.status,
+		pathStatus: source.available ? source.status : undefined,
 		...facts,
 	});
 	return (
@@ -99,6 +99,7 @@ export function AllPRsDrawer({
 	const [waitingExpanded, setWaitingExpanded] = useState(false);
 	const filterRef = useRef<HTMLInputElement>(null);
 	const titleId = useId();
+	const settingsError = useReviewPathSettingsStore((s) => s.error);
 	const autoMap = useReviewPathSettingsStore((s) => s.autoMapOnReviewRequest);
 	const alsoReview = useReviewPathSettingsStore((s) => s.alsoReview);
 	const setAutoMap = useReviewPathSettingsStore((s) => s.setAutoMapOnReviewRequest);
@@ -246,7 +247,7 @@ export function AllPRsDrawer({
 				<footer className="flex flex-col gap-2.5 border-t border-[var(--border-subtle)] px-[22px] py-3.5">
 					<label
 						className="flex items-center gap-2 text-[12px] text-[var(--text)]"
-						title="Saved preference; requires the reading-path agent connection."
+						title="Automatically map new review requests with the configured agent."
 					>
 						<input
 							type="checkbox"
@@ -260,8 +261,13 @@ export function AllPRsDrawer({
 						Map and review new requests automatically
 					</label>
 					<p className="text-[11px] text-[var(--text-tertiary)]">
-						Requires the reading-path agent connection.
+						Uses the configured review agent for eligible new requests.
 					</p>
+					{settingsError && (
+						<p role="alert" className="text-[12px] text-[var(--color-danger)]">
+							Could not save reading-path settings: {settingsError}
+						</p>
+					)}
 					<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
 						<kbd className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-1.5 font-sans text-[var(--text-secondary)]">
 							⌘↓

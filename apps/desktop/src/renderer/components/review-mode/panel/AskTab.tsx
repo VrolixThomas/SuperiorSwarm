@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReviewPathQuestion } from "../../../../shared/review-path-runtime";
 import type { AskMessage, CodeReference } from "../../../../shared/review-path-types";
 import { MarkdownRenderer } from "../../MarkdownRenderer";
 
@@ -6,6 +7,10 @@ export interface AskTabProps {
 	messages: AskMessage[];
 	anchor?: AskMessage["anchor"] | null;
 	available: boolean;
+	error?: string;
+	pending?: boolean;
+	questions?: ReviewPathQuestion[];
+	onCancelQuestion?: (id: string) => void;
 	onSend: (text: string, anchor?: AskMessage["anchor"]) => void;
 	onReference: (ref: CodeReference) => void;
 	onAddComment?: (body: string, anchor: NonNullable<AskMessage["anchor"]>) => void;
@@ -16,6 +21,10 @@ export function AskTab({
 	messages,
 	anchor,
 	available,
+	error,
+	pending = false,
+	questions = [],
+	onCancelQuestion,
 	onSend,
 	onReference,
 	onAddComment,
@@ -29,7 +38,7 @@ export function AskTab({
 		if (available) input.current?.focus();
 	}, [initialQuestion, available]);
 	const send = () => {
-		if (!available || !question.trim()) return;
+		if (!available || pending || !question.trim()) return;
 		onSend(question.trim(), anchor ?? undefined);
 		setQuestion("");
 	};
@@ -44,7 +53,12 @@ export function AskTab({
 						{anchor.path.split("/").pop()} · {anchor.startLine}–{anchor.endLine}
 					</div>
 				)}
-				{!available && (
+				{error && (
+					<div role="alert" className="mb-3 text-[13px] text-[var(--color-danger)]">
+						{error}
+					</div>
+				)}
+				{!available && !error && (
 					<p className="text-[13px] text-[var(--text-tertiary)]">
 						Agent not connected yet. Questions will be available when the reading-path agent is
 						connected.
@@ -100,6 +114,42 @@ export function AskTab({
 						)}
 					</article>
 				))}
+				{questions
+					.filter((item) => item.state !== "answered")
+					.map((item) => (
+						<div
+							key={item.id}
+							className="mb-3 flex items-center gap-2 text-[12px] text-[var(--text-secondary)]"
+						>
+							<span>
+								{item.state === "pending"
+									? "Agent is answering…"
+									: (item.error ?? `Question ${item.state}`)}
+							</span>
+							{item.state === "pending" && onCancelQuestion && (
+								<button
+									type="button"
+									onClick={() => onCancelQuestion(item.id)}
+									className="rounded border border-[var(--border)] px-2 py-1"
+								>
+									Cancel question
+								</button>
+							)}
+							{item.state === "failed" && available && (
+								<button
+									type="button"
+									disabled={pending}
+									onClick={() => onSend(item.message.text, item.message.anchor)}
+									className="text-[var(--accent-hover)]"
+								>
+									Retry
+								</button>
+							)}
+						</div>
+					))}
+				{pending && !questions.some((item) => item.state === "pending") && (
+					<p className="text-[12px] text-[var(--text-tertiary)]">Sending question…</p>
+				)}
 				<output className="text-[11px] text-[var(--text-tertiary)]">{copyStatus}</output>
 			</div>
 			<div className="flex shrink-0 items-end gap-2 border-t border-[var(--border-subtle)] p-3">
@@ -122,7 +172,7 @@ export function AskTab({
 				<button
 					type="button"
 					aria-label="Send question"
-					disabled={!available || !question.trim()}
+					disabled={!available || pending || !question.trim()}
 					onClick={send}
 					className="rounded-lg bg-[var(--accent)] px-3 py-2 text-[13px] text-[var(--accent-foreground)] disabled:opacity-40"
 				>

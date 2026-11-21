@@ -109,7 +109,9 @@ export function ReviewReadingPane({
 					<ContextFileView
 						prCtx={active.prCtx}
 						step={context}
-						headRef={data.details.headCommitOid || active.prCtx.sourceBranch}
+						workspaceId={active.workspaceId}
+						baseRef={data.details.baseCommitOid}
+						headRef={data.details.headCommitOid}
 						onPrevious={previous}
 						onNext={next}
 						onRemove={

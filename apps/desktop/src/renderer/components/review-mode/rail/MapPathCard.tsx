@@ -21,9 +21,11 @@ export function MapPathCard({ source }: { source: ReviewPathSource }) {
 	const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
 	const agentId = selectedAgent ?? aiSettings?.cliPreset ?? "claude";
 	const reasonId = useId();
-	const disabled = !source.available || isPending || isError;
+	const supported = agentId === "codex" || agentId === "claude";
+	const disabled = !source.available || isPending || isError || !supported;
 	const reason =
 		source.unavailableReason ??
+		(!supported ? "Reading paths currently support Codex and Claude Code." : undefined) ??
 		(isError ? "Review agent settings could not be loaded." : undefined);
 	return (
 		<section
@@ -63,6 +65,11 @@ export function MapPathCard({ source }: { source: ReviewPathSource }) {
 			{(reason || source.path?.error) && (
 				<p id={reasonId} className="mt-2 text-[11px] text-[var(--text-secondary)]">
 					{reason ?? source.path?.error}
+				</p>
+			)}
+			{settings.error && (
+				<p role="alert" className="mt-2 text-[12px] text-[var(--color-danger)]">
+					Could not save reading-path settings: {settings.error}
 				</p>
 			)}
 			<label className="mt-3 flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
