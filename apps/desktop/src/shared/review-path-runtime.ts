@@ -26,6 +26,7 @@ export interface ReviewPathRun extends ReviewPathRunScope {
 	state: ReviewPathRunState;
 	conversationId: string;
 	questionId?: string;
+	reviewDraftId?: string;
 	terminalId?: string;
 	error?: string;
 }
@@ -49,6 +50,10 @@ export interface ReviewPathSnapshot {
 }
 export interface ReviewPathLaunchResult {
 	terminalId?: string;
+	reviewWorkspaceId?: string;
+	worktreePath?: string;
+	launchScript?: string;
+	cliPreset?: string;
 }
 /** Runtime owns launches. Persistence creates/fences every run before calling this port. */
 export interface ReviewPathRuntimePort {
