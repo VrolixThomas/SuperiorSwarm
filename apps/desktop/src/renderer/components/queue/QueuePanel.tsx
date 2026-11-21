@@ -24,9 +24,9 @@ export function QueuePanel({
 	return (
 		<aside
 			aria-label="Queue item details"
-			className="hidden w-[420px] shrink-0 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] min-[1100px]:flex"
+			className="hidden min-h-0 w-[420px] shrink-0 flex-col overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] min-[1100px]:flex"
 		>
-			<div className="px-7 py-8">
+			<div className="px-6 py-6">
 				<p className="mb-6 flex min-w-0 items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
 					<span
 						className="size-2 shrink-0 rounded-sm"

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
@@ -17,6 +16,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
+import { MainLayout } from "./components/MainLayout";
 import { NavRail } from "./components/NavRail";
 import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
@@ -445,41 +445,11 @@ function AuthenticatedApp() {
 
 	useUpdaterStatus();
 
-	const sidebarPanelRef = usePanelRef();
-	const diffPanelRef = usePanelRef();
-	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
-	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
-	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-		id: "app-layout",
-		storage: localStorage,
-	});
-
-	// The Queue is a main destination; repository tools retain their own panel.
-	useEffect(() => {
-		const panel = diffPanelRef.current;
-		if (!panel || sidebarView === "settings") return;
-		if (["queue", "tickets", "hermes"].includes(sidebarSegment)) {
-			if (!panel.isCollapsed()) panel.collapse();
-		} else if (rightPanelOpen && panel.isCollapsed()) panel.expand();
-		else if (!rightPanelOpen && !panel.isCollapsed()) panel.collapse();
-	}, [rightPanelOpen, diffPanelRef, sidebarSegment, sidebarView]);
-
-	// Handle toggle-sidebar action from keyboard shortcut
-	useEffect(() => {
-		function handleToggleSidebar() {
-			const panel = sidebarPanelRef.current;
-			if (!panel) return;
-			if (panel.isCollapsed()) panel.expand();
-			else panel.collapse();
-		}
-		window.addEventListener("app:toggle-sidebar", handleToggleSidebar);
-		return () => window.removeEventListener("app:toggle-sidebar", handleToggleSidebar);
-	}, [sidebarPanelRef]);
 
 	// Handle create-worktree action from command palette
 	useEffect(() => {
@@ -536,59 +506,14 @@ function AuthenticatedApp() {
 					<SettingsPage />
 				) : (
 					<>
-						<Group
-							orientation="horizontal"
-							defaultLayout={defaultLayout}
-							onLayoutChanged={onLayoutChanged}
-							className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
-						>
-							{sidebarSegment !== "queue" && (
-								<>
-									<Panel
-										id="sidebar"
-										panelRef={sidebarPanelRef}
-										defaultSize={sidebarCollapsed ? "0px" : "288px"}
-										minSize="232px"
-										maxSize="360px"
-										collapsible
-										collapsedSize="0px"
-										onResize={() => {
-											const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
-											setSidebarCollapsed(isCollapsed);
-										}}
-										className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
-									>
-										<Sidebar
-											collapsed={sidebarCollapsed}
-											onExpand={() => sidebarPanelRef.current?.expand()}
-										/>
-									</Panel>
-
-									<Separator className="panel-resize-handle" />
-								</>
+						<MainLayout
+							sidebar={(collapsed, onExpand) => (
+								<Sidebar collapsed={collapsed} onExpand={onExpand} />
 							)}
-
-							<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
-								<MainContentArea savedScrollback={savedScrollback} />
-							</Panel>
-
-							<Separator className="panel-resize-handle" />
-							<Panel
-								id="diff"
-								panelRef={diffPanelRef}
-								defaultSize="19.4%"
-								minSize={200}
-								maxSize="40%"
-								collapsible
-								collapsedSize="0%"
-								onResize={() => {
-									const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
-									if (collapsed && rightPanelOpen && sidebarSegment === "repos") closeDiffPanel();
-								}}
-							>
-								<DiffPanel onClose={closeDiffPanel} />
-							</Panel>
-						</Group>
+							diff={<DiffPanel onClose={closeDiffPanel} />}
+						>
+							<MainContentArea savedScrollback={savedScrollback} />
+						</MainLayout>
 						{!rightPanelOpen &&
 							sidebarSegment === "repos" &&
 							!activeWorkspaceId?.startsWith("xro-") && (

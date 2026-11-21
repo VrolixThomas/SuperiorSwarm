@@ -134,7 +134,8 @@ async function run() {
 			projectId: "p1",
 			fromWorkspaceId: "w1",
 			kind: "question",
-			content: "Should a reopened workspace restore the last active chat?",
+			content:
+				"Should a reopened workspace restore the last active chat? The previous chat may still be waiting for your answer while another terminal is running. We can restore the last selected chat, or open the chat that currently needs input. This should also work when you return from a different project, close and reopen the application, or switch between an orchestrator and its workspaces. Which behavior should we use?",
 			createdAt: now,
 		})
 		.run();
@@ -253,22 +254,83 @@ async function run() {
 	for (const [width, height] of [
 		[800, 600],
 		[1440, 900],
+		[2304, 1296],
+		[1200, 500],
 	] as const) {
 		win.setContentSize(width, height);
 		await new Promise((r) => setTimeout(r, 100));
-		const fit = await js<{ overflow: boolean; panel: boolean; rowHeight: number }>(
-			"({overflow:document.documentElement.scrollWidth>innerWidth,panel:getComputedStyle(document.querySelector('[aria-label=\"Queue item details\"]')).display!=='none',rowHeight:document.querySelector('[data-queue-row]').getBoundingClientRect().height})"
+		const fit = await js<{
+			overflow: boolean;
+			panel: boolean;
+			rowHeight: number;
+			fillsWindow: boolean;
+			railAligned: boolean;
+			workspacePanels: boolean;
+			panelFits: boolean;
+		}>(
+			"({overflow:document.documentElement.scrollWidth>innerWidth,panel:getComputedStyle(document.querySelector('[aria-label=\"Queue item details\"]')).display!=='none',rowHeight:document.querySelector('[data-queue-row]').getBoundingClientRect().height, fillsWindow: (()=>{const r=document.querySelector('main').getBoundingClientRect();return r.left===72&&r.right===innerWidth&&r.bottom===innerHeight})(), railAligned:[...document.querySelectorAll('nav button')].every(b=>{const r=b.getBoundingClientRect(),i=b.querySelector('svg').getBoundingClientRect();return r.width>=48&&r.width===document.querySelector('nav button').getBoundingClientRect().width&&Math.abs(r.x+r.width/2-36)<1&&Math.abs(i.x+i.width/2-36)<1}),workspacePanels:!!document.querySelector('[data-workspace-diff], [data-workspace-sidebar]'),panelFits:(()=>{const p=document.querySelector('[aria-label=\"Queue item details\"]');return getComputedStyle(p).display==='none'||(p.getBoundingClientRect().bottom===innerHeight&&getComputedStyle(p).overflowY==='auto')})()})"
 		);
-		if (fit.overflow || fit.panel !== width >= 1100 || fit.rowHeight !== 42)
+		if (
+			fit.overflow ||
+			fit.panel !== width >= 1100 ||
+			fit.rowHeight !== 42 ||
+			!fit.fillsWindow ||
+			!fit.railAligned ||
+			fit.workspacePanels ||
+			!fit.panelFits
+		)
 			throw new Error(`Layout mismatch ${width}: ${JSON.stringify(fit)}`);
 		await contents
 			.capturePage()
 			.then((c) => writeFileSync(join(root, `queue-${width}x${height}.png`), c.toPNG()));
+		if (height === 500) {
+			const actionsReachable = await js<boolean>(`(() => {
+				const panel = document.querySelector('[aria-label="Queue item details"]');
+				panel.scrollTop = panel.scrollHeight;
+				const buttons = [...panel.querySelectorAll('button')];
+				return panel.scrollTop > 0 && buttons.every(button => {
+					const rect = button.getBoundingClientRect();
+					return rect.top >= panel.getBoundingClientRect().top && rect.bottom <= innerHeight;
+				});
+			})()`);
+			if (!actionsReachable) throw new Error("Queue detail actions unreachable in short window");
+			await contents
+				.capturePage()
+				.then((c) => writeFileSync(join(root, "queue-short-scrolled.png"), c.toPNG()));
+			await js("document.querySelector('[aria-label=\"Queue item details\"]').scrollTop=0");
+		}
 	}
+	win.setContentSize(1440, 900);
+	await click("Projects");
+	step = "workspace layout retained outside Queue";
+	await until(() =>
+		js<boolean>(
+			"document.querySelector('[data-workspace-diff]')?.getBoundingClientRect().width > 0"
+		)
+	);
+	const workspaceLayout = await js<string>(
+		"localStorage.getItem('react-resizable-panels:app-layout')"
+	);
+	await click("Queue 3");
+	await until(() =>
+		js<boolean>(
+			"!!document.querySelector('[data-queue-row]') && !document.querySelector('[data-workspace-diff]')"
+		)
+	);
+	if (
+		(await js<string>("localStorage.getItem('react-resizable-panels:app-layout')")) !==
+		workspaceLayout
+	)
+		throw new Error("Queue overwrote saved workspace layout");
 	await js("document.querySelector('main').focus()");
 	key("Enter");
 	step = "Open navigates without handling";
 	await until(() => js<boolean>("!!document.querySelector('textarea')"));
+	await until(() =>
+		js<boolean>(
+			"document.querySelector('[data-workspace-diff]')?.getBoundingClientRect().width > 0"
+		)
+	);
 	if ((await listWorkspaceQueue()).totalPending !== 3) throw new Error("Open handled an item");
 	await click("Queue 3");
 	await until(() => js<boolean>("!!document.querySelector('[data-queue-row]')"));

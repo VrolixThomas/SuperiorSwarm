@@ -48,7 +48,7 @@ export function NavRail() {
 						key={next}
 						className={next === "repos" ? "mt-2 border-t border-[var(--border-subtle)] pt-3" : ""}
 					>
-						<Tooltip label={label} actionId={action}>
+						<Tooltip label={label} actionId={action} className="w-full">
 							<button
 								type="button"
 								aria-label={
@@ -86,7 +86,7 @@ export function NavRail() {
 				))}
 			</div>
 			<div className="border-t border-[var(--border-subtle)] px-2 py-3">
-				<Tooltip label="Settings" actionId="general.settings">
+				<Tooltip label="Settings" actionId="general.settings" className="w-full">
 					<button
 						type="button"
 						aria-label="Settings"

@@ -210,7 +210,7 @@ export function QueueScreen({
 			ref={root}
 			tabIndex={-1}
 			aria-label="Workspace queue"
-			className="relative flex h-full min-w-0 flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text)] outline-none"
+			className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text)] outline-none"
 			onKeyDown={(e) => {
 				if (
 					e.metaKey ||
