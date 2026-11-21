@@ -1,0 +1,26 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-investigation-live.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Vz4eoF 200 request_id=7272fa10-cc4b-4882-b06c-ec6a0211acd2 latency=3ms
+[control-plane] POST /workspaces.set_status 200 request_id=ae2162e8-abc8-4069-afae-c3429108c8d8 latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Vz4eoF 200 request_id=724574ea-f68c-435f-a85f-8722eec8e9cd latency=0ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fss-queue-live-investigation-Vz4eoF 200 request_id=b1aa3180-95e7-4b07-8e12-bba735e9dbde latency=1ms
+320 | 						firstItems.some(
+321 | 							(i) =>
+322 | 								i.kind === "agent-input" &&
+323 | 								i.reasons.some((reason) => reason.code === "permission-unresolved")
+324 | 						)
+325 | 					).toBe(true);
+             ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-provider-evidence/apps/desktop/tests/queue-investigation-live.test.ts:325:8)
+(fail) authenticated provider lifecycle probes (bounded, synthetic content) [19230.74ms]
+
+ 0 pass
+ 1 fail
+ 16 expect() calls
+Ran 1 test across 1 file. [19.33s]

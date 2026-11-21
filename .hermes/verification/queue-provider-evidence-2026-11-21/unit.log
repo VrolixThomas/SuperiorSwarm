@@ -1,0 +1,91 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/agent-evidence-persistence.test.ts:
+(pass) claude: acknowledged failure stays handled through Stop, compaction and missing-turn replay [20.96ms]
+(pass) codex: acknowledged failure stays handled through Stop, compaction and missing-turn replay [17.04ms]
+
+tests/agent-event-transition.test.ts:
+(pass) claude > Stop and tool activity retain unresolved permission and actual request text [0.29ms]
+(pass) claude > new prompt explicitly continues without claiming permission was granted [0.06ms]
+(pass) claude > only a matching explicit permission outcome changes pending permission [0.05ms]
+(pass) claude > legacy replay keeps cleared attention cleared; a genuine later turn still appears [0.06ms]
+(pass) claude > missing-turn prompt cannot clear newer work [0.09ms]
+(pass) codex > Stop and tool activity retain unresolved permission and actual request text [0.22ms]
+(pass) codex > new prompt explicitly continues without claiming permission was granted [0.08ms]
+(pass) codex > only a matching explicit permission outcome changes pending permission [0.03ms]
+(pass) codex > legacy replay keeps cleared attention cleared; a genuine later turn still appears [0.01ms]
+(pass) codex > missing-turn prompt cannot clear newer work [0.03ms]
+(pass) stable event IDs reject replay and provider timestamps reject older events [0.07ms]
+(pass) view-only resume and compaction preserve attention and fingerprint [0.08ms]
+(pass) compaction cannot mutate completed work [0.02ms]
+(pass) same-turn new text changes the exact revision fingerprint [0.06ms]
+(pass) uncertain replay cannot invalidate an exact dismissal receipt
+(pass) old v2 snapshot format retains its receipt unless new evidence arrives [0.04ms]
+(pass) retained permission plus reply and error remain bounded without dropping either kind [0.16ms]
+(pass) unseen event identity alone cannot order a missing-turn Stop after explicit continuation [0.04ms]
+(pass) a distinct permission request replaces stale request text instead of relabeling it [0.07ms]
+(pass) failure receipt and error survive generic Stop and compaction until a real continuation [0.07ms]
+(pass) unconfirmed permission outcome updates wording without reopening an exact receipt
+
+tests/agent-hooks/listener.test.ts:
+(pass) AgentAlertListener > returns 200 and maps rawEvent via agent registry [3.52ms]
+(pass) AgentAlertListener > returns 400 for missing rawEvent param [0.44ms]
+(pass) AgentAlertListener > returns 204 for unknown agent (silently ignored) [0.25ms]
+(pass) AgentAlertListener > returns 204 when agent mapper returns null (unrecognised event) [0.19ms]
+(pass) AgentAlertListener > returns 404 for unknown paths [0.36ms]
+(pass) AgentAlertListener > emits AgentEvent on valid request [0.65ms]
+(pass) AgentAlertListener > getPort returns the bound port [0.09ms]
+(pass) AgentAlertListener > returns 200 with app identifier on /health [0.49ms]
+(pass) AgentAlertListener > /shutdown requires POST method [6.73ms]
+(pass) AgentAlertListener authentication > rejects missing tokens and accepts the configured bearer token [3.96ms]
+(pass) reclaimPort > reclaims port from a stale SuperiorSwarm listener [207.51ms]
+(pass) reclaimPort > completes without error when port is free (connection refused) [0.27ms]
+(pass) EADDRINUSE fallback > fallback listener binds to a different port [0.04ms]
+(pass) EADDRINUSE fallback > fallback listener still serves requests [0.51ms]
+(pass) bounded POST evidence is sanitized and cannot forge a permission decision [4.21ms]
+
+tests/agent-hooks/bridge.test.ts:
+(pass) generated launcher parses top-level identities and sends authenticated turn metadata [423.27ms]
+
+tests/agent-hooks/evidence.test.ts:
+(pass) admits actual reply with provenance without importing prompts or tools [0.11ms]
+(pass) bounds and sanitizes provider text before transport/storage [0.22ms]
+(pass) listener admission reconstructs provenance and rejects forged/unknown fields [0.05ms]
+(pass) Claude StopFailure admits rendered error and error_details with error provenance [0.03ms]
+
+tests/agent-hooks/claude.test.ts:
+(pass) claudeConfig.mapEvent > maps UserPromptSubmit to active
+(pass) claudeConfig.mapEvent > maps PostToolUse to active [0.01ms]
+(pass) claudeConfig.mapEvent > maps Stop to task-complete
+(pass) claudeConfig.mapEvent > maps PermissionRequest to needs-input
+(pass) claudeConfig.mapEvent > returns null for unknown events [0.03ms]
+(pass) mergeClaudeHooks > creates settings.json if it does not exist [0.75ms]
+(pass) mergeClaudeHooks > preserves existing non-hook settings [0.38ms]
+(pass) mergeClaudeHooks > replaces old agent-notify hooks on re-run [0.19ms]
+
+tests/agent-hooks/opencode.test.ts:
+(pass) OpenCode lifecycle plugin > generates valid JavaScript with authenticated per-session events [0.34ms]
+
+tests/agent-hooks/gemini.test.ts:
+(pass) geminiConfig.mapEvent > maps BeforeAgent to active
+(pass) geminiConfig.mapEvent > maps AfterAgent to task-complete
+(pass) geminiConfig.mapEvent > maps AfterTool to active
+(pass) geminiConfig.mapEvent > returns null for unknown events
+(pass) mergeGeminiHooks > creates settings.json if it does not exist [0.68ms]
+(pass) mergeGeminiHooks > preserves existing settings [0.27ms]
+(pass) mergeGeminiHooks > replaces old hooks on re-run [0.44ms]
+
+tests/agent-hooks/codex.test.ts:
+(pass) codexConfig.mapEvent > maps SessionStart to active
+(pass) codexConfig.mapEvent > maps per-turn activity, approvals and compaction without treating subagent stop as parent [0.04ms]
+(pass) codexConfig.mapEvent > maps Stop to task-complete
+(pass) codexConfig.mapEvent > returns null for unknown events
+(pass) mergeCodexHooks > creates hooks.json if it does not exist [1.02ms]
+(pass) mergeCodexHooks > preserves malformed settings instead of silently overwriting them [0.54ms]
+(pass) mergeCodexHooks > preserves existing settings [0.38ms]
+(pass) mergeCodexHooks > replaces old hooks on re-run [0.36ms]
+
+ 67 pass
+ 0 fail
+ 266 expect() calls
+Ran 67 tests across 9 files. [876.00ms]
