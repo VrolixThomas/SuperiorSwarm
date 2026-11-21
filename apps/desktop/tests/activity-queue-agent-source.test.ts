@@ -742,3 +742,117 @@ test("failure supersedes a handled approval request without claiming task succes
 	expect(queue().list().items[0]?.kind).toBe("agent-input");
 	agent.dispose();
 });
+
+for (const provider of ["codex", "claude"] as const) {
+	test(`${provider}: a direct reply clears the exact manual chat's bound workspace report`, async () => {
+		const agent = manager();
+		register(agent, "manual");
+		register(agent, "sibling");
+		getDb().update(agentSessions).set({ managed: false, provider }).run();
+		const ctx = { kind: "workspace" as const, projectId, workspaceId, terminalId: "manual" };
+		let stamp = Date.now();
+		const deliver = (id: string, turnId: string, rawEvent: string, alert: AgentEvent["alert"]) => {
+			stamp = Math.max(stamp + 1, Date.now() + 1);
+			return agent.handleAgentEvent({
+				...event(id, alert),
+				agent: provider,
+				turnId,
+				rawEvent,
+				timestamp: stamp,
+				producerTimestamp: stamp,
+			});
+		};
+		try {
+			deliver("manual", "first", "UserPromptSubmit", "active");
+			await setStatus(ctx, { phase: "blocked", needs: "Choose A or B" });
+			deliver("manual", "first", "Stop", "task-complete");
+			const report = queue().read(workspaceSourceId(workspaceId));
+			expect(report?.candidate).not.toBeNull();
+			deliver("sibling", "other", "UserPromptSubmit", "active");
+			expect(queue().read(workspaceSourceId(workspaceId))?.candidate).not.toBeNull();
+			deliver("manual", "second", "UserPromptSubmit", "active");
+			expect(queue().list().totalPending).toBe(0);
+			closeDb();
+			reconcileAgentSources();
+			expect(queue().list().totalPending).toBe(0);
+			deliver("manual", "second", "Stop", "task-complete");
+			expect(queue().list().totalPending).toBe(1);
+		} finally {
+			agent.dispose();
+		}
+	});
+}
+
+test("working status clears its chat's old turn, rejects replay, and allows the next completion", async () => {
+	const agent = manager();
+	register(agent, "manual");
+	register(agent, "sibling");
+	getDb().update(agentSessions).set({ managed: false }).run();
+	const ctx = { kind: "workspace" as const, projectId, workspaceId, terminalId: "manual" };
+	const before = Date.now() - 10;
+	try {
+		for (const terminal of ["manual", "sibling"]) {
+			getDb()
+				.update(agentSessions)
+				.set({ lastEventAt: new Date(before - 10) })
+				.where(eq(agentSessions.terminalId, terminal))
+				.run();
+			agent.handleAgentEvent({
+				...event(terminal),
+				rawEvent: "Stop",
+				turnId: "old",
+				timestamp: before,
+				producerTimestamp: before,
+			});
+		}
+		expect(queue().list().totalPending).toBe(2);
+		await setStatus(ctx, { phase: "working" });
+		expect(
+			queue()
+				.list()
+				.items.map((item) => item.target.type === "terminal" && item.target.terminalId)
+		).toEqual(["sibling"]);
+		closeDb();
+		reconcileAgentSources();
+		expect(queue().list().totalPending).toBe(1);
+		const now = Date.now() + 1;
+		expect(
+			agent.handleAgentEvent({
+				...event("manual"),
+				rawEvent: "Stop",
+				turnId: "old",
+				timestamp: now,
+				producerTimestamp: now,
+			})
+		).toBeNull();
+		expect(
+			agent.handleAgentEvent({
+				...event("manual"),
+				rawEvent: "Stop",
+				turnId: "new",
+				timestamp: now + 1,
+				producerTimestamp: now + 1,
+			})
+		).not.toBeNull();
+		expect(queue().list().totalPending).toBe(2);
+	} finally {
+		agent.dispose();
+	}
+});
+
+test("working status without a valid reporter cannot clear arbitrary chats", async () => {
+	const agent = manager();
+	register(agent, "manual");
+	try {
+		agent.handleAgentEvent({ ...event("manual"), rawEvent: "Stop", turnId: "old" });
+		await setStatus(
+			{ kind: "workspace", projectId, workspaceId, terminalId: "unknown" },
+			{ phase: "working" }
+		);
+		expect(queue().list().totalPending).toBe(1);
+		await setStatus({ kind: "workspace", projectId, workspaceId }, { phase: "working" });
+		expect(queue().list().totalPending).toBe(1);
+	} finally {
+		agent.dispose();
+	}
+});

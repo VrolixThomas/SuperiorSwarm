@@ -3,6 +3,7 @@ import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
 import type { DaemonClient } from "../terminal/daemon-client";
 import { getDaemonClient } from "../terminal/daemon-instance";
+import { type WorkspaceReporter, workspaceReporter } from "./agent-source";
 import { getActivityQueueService } from "./service";
 
 type Inventory = Pick<DaemonClient, "isConnected" | "listSessionsStrict">;
@@ -40,7 +41,22 @@ export async function listCurrentActivityQueue(
 			.map((terminal) => terminal.workspaceId)
 	);
 	const result = getActivityQueueService().list(input, (item) => {
-		if (item.target.type === "workspace") return liveWorkspaces.has(item.target.workspaceId);
+		if (item.target.type === "workspace") {
+			if (!liveWorkspaces.has(item.target.workspaceId)) return false;
+			const source = getActivityQueueService().read(item.id);
+			const snapshot = source?.snapshot as { reporter?: WorkspaceReporter | null } | null;
+			const reporter = source?.sourceType === "agent-workspace" ? snapshot?.reporter : null;
+			if (!reporter) return true;
+			// A sibling shell cannot keep a report from a closed/replaced chat current.
+			const current = workspaceReporter(item.target.workspaceId, reporter.terminalId);
+			return (
+				reporter.workspaceId === item.target.workspaceId &&
+				live.has(reporter.terminalId) &&
+				!!current &&
+				current.provider === reporter.provider &&
+				current.providerSessionId === reporter.providerSessionId
+			);
+		}
 		if (item.target.type === "terminal")
 			return live.has(item.target.terminalId) && liveWorkspaces.has(item.target.workspaceId);
 		return true;

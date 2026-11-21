@@ -52,6 +52,7 @@ export function nextAgentEventSnapshot(
 	)
 		return null;
 	if (event.rawEvent?.startsWith("Subagent")) return null;
+	if (event.turnId && before?.retiredTurnIds.includes(event.turnId)) return null;
 	// A prompt identifies the beginning of a turn, not a generic keep-alive.
 	// Its replay after tools or Stop must not clear a later report/input request.
 	if (
@@ -84,6 +85,7 @@ export function nextAgentEventSnapshot(
 		before.alert === "task-complete" &&
 		event.alert !== "task-complete" &&
 		event.rawEvent !== "UserPromptSubmit" &&
+		event.rawEvent !== "WorkspaceContinuation" &&
 		!(event.rawEvent === "SessionStart" && event.sessionSource === "resume")
 	) {
 		// Tool/compaction hooks from a completed turn cannot make it active again.

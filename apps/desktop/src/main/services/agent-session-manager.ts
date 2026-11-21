@@ -256,18 +256,28 @@ export class AgentSessionManager {
 			})
 			.run();
 
-		// A submitted follow-up handles the previous dispatched-task report even
-		// when the user types directly in the chat. Only the registered dispatch
-		// target may advance workspace status; a sibling terminal must not do so.
+		// A submitted follow-up handles the report from this exact chat. Bound
+		// manual reports and legacy managed dispatches are checked in the service;
+		// a sibling terminal must not advance another chat's workspace status.
 		if (
-			managed &&
 			event.rawEvent === "UserPromptSubmit" &&
 			event.turnId &&
 			event.providerSessionId &&
 			event.providerSessionId === existing?.providerSessionId &&
 			event.producerTimestamp !== undefined
 		) {
-			continueWorkspaceAfterPrompt(resolved.workspaceId, event.producerTimestamp);
+			continueWorkspaceAfterPrompt(
+				resolved.workspaceId,
+				event.producerTimestamp,
+				{
+					type: "terminal",
+					workspaceId: resolved.workspaceId,
+					terminalId: resolved.terminalId,
+					provider: event.agent,
+					providerSessionId: event.providerSessionId,
+				},
+				managed
+			);
 		}
 
 		const session = this.getSession(resolved.terminalId);

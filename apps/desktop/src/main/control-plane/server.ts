@@ -345,7 +345,13 @@ function resolveCaller(
 	if (projectIdHint && row.projectId !== projectIdHint) {
 		return { error: "workspace/project mismatch" };
 	}
-	return { kind: "workspace", workspaceId: wsId, projectId: row.projectId };
+	const terminalId = req.headers["x-terminal-id"];
+	return {
+		kind: "workspace",
+		workspaceId: wsId,
+		projectId: row.projectId,
+		...(typeof terminalId === "string" && terminalId ? { terminalId } : {}),
+	};
 }
 
 function isOrchestratorWorkspace(workspaceId: string): boolean {

@@ -26,6 +26,7 @@ import {
 	workspaces,
 } from "../src/main/db/schema";
 import { activityQueueSnoozes, activityQueueSources } from "../src/main/db/schema-activity-queue";
+import { setStatus } from "../src/main/services/workspace-service";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../src/main/terminal/daemon-instance";
 import { activityQueueRouter } from "../src/main/trpc/routers/activity-queue";
@@ -577,4 +578,28 @@ test("chat titles identify the conversation without changing its source revision
 		target: before?.target,
 	});
 	expect(queue().read(sourceId)?.fingerprint).toBe(fingerprint);
+});
+
+test("a sibling terminal cannot keep a closed reporting chat's workspace item current", async () => {
+	session("UserPromptSubmit", "needs-input");
+	await setStatus(
+		{ kind: "workspace", projectId, workspaceId, terminalId: "live" },
+		{ phase: "done", statusText: "Review the result" }
+	);
+	expect((await caller.workspaceList()).items.some((item) => item.id === id)).toBe(true);
+	getDb()
+		.insert(terminalSessions)
+		.values({
+			id: "sibling",
+			workspaceId,
+			title: "Shell",
+			cwd: "/tmp",
+			sortOrder: 1,
+			updatedAt: new Date(),
+		})
+		.run();
+	daemon.sessions = [{ id: "sibling", cwd: "/tmp", pid: 2 }];
+	expect((await caller.workspaceList()).items.some((item) => item.id === id)).toBe(false);
+	// Preserve history rather than pretending the user acknowledged it.
+	expect(queue().read(id)?.candidate).not.toBeNull();
 });

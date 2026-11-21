@@ -7,6 +7,12 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
+import {
+	observeValidatedAgentEvent,
+	sessionSourceId,
+	workspaceSourceId,
+} from "../src/main/activity-queue/agent-source";
+import { ActivityQueueService } from "../src/main/activity-queue/service";
 import { startControlPlane } from "../src/main/control-plane";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
@@ -392,6 +398,65 @@ describe("control-plane coordination routes", () => {
 		expect(body.needs).toBe("approval");
 	});
 
+	test("status HTTP binds the reporting terminal and clears only its completed turn", async () => {
+		const terminalId = `manual-${nanoid()}`;
+		const now = Date.now();
+		const db = getDb();
+		db.insert(schema.terminalSessions)
+			.values({
+				id: terminalId,
+				workspaceId: CALLER_WS_ID,
+				title: "Manual chat",
+				cwd: REPO,
+				sortOrder: 0,
+				updatedAt: new Date(now),
+			})
+			.run();
+		db.insert(schema.agentSessions)
+			.values({
+				terminalId,
+				workspaceId: CALLER_WS_ID,
+				provider: "codex",
+				providerSessionId: "conversation",
+				managed: false,
+				state: "idle",
+				lastEventAt: new Date(now - 20),
+				createdAt: new Date(now),
+				updatedAt: new Date(now),
+			})
+			.run();
+		observeValidatedAgentEvent({
+			terminalId,
+			sessionId: terminalId,
+			workspaceId: CALLER_WS_ID,
+			providerSessionId: "conversation",
+			agent: "codex",
+			alert: "task-complete",
+			rawEvent: "Stop",
+			turnId: "finished",
+			timestamp: now - 10,
+			producerTimestamp: now - 10,
+			cwd: REPO,
+		});
+		const queue = new ActivityQueueService();
+		const sourceId = sessionSourceId(CALLER_WS_ID, terminalId, "codex", "conversation");
+		expect(queue.read(sourceId)?.candidate).not.toBeNull();
+		const response = await fetch(url("/workspaces.set_status"), {
+			method: "POST",
+			headers: {
+				...authWs(CALLER_WS_ID),
+				"Content-Type": "application/json",
+				"X-Terminal-Id": terminalId,
+			},
+			body: JSON.stringify({ phase: "working" }),
+		});
+		expect(response.status).toBe(200);
+		expect(queue.read(sourceId)?.candidate).toBeNull();
+		expect(queue.read(workspaceSourceId(CALLER_WS_ID))?.snapshot).toMatchObject({
+			reporter: { terminalId, provider: "codex", providerSessionId: "conversation" },
+		});
+	});
+
 	test("set_status without X-Workspace-Id returns 401", async () => {
 		const res = await fetch(url("/workspaces.set_status"), {
 			method: "POST",
@@ -509,7 +574,7 @@ describe("/context.resolve", () => {
 			workspaceId: "ws-r",
 			modeContext: { reviewDraftId: "d", dbPath: "/db" },
 		});
-		const res = await fetch(url(`/context.resolve?cwd=/x&taskToken=tok-1`), { headers: auth() });
+		const res = await fetch(url("/context.resolve?cwd=/x&taskToken=tok-1"), { headers: auth() });
 		const body = await res.json();
 		expect(body.mode).toBe("review");
 		expect(body.modeContext.reviewDraftId).toBe("d");
@@ -522,8 +587,8 @@ describe("/context.resolve", () => {
 			workspaceId: "ws-s",
 			modeContext: {},
 		});
-		await fetch(url(`/context.resolve?cwd=/x&taskToken=tok-2`), { headers: auth() });
-		const res = await fetch(url(`/context.resolve?cwd=/x&taskToken=tok-2`), { headers: auth() });
+		await fetch(url("/context.resolve?cwd=/x&taskToken=tok-2"), { headers: auth() });
+		const res = await fetch(url("/context.resolve?cwd=/x&taskToken=tok-2"), { headers: auth() });
 		const body = await res.json();
 		expect(body.mode).toBe("none");
 	});

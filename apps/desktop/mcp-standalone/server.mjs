@@ -978,7 +978,12 @@ if (isWorkspaceAgentOrCrossRepo) {
 							? { "X-Manager-Token": process.env.SUPERIORSWARM_MANAGER_TOKEN }
 							: {}),
 					}
-				: { "X-Workspace-Id": WORKSPACE_ID };
+				: {
+						"X-Workspace-Id": WORKSPACE_ID,
+						...(process.env.AGENT_NOTIFY_TERMINAL_ID
+							? { "X-Terminal-Id": process.env.AGENT_NOTIFY_TERMINAL_ID }
+							: {}),
+					};
 			const res = await fetch(`${baseUrl}${path}`, {
 				method,
 				headers: {

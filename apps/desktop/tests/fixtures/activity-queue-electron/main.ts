@@ -73,6 +73,17 @@ const until = async (condition: () => boolean | Promise<boolean>) => {
 		if (await condition()) return;
 		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
+	console.error(
+		"QUEUE_STATE",
+		JSON.stringify(
+			(await listCurrentActivityQueue()).items.map((item) => ({
+				id: item.id,
+				kind: item.kind,
+				revision: item.revision,
+			}))
+		)
+	);
+	console.error("AGENT_STATE", JSON.stringify(manager?.getSession("terminal")));
 	throw new Error(`Timed out: ${step}`);
 };
 async function run() {
@@ -297,38 +308,55 @@ lines.on('line', line => {
 		step = `${provider}: fixture agent reads PTY input`;
 		await until(() => terminalOutput.includes(`FIXTURE_READY_${provider}`));
 		let turn = 0;
-		for (const phase of ["done", "blocked"] as const) {
-			await setStatus(
-				{ kind: "workspace", projectId: "project", workspaceId: "workspace" },
-				{
-					phase,
-					statusText: "Review result",
-					...(phase === "blocked" ? { needs: "Choose approach" } : {}),
-				}
-			);
-			await hook("Stop", turn ? `direct-${turn}` : `initial-${provider}`);
-			step = `${provider}: ${phase} workspace and session attention`;
-			await until(() => hasCount(2));
-			if (!(await js<boolean>("!!document.querySelector('#activity-queue-panel')")))
-				await click("Queue 2");
-			await until(() => js<boolean>("!!document.querySelector('#activity-queue-panel')"));
-			await click("Open Codex native turn");
-			await until(() =>
-				js<boolean>("document.activeElement?.classList.contains('xterm-helper-textarea')")
-			);
-			await contents.insertText("Continue with this approach");
-			await until(() => manager?.getSession("terminal")?.state === "running");
-			if ((await listCurrentActivityQueue()).totalPending !== 2)
-				throw new Error("Opening/typing cleared attention");
-			contents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
-			contents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
-			turn++;
-			step = `${provider}: direct input clears both rows through real terminal IPC and generated bridge`;
-			await until(() => hasCount(0));
-			closeDb();
-			if ((await listCurrentActivityQueue()).totalPending !== 0)
-				throw new Error("Continued report returned after reopen");
+		for (const managed of [true, false]) {
+			getDb()
+				.update(agentSessions)
+				.set({ managed })
+				.where(eq(agentSessions.terminalId, "terminal"))
+				.run();
+			for (const phase of ["done", "blocked"] as const) {
+				await setStatus(
+					{
+						kind: "workspace",
+						projectId: "project",
+						workspaceId: "workspace",
+						...(managed ? {} : { terminalId: "terminal" }),
+					},
+					{
+						phase,
+						statusText: "Review result",
+						...(phase === "blocked" ? { needs: "Choose approach" } : {}),
+					}
+				);
+				await hook("Stop", turn ? `direct-${turn}` : `initial-${provider}`);
+				step = `${provider} ${managed ? "managed" : "manual"}: ${phase} workspace and session attention`;
+				await until(() => hasCount(2));
+				if (!(await js<boolean>("!!document.querySelector('#activity-queue-panel')")))
+					await click("Queue 2");
+				await until(() => js<boolean>("!!document.querySelector('#activity-queue-panel')"));
+				await click("Open Codex native turn");
+				await until(() =>
+					js<boolean>("document.activeElement?.classList.contains('xterm-helper-textarea')")
+				);
+				await contents.insertText("Continue with this approach");
+				await until(() => manager?.getSession("terminal")?.state === "running");
+				if ((await listCurrentActivityQueue()).totalPending !== 2)
+					throw new Error("Opening/typing cleared attention");
+				contents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+				contents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+				turn++;
+				step = `${provider}: direct input clears both rows through real terminal IPC and generated bridge`;
+				await until(() => hasCount(0));
+				closeDb();
+				if ((await listCurrentActivityQueue()).totalPending !== 0)
+					throw new Error("Continued report returned after reopen");
+			}
 		}
+		getDb()
+			.update(agentSessions)
+			.set({ managed: true })
+			.where(eq(agentSessions.terminalId, "terminal"))
+			.run();
 		await hook("Stop", `direct-${turn}`);
 		await until(() => hasCount(1));
 		daemon.write("terminal", "__fixture_exit__\r");

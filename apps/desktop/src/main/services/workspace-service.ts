@@ -30,7 +30,13 @@ import type {
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
 import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
-import { reconcileAgentSources, workspaceSourceId } from "../activity-queue/agent-source";
+import {
+	type WorkspaceReporter,
+	reconcileAgentSources,
+	resolveReporterAttention,
+	workspaceReporter,
+	workspaceSourceId,
+} from "../activity-queue/agent-source";
 import { getActivityQueueService } from "../activity-queue/service";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
@@ -686,7 +692,7 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 }
 
 export type CallerContext =
-	| { kind: "workspace"; workspaceId: string; projectId: string }
+	| { kind: "workspace"; workspaceId: string; projectId: string; terminalId?: string }
 	| {
 			kind: "xro";
 			xroId: string;
@@ -758,7 +764,10 @@ export async function setStatus(
 			.where(eq(workspaces.id, ctx.workspaceId))
 			.run();
 
-		reconcileAgentSources({ workspaceId: ctx.workspaceId, reportedAt: now.getTime() });
+		const reporter = workspaceReporter(ctx.workspaceId, ctx.terminalId);
+		reconcileAgentSources({ workspaceId: ctx.workspaceId, reportedAt: now.getTime(), reporter });
+		if (reporter && input.phase === "working" && !input.needs?.trim())
+			resolveReporterAttention(reporter, now.getTime());
 	});
 
 	eventBus?.emit(ctx.projectId, {
@@ -773,17 +782,30 @@ export async function setStatus(
 	return { ok: true };
 }
 
-/** Called only after a new prompt from the exact managed session was validated.
+/** Called only after a new prompt from the reporting session was validated.
  * Reading/opening a workspace and ordinary tool activity never enter this path.
  * Questions remain independent: continuing work is not a correlated answer.
  */
-export function continueWorkspaceAfterPrompt(workspaceId: string, producedAt: number): void {
+export function continueWorkspaceAfterPrompt(
+	workspaceId: string,
+	producedAt: number,
+	reporter: WorkspaceReporter,
+	managed: boolean
+): void {
 	const db = getDb();
 	const workspace = db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get();
 	const snapshot = getActivityQueueService().read(workspaceSourceId(workspaceId))?.snapshot as
-		| { reportedAt?: number }
+		| { reportedAt?: number; reporter?: WorkspaceReporter | null }
 		| undefined;
+	const owner = snapshot?.reporter;
+	const ownsReport = owner
+		? owner.terminalId === reporter.terminalId &&
+			owner.provider === reporter.provider &&
+			owner.providerSessionId === reporter.providerSessionId &&
+			owner.workspaceId === workspaceId
+		: managed;
 	if (
+		!ownsReport ||
 		!workspace ||
 		!Number.isFinite(producedAt) ||
 		(workspace.currentPhase !== "done" &&

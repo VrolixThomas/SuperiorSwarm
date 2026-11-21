@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import type { ActivityQueueCandidate } from "../../shared/activity-queue";
+import type { ActivityQueueCandidate, ActivityQueueTarget } from "../../shared/activity-queue";
 import type { AgentEvent } from "../../shared/agent-events";
 import { AGENT_PROVIDERS } from "../../shared/agent-session";
 import { getDb } from "../db";
@@ -7,6 +7,77 @@ import { agentMessages, agentSessions, projects, terminalSessions, workspaces } 
 import { activityQueueSources } from "../db/schema-activity-queue";
 import { nextAgentEventSnapshot } from "./agent-event-order";
 import { ActivityQueueService } from "./service";
+
+export type WorkspaceReporter = Extract<ActivityQueueTarget, { type: "terminal" }>;
+
+/** A reported terminal must be registered to this exact workspace and conversation. */
+export function workspaceReporter(
+	workspaceId: string,
+	terminalId?: string
+): WorkspaceReporter | null {
+	if (!terminalId) return null;
+	const db = getDb();
+	const terminal = db
+		.select()
+		.from(terminalSessions)
+		.where(eq(terminalSessions.id, terminalId))
+		.get();
+	const session = db
+		.select()
+		.from(agentSessions)
+		.where(eq(agentSessions.terminalId, terminalId))
+		.get();
+	if (
+		terminal?.workspaceId !== workspaceId ||
+		session?.workspaceId !== workspaceId ||
+		!session.providerSessionId
+	)
+		return null;
+	return {
+		type: "terminal",
+		workspaceId,
+		terminalId,
+		provider: session.provider,
+		providerSessionId: session.providerSessionId,
+	};
+}
+
+/** Explicit working status from a bound chat is proof of continuation even if a prompt hook was missed. */
+export function resolveReporterAttention(reporter: WorkspaceReporter, reportedAt: number): void {
+	const queue = new ActivityQueueService();
+	const id = sessionSourceId(
+		reporter.workspaceId,
+		reporter.terminalId,
+		reporter.provider,
+		reporter.providerSessionId
+	);
+	const previous = queue.read(id);
+	if (!previous || !previous.candidate) return;
+	const snapshot = nextAgentEventSnapshot(previous.snapshot, {
+		agent: reporter.provider,
+		sessionId: reporter.terminalId,
+		terminalId: reporter.terminalId,
+		providerSessionId: reporter.providerSessionId ?? "",
+		workspaceId: reporter.workspaceId,
+		alert: "active",
+		rawEvent: "WorkspaceContinuation",
+		timestamp: reportedAt,
+		producerTimestamp: reportedAt,
+		cwd: "",
+	});
+	if (!snapshot) return;
+	// The old turn is consumed; delayed hooks from it cannot resurrect attention.
+	if (snapshot.turnId)
+		snapshot.retiredTurnIds = [...snapshot.retiredTurnIds, snapshot.turnId].slice(-128);
+	snapshot.turnId = null;
+	queue.observe({
+		...previous,
+		candidate: null,
+		snapshot,
+		fingerprint: JSON.stringify(["active", null, null]),
+		observedAt: reportedAt,
+	});
+}
 
 const ownedTypes = ["agent-workspace", "agent-question", "agent-session"];
 export const workspaceSourceId = (id: string) => `agent-workspace:${id}`;
@@ -158,6 +229,7 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 export function reconcileAgentSources(statusChange?: {
 	workspaceId: string;
 	reportedAt: number;
+	reporter?: WorkspaceReporter | null;
 }): void {
 	const db = getDb();
 	const queue = new ActivityQueueService(db);
@@ -177,7 +249,13 @@ export function reconcileAgentSources(statusChange?: {
 			const ready = workspace.currentPhase === "done";
 			const label = needsInput ? "Needs input" : "Task complete";
 			const previousSnapshot = queue.read(sourceId)?.snapshot as
-				| { phase?: string; needs?: string | null; statusText?: string | null; reportedAt?: number }
+				| {
+						phase?: string;
+						needs?: string | null;
+						statusText?: string | null;
+						reportedAt?: number;
+						reporter?: WorkspaceReporter | null;
+				  }
 				| undefined;
 			// The workspace timestamp column is second-precision. Retain the actual
 			// report time in the durable snapshot so a delayed prompt cannot clear a
@@ -191,6 +269,14 @@ export function reconcileAgentSources(statusChange?: {
 							typeof previousSnapshot.reportedAt === "number"
 						? previousSnapshot.reportedAt
 						: (workspace.statusUpdatedAt ?? workspace.updatedAt).getTime();
+			const reporter =
+				statusChange?.workspaceId === workspace.id
+					? (statusChange.reporter ?? null)
+					: previousSnapshot?.phase === workspace.currentPhase &&
+							previousSnapshot.needs === workspace.needs &&
+							previousSnapshot.statusText === workspace.statusText
+						? (previousSnapshot.reporter ?? null)
+						: null;
 			queue.observe({
 				sourceId,
 				sourceType: "agent-workspace",
@@ -200,11 +286,13 @@ export function reconcileAgentSources(statusChange?: {
 					needs: workspace.needs,
 					statusText: workspace.statusText,
 					reportedAt,
+					reporter,
 				},
 				fingerprint: JSON.stringify([
 					workspace.currentPhase,
 					workspace.needs,
 					workspace.statusText,
+					...(reporter ? [reporter] : []),
 				]),
 				observedAt: now,
 				candidate:
