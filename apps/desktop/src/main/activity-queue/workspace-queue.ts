@@ -333,7 +333,8 @@ function validateMembers(
 	const canonical = groupedItems(freshItems, current.sources, currentSnoozes(Date.now())).find(
 		(item) => item.id === input.id
 	);
-	const expected = canonical?.members ?? [{ id: input.id, revision: input.revision }];
+	if (!canonical) return null; // A formerly standalone member is now hidden inside a newer group.
+	const expected = canonical.members ?? [{ id: input.id, revision: input.revision }];
 	const supplied = input.members ?? [{ id: input.id, revision: input.revision }];
 	const key = (rows: { id: string; revision: number }[]) =>
 		JSON.stringify(rows.map((row) => [row.id, row.revision]).sort());
@@ -519,8 +520,7 @@ export async function workspaceAnswer(
 			status: "saved",
 			messageId,
 			delivery: "saved",
-			detail:
-				"Saved for this conversation. The agent has not read or acted on it yet.",
+			detail: "Saved for this conversation. The agent has not read or acted on it yet.",
 		};
 	});
 }

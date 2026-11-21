@@ -378,6 +378,7 @@ test("grouped report retains reply provenance and member errors; delayed member 
 		rawEvent: "Stop",
 	});
 	const turn = item.members!.find((member) => member.id !== item.id)!;
+	expect((await workspaceDone(turn, f.inventory)).status).toBe("conflict");
 	let release!: () => void;
 	let entered!: () => void;
 	const started = new Promise<void>((resolve) => {

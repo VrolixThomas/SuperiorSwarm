@@ -35,6 +35,13 @@ function event(
 		workspaceId,
 		cwd: "/tmp/worktree",
 		alert,
+		turnId: "synthetic-turn",
+		rawEvent:
+			alert === "task-complete"
+				? "Stop"
+				: alert === "needs-input"
+					? "PermissionRequest"
+					: "UserPromptSubmit",
 		agent: "claude",
 		timestamp: Date.now(),
 	};
@@ -509,4 +516,20 @@ describe("AgentSessionManager", () => {
 
 		expect(fixture.manager.getSession("term-1")?.state).toBe("running");
 	});
+});
+
+test("unidentified legacy completion cannot schedule automatic sleep", async () => {
+	const fixture = makeManager({ minuteMs: 1 });
+	managers.push(fixture.manager);
+	fixture.manager.registerManagedSession({
+		terminalId: "term-1",
+		workspaceId,
+		provider: "claude",
+		providerSessionId: "provider-session-1",
+		skipPermissions: false,
+	});
+	fixture.manager.handleAgentEvent({ ...event("term-1", workspaceId), turnId: undefined });
+	await Bun.sleep(15);
+	expect(fixture.manager.getSession("term-1")?.state).toBe("needs-input");
+	expect(fixture.terminations).toHaveLength(0);
 });
