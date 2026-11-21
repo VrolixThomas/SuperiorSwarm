@@ -12,8 +12,13 @@ export function QueueLinkedWorkContext({
 			<ul className="min-w-0 space-y-2 text-[11px] text-[var(--text-secondary)]">
 				{items.map((item) => (
 					<li key={`${item.kind}:${item.provider}:${item.id}`} className="min-w-0 break-words">
-						<span className="capitalize text-[var(--text-tertiary)]">
-							{item.provider} · {item.kind === "pr" ? "PR" : "Ticket"}:{" "}
+						<span className="text-[var(--text-tertiary)]">
+							{
+								{ github: "GitHub", bitbucket: "Bitbucket", linear: "Linear", jira: "Jira" }[
+									item.provider
+								]
+							}{" "}
+							· {item.kind === "pr" ? "PR" : "Ticket"}:{" "}
 						</span>
 						{item.url ? (
 							<button
