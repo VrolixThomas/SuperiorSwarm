@@ -324,3 +324,34 @@ test("a new unprojected question at daemon boundary blocks continuing the old an
 		f.manager.dispose();
 	}
 });
+
+test("capability explains another pending question even after its answer was saved", async () => {
+	const f = await fixture("codex", "worktree");
+	try {
+		const other = crypto.randomUUID();
+		f.ask(other);
+		expect((await caller.workspaceAnswerContinuationCapability(f.input)).status).toBe(
+			"unavailable"
+		);
+		const row = (await caller.workspaceList()).items.find(
+			(item) => item.id === questionSourceId(other)
+		);
+		if (!row) throw Error("Other question missing");
+		expect(
+			(
+				await caller.workspaceAnswer({
+					id: row.id,
+					revision: row.revision,
+					questionId: other,
+					content: "Green",
+				})
+			).status
+		).toBe("saved");
+		expect((await caller.workspaceAnswerContinuationCapability(f.input)).status).toBe(
+			"unavailable"
+		);
+		expect(f.writes).toHaveLength(0);
+	} finally {
+		f.manager.dispose();
+	}
+});

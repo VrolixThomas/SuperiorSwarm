@@ -98,6 +98,12 @@ export async function workspaceContinuationCapability(
 		};
 	const reason = problem(item, questionId);
 	if (reason) return { status: "unavailable", reason };
+	if (questionId && !(await admissionMembers(item, { questionId })))
+		return {
+			status: "unavailable",
+			reason:
+				"Another question or permission needs attention before this conversation can continue.",
+		};
 	const target = await lease(item, false);
 	if (!target?.supported)
 		return {
@@ -167,7 +173,10 @@ function answerValid(
 		answerContinuationFits(content)
 	);
 }
-async function admissionMembers(item: WorkspaceQueueItem, binding?: QueueAnswerBinding) {
+async function admissionMembers(
+	item: WorkspaceQueueItem,
+	binding?: Pick<QueueAnswerBinding, "questionId">
+) {
 	if (!binding) return members(item);
 	const all = [
 		...(await listWorkspaceQueue()).items,
