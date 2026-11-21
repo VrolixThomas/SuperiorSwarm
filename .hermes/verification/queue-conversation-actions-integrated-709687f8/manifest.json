@@ -1,0 +1,54 @@
+{
+  "stagingCommit": "709687f8",
+  "isolatedMergeCommit": "d7d54aa74abe26fa90d8533e047a59d6f2068a9d",
+  "testedFullTree": "5896736e61c2a407dcc4811dadeaf6813546f03f",
+  "fullTreeMatchesStaging": true,
+  "agent": "Codex",
+  "subagents": 0,
+  "date": "2026-11-21",
+  "productionEdits": false,
+  "focused": {
+    "passed": 94,
+    "failed": 0,
+    "assertions": 481,
+    "files": 8
+  },
+  "build": {
+    "exitCode": 0,
+    "cwd": "apps/desktop"
+  },
+  "native": {
+    "passed": 2,
+    "failed": 0,
+    "seconds": 15.06,
+    "afterFreshBuild": true,
+    "workspaceFixture": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-workspace-queue-w8ONVb",
+    "lifecycleFixture": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-queue-electron-0jAMGe"
+  },
+  "visuallyInspected": [
+    "queue-question-saved.png",
+    "queue-coordinator-context.png",
+    "queue-permission-unconfirmed.png",
+    "queue-report-context.png",
+    "queue-question-conflict.png",
+    "queue-short-scrolled.png"
+  ],
+  "liveProvidersRerun": false,
+  "failures": [],
+  "files": {
+    "build.txt": "9088376fe74738216be3d6a6077b14156cf151285bd873bd6a89864695e8a28a",
+    "focused.txt": "b96ee373552edb68c0ba36a3fbb23d74a03d5ea17be9f8645df226a2b2b76dd9",
+    "native-result.json": "a0f64aaf18727cc6bf3e90df00357d49866f51a4cb78615dc75a92a787aa27fa",
+    "native.txt": "78066b63f63adedb3dee76229cf848ec433b4433d660312a27f11ca381bf31df",
+    "queue-1440x900.png": "b49216440c8e77d9eda1366776f892036c1a52cebe67c7db9741694c58b6a8c8",
+    "queue-800x600.png": "8baca35802ad6579ff131ca2d6fb040a9ac9cf865f58be55b06e62d36b49a55c",
+    "queue-coordinator-context.png": "9ce87495fcd300b46c1d2143bd83d97cd238c3c3fb62cb875dec88dcc57070ad",
+    "queue-narrow-details.png": "0d0979f90f2c9e53c4414a46166035e5eec1063e7b008411924b6d7641a7f4d4",
+    "queue-permission-unconfirmed.png": "2a1dd5f901a5d4b0f7bc3b2f07e2f9b7bbf5d9de94d6773a40dff1cf214e4c4a",
+    "queue-question-conflict.png": "8e9ffc6c2a1f16149631b1df3bb5db091d1f2f39ea9efd7e77095eb11412f25d",
+    "queue-question-saved.png": "b5abbd83490ed4df24130af1cb89beda8d903293850ac1b7f4b1b99e794fe42a",
+    "queue-report-context.png": "ed2a88a333700b977fb70d6993b683485c672b33ac213ad60e43f2bab47ca9b8",
+    "queue-short-scrolled.png": "4bf6bd3276a9f3dc81aa023f670714a63ecdc2f5ecad1b5fa635bd685d655782"
+  },
+  "logNormalization": "Trailing whitespace removed from this retest build log only; previous artifacts preserved."
+}
