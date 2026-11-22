@@ -18,7 +18,9 @@ import { resolveConfig } from "electron-vite";
 import { build as viteBuild } from "vite";
 
 // Run after `bun run build`: production preload and CSS are used unchanged.
-test.skipIf(process.env["SS_QUEUE_EXTERNAL_LAUNCH_NATIVE"] !== "1")(
+test.skipIf(
+	process.platform !== "darwin" || process.env["SS_QUEUE_EXTERNAL_LAUNCH_NATIVE"] !== "1"
+)(
 	"external queue prepares and starts the exact native provider chat",
 	async () => {
 		const desktop = resolve(import.meta.dir, "..");
@@ -136,6 +138,7 @@ test.skipIf(process.env["SS_QUEUE_EXTERNAL_LAUNCH_NATIVE"] !== "1")(
 					reject(error);
 				});
 				child.once("exit", (code) => {
+					writeFileSync(join(root, "runtime-output.txt"), output);
 					clearTimeout(timer);
 					if (code !== 0) console.error(output);
 					done(code);

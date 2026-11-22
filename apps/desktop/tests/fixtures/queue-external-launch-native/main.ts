@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -59,6 +59,9 @@ import { codexHookTrust } from "../queue-reply-tui/codex-hooks";
 const root = process.env["SS_QUEUE_FIXTURE_ROOT"]!;
 const provider = process.env["SS_QUEUE_NATIVE_CASES"] === "codex" ? "codex" : "claude";
 const scenario = process.env["SS_QUEUE_LAUNCH_KIND"] === "pr" ? "pr" : "hook";
+const contextProbe = scenario === "pr" && process.env["SS_QUEUE_CONTEXT_PROBE"] === "1";
+const contextMarker = `QUEUE_CONTEXT_${randomUUID().replaceAll("-", "")}`;
+const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 app.setPath("userData", join(root, "profile"));
 app.setPath("sessionData", join(root, "profile"));
 app.setAppLogsPath(join(root, "logs"));
@@ -84,6 +87,7 @@ const trace: {
 	accepted: boolean;
 	cwd?: string;
 	launchId?: string;
+	evidenceText?: string[];
 }[] = [];
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 async function until(fn: () => boolean | Promise<boolean>, ms = 60000) {
@@ -94,6 +98,12 @@ async function until(fn: () => boolean | Promise<boolean>, ms = 60000) {
 	}
 	throw Error(`Timeout: ${step}`);
 }
+process.on("exit", (code) => {
+	writeFileSync(join(root, "process-exit.json"), JSON.stringify({ code, step, trace }));
+});
+app.on("before-quit", () =>
+	writeFileSync(join(root, "before-quit.txt"), new Error("Quit requested").stack ?? "")
+);
 async function run() {
 	await app.whenReady();
 	assert(app.getAppPath().startsWith(root));
@@ -171,8 +181,9 @@ async function run() {
 			id: "default",
 			cliPreset: provider,
 			skipPermissions: 0,
-			solvePrompt:
-				"This is a tool-free launch probe. Do not edit, commit, run commands or call tools. Reply with QUEUE_NATIVE_STARTED.",
+			solvePrompt: contextProbe
+				? `This is an isolated context-delivery verification, not a coding request. After reading this prompt, include exactly this verification marker in your final answer: ${contextMarker}. Do not edit, commit, execute commands, or invoke MCP tools. No MCP server is configured for this read-only probe; if unavailable, still report the marker and stop.`
+				: "This is a tool-free launch probe. Do not edit, commit, run commands or call tools. Reply with QUEUE_NATIVE_STARTED.",
 		})
 		.run();
 	const bridge = join(root, "bridge.cjs");
@@ -194,7 +205,7 @@ async function run() {
 			"--mcp-config",
 			'{"mcpServers":{}}',
 			"--tools",
-			"",
+			contextProbe ? "Read" : "",
 			"--permission-mode",
 			"plan",
 			"--disable-slash-commands"
@@ -240,10 +251,17 @@ async function run() {
 	}
 	const bin = join(root, "bin");
 	mkdirSync(bin);
+	const argvProbe = join(root, "argv-probe.cjs");
+	writeFileSync(
+		argvProbe,
+		`const fs=require("node:fs");const crypto=require("node:crypto");fs.writeFileSync(${JSON.stringify(join(root, "argv-digest.json"))},JSON.stringify({lastArgumentHash:crypto.createHash("sha256").update(process.argv.at(-1)||"").digest("hex")}));`
+	);
 	// Test-only adapter keeps every production argument, adding restrictive isolated configuration.
 	writeFileSync(
 		join(bin, provider),
-		`#!/bin/sh\n${provider === "codex" ? '[ "$1" = "--no-daemon" ] || exit 97\n' : ""}exec ${[realBinary, ...wrapperArgs].map(quote).join(" ")} "$@"\n`,
+		`#!/bin/sh\n${provider === "codex" ? '[ "$1" = "--no-daemon" ] || exit 97\n' : ""}
+ELECTRON_RUN_AS_NODE=1 ${quote(process.execPath)} ${quote(argvProbe)} "$@"
+exec ${[realBinary, ...wrapperArgs].map(quote).join(" ")} "$@"\n`,
 		{ mode: 0o700 }
 	);
 	process.env["PATH"] = `${bin}:${process.env["PATH"]}`;
@@ -278,6 +296,7 @@ async function run() {
 			accepted: !!accepted,
 			cwd: event.cwd,
 			launchId: event.launchId,
+			evidenceText: event.evidence?.map((value) => value.text),
 		});
 	});
 	await listener.start();
@@ -445,6 +464,21 @@ async function run() {
 	assert(!script.includes("dangerously"));
 	assert(!script.includes("approval_policy=never"));
 	if (provider === "codex") assert.equal(script.match(/codex --no-daemon/g)?.length, 1);
+	let promptFileHash: string | undefined;
+	if (contextProbe) {
+		assert("sessionId" in prepared);
+		const promptPath = join(root, "profile", "solves", prepared.sessionId, "solve-prompt.txt");
+		const promptText = readFileSync(promptPath, "utf8");
+		assert(promptText.includes(contextMarker));
+		assert(!script.includes(contextMarker), "The marker belongs only in the generated prompt file");
+		promptFileHash = digest(promptText.replace(/\n+$/, ""));
+		if (provider === "claude") {
+			const settingsPath = join(root, "settings.json");
+			const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+			settings.permissions = { allow: [`Read(/${promptPath})`] };
+			writeFileSync(settingsPath, JSON.stringify(settings));
+		}
+	}
 	step = "renderer create-before-write";
 	await win.webContents.executeJavaScript(
 		`window.nativeLaunchProbe.start(${JSON.stringify(launch)})`
@@ -499,6 +533,30 @@ async function run() {
 		);
 	}
 	if (scenario === "hook") assert.equal(manager.getSession(launch.terminalId)?.managed, false);
+	if (contextProbe) {
+		step = "actual provider consumes generated prompt context";
+		await until(() =>
+			trace.some(
+				(event) =>
+					event.terminal === launch.terminalId &&
+					event.accepted &&
+					event.event === "Stop" &&
+					event.evidenceText?.some((text) => text.includes(contextMarker))
+			)
+		);
+		const argv = JSON.parse(readFileSync(join(root, "argv-digest.json"), "utf8"));
+		if (provider === "codex") assert.equal(argv.lastArgumentHash, promptFileHash);
+		else {
+			assert.notEqual(argv.lastArgumentHash, promptFileHash);
+			for (const eventName of ["PreToolUse", "PostToolUse"])
+				assert(
+					trace.some(
+						(event) =>
+							event.terminal === launch.terminalId && event.accepted && event.event === eventName
+					)
+				);
+		}
+	}
 	const terminalCount = (await daemon.listSessionsStrict()).length;
 	queue.acknowledge({ id: itemId, revision });
 	await assert.rejects(() =>
@@ -518,6 +576,12 @@ async function run() {
 				provider,
 				scenario,
 				productionPreparedScript: true,
+				contextFileDelivered: contextProbe,
+				contextMethod: contextProbe
+					? provider === "claude"
+						? "native Read of exact allowed prompt file"
+						: "production shell expansion verified by argv digest"
+					: undefined,
 				rendererCreateBeforeWrite: true,
 				actualNativeCallback: true,
 				sameWorkspace: true,
