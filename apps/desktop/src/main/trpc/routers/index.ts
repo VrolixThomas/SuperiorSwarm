@@ -1,4 +1,5 @@
 import { router } from "../index";
+import { activityQueueRouter } from "./activity-queue";
 import { agentLaunchRouter } from "./agent-launch";
 import { agentSessionsRouter } from "./agent-sessions";
 import { aiReviewRouter } from "./ai-review";
@@ -19,6 +20,7 @@ import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
 import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";
+import { queueHooksRouter } from "./queue-hooks";
 import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
@@ -36,6 +38,8 @@ import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
+	activityQueue: activityQueueRouter,
+	queueHooks: queueHooksRouter,
 	browser: browserRouter,
 	auth: authRouter,
 	agentLaunch: agentLaunchRouter,

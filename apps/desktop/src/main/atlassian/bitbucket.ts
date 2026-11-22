@@ -1,10 +1,16 @@
 import { getDb } from "../db";
 import { projects } from "../db/schema";
 import { parseRemoteUrl } from "../git/operations";
+import {
+	type BitbucketCompactPR,
+	type PRActivityFacts,
+	bitbucketActivity,
+} from "../providers/pr-activity";
 import { atlassianFetch, getAuth } from "./auth";
 import { BITBUCKET_API_BASE } from "./constants";
 
 export interface BitbucketPullRequest {
+	activity?: PRActivityFacts;
 	id: number;
 	title: string;
 	state: string;
@@ -20,11 +26,11 @@ export interface BitbucketPullRequest {
 	headCommitSha: string;
 }
 
-interface BitbucketApiPR {
+interface BitbucketApiPR extends BitbucketCompactPR {
 	id: number;
 	title: string;
 	state: string;
-	author: { display_name: string };
+	author: { display_name: string; account_id?: string };
 	source: {
 		repository: { full_name: string };
 		branch?: { name?: string };
@@ -52,6 +58,7 @@ function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): Bitbuck
 			? { branch: { name: pr.destination.branch.name ?? "" } }
 			: undefined,
 		headCommitSha: pr.source.commit?.hash ?? "",
+		activity: bitbucketActivity(pr, getAuth("bitbucket")?.accountId),
 	};
 }
 
@@ -240,19 +247,25 @@ export async function getPRState(
 	workspace: string,
 	repoSlug: string,
 	prId: number
-): Promise<{ headSha: string; state: string }> {
+): Promise<{ headSha: string; state: string; activity: PRActivityFacts }> {
 	const res = await atlassianFetch(
 		"bitbucket",
 		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`
 	);
 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
-	const data = (await res.json()) as {
-		source?: BitbucketRevisionSide;
-		state: string;
-	};
+	const data = (await res.json()) as BitbucketCompactPR & { source?: BitbucketRevisionSide };
+	const activity = bitbucketActivity(data, getAuth("bitbucket")?.accountId);
+	if (!activity.state) throw new Error("Bitbucket PR state missing");
+	// Confirmed closure resolves queue attention even after a fork/commit disappears.
+	// Open review operations still require the verified full source OID below.
+	if (activity.state !== "open") {
+		const rawHead = activity.headSha ?? "";
+		const headSha = FULL_COMMIT_OID.test(rawHead) ? rawHead.toLowerCase() : "";
+		return { headSha, state: activity.state.toUpperCase(), activity: { ...activity, headSha } };
+	}
 	const headSha = await resolveCommitOid(workspace, repoSlug, data.source);
 	if (!headSha) throw new Error("Bitbucket PR revision unavailable");
-	return { headSha, state: data.state };
+	return { headSha, state: activity.state.toUpperCase(), activity: { ...activity, headSha } };
 }
 
 /** Post a comment on a Bitbucket pull request */

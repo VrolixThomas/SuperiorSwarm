@@ -1,0 +1,1 @@
+ALTER TABLE `activity_queue_deliveries` ADD `cleanup_protected_turn_id` text;

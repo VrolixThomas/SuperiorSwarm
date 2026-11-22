@@ -8,6 +8,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { flattenWorkspaceTree } from "../utils/workspace-tree";
+import { ActivityQueueButton } from "./ActivityQueueButton";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
@@ -814,7 +815,8 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 			</div>
 
 			{/* Settings — pinned to bottom */}
-			<div className="shrink-0 border-t border-[var(--border-subtle)] p-2">
+			<div className="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] p-2">
+				<ActivityQueueButton compact />
 				<button
 					type="button"
 					title="Settings"

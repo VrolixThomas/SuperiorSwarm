@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { LayoutNode } from "../../../shared/pane-types";
 import { isReviewAgentJobActive } from "../../../shared/review-agent-job";
 import {
@@ -148,6 +148,7 @@ function PRHeader({ active }: { active: ActiveReview }) {
 					{data.submitOpen && data.canSubmitReview && (
 						<SubmitReviewPopover
 							prCtx={prCtx}
+							headSha={data.details?.headCommitOid}
 							draftId={data.aiDraft?.id ?? null}
 							acceptedThreads={data.acceptedThreads}
 							pendingCount={data.pendingCount}
@@ -172,19 +173,22 @@ export function PRReviewWorkspace({
 	active,
 	layout,
 	savedScrollback,
+	workspaceHeader,
 }: {
 	active: ActiveReview;
 	layout: LayoutNode | null | undefined;
 	savedScrollback: Record<string, string>;
+	workspaceHeader?: ReactNode;
 }) {
 	useEffect(() => {
 		useTabStore.getState().ensureReviewTab(active.workspaceId, active.prCtx);
 	}, [active.workspaceId, active.prCtx]);
 	return (
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
-			<ReviewUIProvider scopeKey={reviewUIScopeKey(active)}>
+			<ReviewUIProvider scopeKey={reviewUIScopeKey(active)} review={active}>
 				<PRHeader active={active} />
 			</ReviewUIProvider>
+			{workspaceHeader}
 			{layout && (
 				<LayoutRenderer
 					node={layout}

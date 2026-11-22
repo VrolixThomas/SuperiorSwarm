@@ -49,7 +49,7 @@ function resetStores() {
 		rightPanel: PANEL_CLOSED,
 		workspaceMetadata: {},
 		sidebarSegment: "repos",
-		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+		activeWorkspaceBySegment: { queue: null, repos: null, tickets: null, prs: null, hermes: null },
 		selectedHermesSession: null,
 		hermesSessionPane: "chat",
 	});
@@ -58,21 +58,18 @@ function resetStores() {
 describe("Hermes global navigation", () => {
 	beforeEach(resetStores);
 
-	test("registers Agents as the visible fourth top-level navigation item", async () => {
+	test("keeps Agents on the rail with its original fourth navigation shortcut", async () => {
 		registerCoreActions();
 
 		const action = useActionStore.getState().actions.get("nav.hermes");
 		expect(action?.label).toBe("Agents");
 		expect(action?.shortcut).toEqual({ key: "4", meta: true });
 
+		const rail = await rendererSource("NavRail.tsx");
+		expect(rail).toContain('segment: "hermes", label: "Agents", action: "nav.hermes"');
+		expect(rail.indexOf('segment: "queue"')).toBeLessThan(rail.indexOf('segment: "hermes"'));
 		const sidebar = await rendererSource("Sidebar.tsx");
-		expect(sidebar).toContain('["repos", "tickets", "prs", "hermes"]');
-		expect(sidebar).toContain('hermes: "Agents"');
-		expect(sidebar).not.toContain('hermes: "Hermes"');
-
-		const rail = await rendererSource("SidebarRail.tsx");
-		expect(rail).toContain('title="Agents"');
-		expect(rail).toMatch(/onExpand\("hermes"\)[\s\S]*?>\s*A\s*<\/button>/);
+		expect(sidebar).not.toContain("Segmented control");
 	});
 
 	test("the Agents route keeps agent threads in the sidebar and chat in the main area", async () => {

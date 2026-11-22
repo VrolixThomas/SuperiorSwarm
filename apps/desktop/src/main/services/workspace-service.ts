@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, inArray, isNull, max, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, max, ne, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { AgentProvider } from "../../shared/agent-session";
+import { AGENT_PROVIDERS, type AgentProvider } from "../../shared/agent-session";
 import type {
 	AgentMessageDto,
 	CreateWorkspaceRequest,
@@ -29,7 +29,17 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
+import { defaultQueueLaunch } from "../../shared/queue-resume";
 import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
+import {
+	type WorkspaceReporter,
+	reconcileAgentSources,
+	resolveReporterAttention,
+	workspaceReporter,
+	workspaceSourceId,
+} from "../activity-queue/agent-source";
+import { getActivityQueueService } from "../activity-queue/service";
+import { setPermissionBackgroundDispatchHidden } from "../agent-hooks/permission-visibility";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -40,6 +50,7 @@ import {
 import { getDb } from "../db";
 import {
 	agentMessages,
+	agentSessions,
 	crossRepoOrchestrators,
 	orchestratorMembers,
 	projects,
@@ -60,6 +71,7 @@ import {
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import { getAgentSessionManager } from "./agent-session-manager-handle";
+import { crossRepoProjectIds } from "./cross-repo-project-scope";
 import type { attachToOrchestrator } from "./orchestrator-membership";
 import { resolveWorkspaceCwd } from "./workspace-cwd";
 import { assertWorktreePathAvailable } from "./worktree-cleanup-job-store";
@@ -494,10 +506,16 @@ export async function removeWorkspace(
 }
 
 export interface SpawnArgs {
+	/** False prepares an app-owned launch for an explicit create-then-write renderer flow. */
+	openInRenderer?: boolean;
+	title?: string;
 	cwd: string;
 	launchScriptContent: string;
 	workspaceId: string;
 	agent?: {
+		managed?: boolean;
+		initialPrompt?: boolean;
+		queueLaunchId?: string;
 		provider: AgentProvider;
 		providerSessionId: string | null;
 		skipPermissions: boolean;
@@ -506,10 +524,13 @@ export interface SpawnArgs {
 export interface SpawnResult {
 	sessionId: string;
 	terminalId: string;
+	launch?: { scriptPath: string; cwd: string; title: string };
 }
 export type SpawnFn = (args: SpawnArgs) => Promise<SpawnResult>;
 
 export interface DispatchAgentDeps {
+	/** Authenticated remote caller; omitted only by trusted local app entry points. */
+	caller?: CallerContext;
 	spawnFn?: SpawnFn;
 }
 
@@ -523,9 +544,10 @@ function escapeShellSingleQuote(s: string): string {
 // session restarts. See apps/desktop/mcp-standalone/server.mjs.
 
 export function buildLaunchScript(opts: {
+	queueLaunchId?: string;
 	cwd: string;
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
-	prompt: string;
+	prompt?: string;
 	skipPermissions: boolean;
 	cliSessionId: string | null;
 }): string {
@@ -538,9 +560,83 @@ export function buildLaunchScript(opts: {
 	// Per-preset invocation shape. Most CLIs accept a positional prompt; opencode
 	// reserves the positional slot for `[project]` (a directory) and requires the
 	// `run` subcommand to deliver a prompt as a message.
-	const invocation = opts.cliPreset === "opencode" ? "opencode run" : opts.cliPreset;
-	const cmd = `${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	const invocation =
+		opts.cliPreset === "opencode"
+			? "opencode run"
+			: opts.cliPreset === "codex"
+				? "codex --no-daemon"
+				: opts.cliPreset;
+	if (
+		opts.queueLaunchId &&
+		!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(opts.queueLaunchId)
+	)
+		throw Error("Invalid app launch identity");
+	const launchEnv = opts.queueLaunchId
+		? `AGENT_NOTIFY_LAUNCH_ID='${opts.queueLaunchId.toLowerCase()}' `
+		: "";
+	const prompt = opts.prompt === undefined ? "" : `'${escapeShellSingleQuote(opts.prompt)}'`;
+	const cmd = `${launchEnv}exec ${invocation} ${sessionFlag}${flag}${prompt}`.trimEnd();
+
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
+}
+
+/** A coordinator can exercise every linked project, including future all-project scope. */
+export function authorizeCoordinatorDispatch(
+	target: typeof crossRepoOrchestrators.$inferSelect,
+	projectId?: string,
+	caller?: CallerContext
+): void {
+	if (target.kind !== "workspace")
+		throw new ForbiddenError("External managers are not terminal dispatch targets");
+	if (projectId !== undefined || caller?.kind === "workspace")
+		throw new ForbiddenError(
+			"Project-scoped callers cannot dispatch cross-repository coordinators"
+		);
+	if (!caller) return; // Trusted local app request.
+	const current = getDb()
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, caller.xroId))
+		.get();
+	if (!current) throw new ForbiddenError("Coordinator caller no longer exists");
+	if (current.accessScope === "all" || current.id === target.id) return;
+	if (target.accessScope === "all")
+		throw new ForbiddenError("All-project coordinator requires all-project authority");
+	const allowed = new Set(crossRepoProjectIds(current.id, current.accessScope));
+	if (crossRepoProjectIds(target.id, target.accessScope).some((id) => !allowed.has(id)))
+		throw new ForbiddenError("Coordinator projects exceed caller scope");
+}
+
+async function dispatchCoordinator(
+	input: DispatchAgentRequest,
+	target: typeof crossRepoOrchestrators.$inferSelect,
+	deps: DispatchAgentDeps
+): Promise<DispatchAgentResponse> {
+	authorizeCoordinatorDispatch(target, input.projectId, deps.caller);
+	if (!existsSync(target.workDir))
+		throw new Error(`Coordinator folder no longer exists: ${target.workDir}`);
+	const configured = AGENT_PROVIDERS.find((provider) => provider === target.agentKind);
+	const provider = input.cliPreset ?? configured;
+	if (!provider) throw new Error(`Unsupported coordinator provider: ${target.agentKind}`);
+	const providerSessionId = provider === "claude" ? randomUUID() : null;
+	const skipPermissions = input.skipPermissions ?? false;
+	const queueLaunchId = randomUUID();
+	const result = await (deps.spawnFn ?? defaultSpawnFn)({
+		workspaceId: target.id,
+		cwd: target.workDir,
+		launchScriptContent: buildLaunchScript({
+			queueLaunchId,
+			cwd: target.workDir,
+			cliPreset: provider,
+			prompt: input.prompt,
+			skipPermissions,
+			cliSessionId: providerSessionId,
+		}),
+		agent: { provider, providerSessionId, skipPermissions, queueLaunchId },
+	});
+	// defaultSpawnFn persists the real terminal/managed session. Dispatch alone does not
+	// clear another conversation's pending report or invent a workspace/session surrogate.
+	return { ...result, status: "started" };
 }
 
 export async function dispatchAgent(
@@ -549,9 +645,38 @@ export async function dispatchAgent(
 ): Promise<DispatchAgentResponse> {
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
+	const coordinator = db
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, input.workspaceId))
+		.get();
+	if (coordinator) {
+		if (ws) throw new ForbiddenError("Ambiguous dispatch entity");
+		return dispatchCoordinator(input, coordinator, deps);
+	}
 	if (!ws) throw new NotFoundError(input.workspaceId);
 	// When projectId is provided, enforce cross-project guard.
 	if (input.projectId !== undefined && ws.projectId !== input.projectId) throw new ForbiddenError();
+	if (deps.caller) {
+		const caller = deps.caller;
+		if (caller.kind === "workspace") {
+			const current = db
+				.select()
+				.from(workspaces)
+				.where(eq(workspaces.id, caller.workspaceId))
+				.get();
+			if (current?.projectId !== ws.projectId)
+				throw new ForbiddenError("Dispatch target exceeds caller project");
+		} else {
+			const current = db
+				.select()
+				.from(crossRepoOrchestrators)
+				.where(eq(crossRepoOrchestrators.id, caller.xroId))
+				.get();
+			if (!current || !crossRepoProjectIds(current.id, current.accessScope).includes(ws.projectId))
+				throw new ForbiddenError("Dispatch target exceeds caller project scope");
+		}
+	}
 	const wt = ws.worktreeId
 		? db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get()
 		: null;
@@ -571,7 +696,9 @@ export async function dispatchAgent(
 	// Persisting up-front poisons future resumeAgent calls if the spawn throws.
 	const cliSessionId = cliPreset === "claude" ? (ws.cliSessionId ?? randomUUID()) : null;
 
+	const queueLaunchId = randomUUID();
 	const launchScriptContent = buildLaunchScript({
+		queueLaunchId,
 		cwd,
 		cliPreset,
 		prompt: input.prompt,
@@ -587,6 +714,7 @@ export async function dispatchAgent(
 		launchScriptContent,
 		workspaceId: input.workspaceId,
 		agent: {
+			queueLaunchId,
 			provider: cliPreset,
 			providerSessionId: cliSessionId,
 			skipPermissions: input.skipPermissions ?? true,
@@ -634,6 +762,7 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 
 	const sessionId = nanoid();
 	const terminalId = sessionId;
+	const title = args.title ?? "Agent session";
 
 	const db = getDb();
 	const nextSortOrder =
@@ -643,11 +772,13 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 			.get()?.value ?? -1) + 1;
 	const manager = getAgentSessionManager();
 	try {
+		if (args.agent?.managed === false && !manager)
+			throw Error("Agent session manager is unavailable");
 		db.insert(terminalSessions)
 			.values({
 				id: terminalId,
 				workspaceId: args.workspaceId,
-				title: "Agent session",
+				title,
 				cwd: args.cwd,
 				scrollback: null,
 				sortOrder: nextSortOrder,
@@ -656,37 +787,61 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 			.onConflictDoNothing()
 			.run();
 		if (args.agent) {
+			const descriptor = defaultQueueLaunch(args.agent.provider, args.agent.skipPermissions);
 			manager?.registerManagedSession({
 				terminalId,
 				workspaceId: args.workspaceId,
 				provider: args.agent.provider,
 				providerSessionId: args.agent.providerSessionId,
 				skipPermissions: args.agent.skipPermissions,
+				managed: args.agent.managed,
+				queueLaunch: descriptor
+					? { ...descriptor, initialPrompt: args.agent.initialPrompt }
+					: undefined,
+				queueLaunchId: args.agent.queueLaunchId,
 			});
 		}
-		dispatchBroadcaster({
-			workspaceId: args.workspaceId,
-			cwd: args.cwd,
-			scriptPath,
-			title: "Agent session",
-			terminalId,
-			provider: args.agent?.provider,
-			providerSessionId: args.agent?.providerSessionId,
-			skipPermissions: args.agent?.skipPermissions,
-		});
+		// Freshly allocated dispatch terminal has no renderer view yet; bind to this exact managed generation.
+		setPermissionBackgroundDispatchHidden(terminalId);
+		if (args.openInRenderer !== false)
+			dispatchBroadcaster({
+				workspaceId: args.workspaceId,
+				cwd: args.cwd,
+				scriptPath,
+				title,
+				terminalId,
+				provider: args.agent?.provider,
+				providerSessionId: args.agent?.providerSessionId,
+				skipPermissions: args.agent?.skipPermissions,
+			});
 	} catch (error) {
 		manager?.removeSession(terminalId);
 		db.delete(terminalSessions).where(eq(terminalSessions.id, terminalId)).run();
+		rmSync(dir, { recursive: true, force: true });
 		throw error;
 	}
 
-	return { sessionId, terminalId };
+	return {
+		sessionId,
+		terminalId,
+		...(args.openInRenderer === false ? { launch: { scriptPath, cwd: args.cwd, title } } : {}),
+	};
 }
 
 export type CallerContext =
-	| { kind: "workspace"; workspaceId: string; projectId: string }
+	| {
+			kind: "workspace";
+			workspaceId: string;
+			projectId: string;
+			terminalId?: string;
+			queueIdentityVerified?: boolean;
+			deferQueueRetrieval?: boolean;
+	  }
 	| {
 			kind: "xro";
+			queueIdentityVerified?: boolean;
+			deferQueueRetrieval?: boolean;
+			terminalId?: string;
 			xroId: string;
 			linkedProjectIds: string[];
 			/** True when the xro row is an external manager (kind="external"). */
@@ -714,9 +869,20 @@ export async function setStatus(
 		if (!xro) throw new NotFoundError(ctx.xroId);
 
 		db.update(crossRepoOrchestrators)
-			.set({ status: input.phase, updatedAt: now })
+			.set({
+				status: input.phase,
+				statusText: input.statusText ?? null,
+				needs: input.needs ?? null,
+				statusUpdatedAt: now,
+				updatedAt: now,
+			})
 			.where(eq(crossRepoOrchestrators.id, ctx.xroId))
 			.run();
+
+		const reporter = workspaceReporter(ctx.xroId, ctx.terminalId);
+		reconcileAgentSources({ workspaceId: ctx.xroId, reportedAt: now.getTime(), reporter });
+		if (reporter && input.phase === "working" && !input.needs?.trim())
+			resolveReporterAttention(reporter, now.getTime());
 
 		// Write the status event directly to the xro's events file.
 		// Emitting on per-project buses would produce one duplicate line per linked
@@ -744,16 +910,23 @@ export async function setStatus(
 	if (!ws) throw new NotFoundError(ctx.workspaceId);
 	if (ws.projectId !== ctx.projectId) throw new ForbiddenError();
 
-	db.update(workspaces)
-		.set({
-			currentPhase: input.phase,
-			statusText: input.statusText ?? null,
-			needs: input.needs ?? null,
-			statusUpdatedAt: now,
-			updatedAt: now,
-		})
-		.where(eq(workspaces.id, ctx.workspaceId))
-		.run();
+	db.transaction(() => {
+		db.update(workspaces)
+			.set({
+				currentPhase: input.phase,
+				statusText: input.statusText ?? null,
+				needs: input.needs ?? null,
+				statusUpdatedAt: now,
+				updatedAt: now,
+			})
+			.where(eq(workspaces.id, ctx.workspaceId))
+			.run();
+
+		const reporter = workspaceReporter(ctx.workspaceId, ctx.terminalId);
+		reconcileAgentSources({ workspaceId: ctx.workspaceId, reportedAt: now.getTime(), reporter });
+		if (reporter && input.phase === "working" && !input.needs?.trim())
+			resolveReporterAttention(reporter, now.getTime());
+	});
 
 	eventBus?.emit(ctx.projectId, {
 		event: "status",
@@ -765,6 +938,85 @@ export async function setStatus(
 	});
 
 	return { ok: true };
+}
+
+/** Called only after a new prompt from the reporting session was validated.
+ * Reading/opening a workspace and ordinary tool activity never enter this path.
+ * Questions remain independent: continuing work is not a correlated answer.
+ */
+export function continueWorkspaceAfterPrompt(
+	workspaceId: string,
+	producedAt: number,
+	reporter: WorkspaceReporter,
+	_managed: boolean
+): void {
+	const db = getDb();
+	const coordinator = db
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, workspaceId))
+		.get();
+	const workspace =
+		db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get() ??
+		(coordinator
+			? { ...coordinator, currentPhase: coordinator.status, projectId: null }
+			: undefined);
+	const snapshot = getActivityQueueService().read(workspaceSourceId(workspaceId))?.snapshot as
+		| { reportedAt?: number; reporter?: WorkspaceReporter | null }
+		| undefined;
+	const owner = snapshot?.reporter;
+	const ownsReport = owner
+		? owner.terminalId === reporter.terminalId &&
+			owner.provider === reporter.provider &&
+			owner.providerSessionId === reporter.providerSessionId &&
+			owner.workspaceId === workspaceId
+		: false;
+	if (
+		!ownsReport ||
+		!workspace ||
+		!Number.isFinite(producedAt) ||
+		(workspace.currentPhase !== "done" &&
+			workspace.currentPhase !== "blocked" &&
+			!workspace.needs) ||
+		(workspace.statusUpdatedAt && workspace.statusUpdatedAt.getTime() > producedAt) ||
+		(typeof snapshot?.reportedAt === "number" && snapshot.reportedAt >= producedAt)
+	)
+		return;
+	const now = new Date();
+	if (coordinator) {
+		db.update(crossRepoOrchestrators)
+			.set({
+				status: "working",
+				statusText: null,
+				needs: null,
+				statusUpdatedAt: now,
+				updatedAt: now,
+			})
+			.where(eq(crossRepoOrchestrators.id, workspaceId))
+			.run();
+		reconcileAgentSources();
+		return;
+	}
+	db.update(workspaces)
+		.set({
+			currentPhase: "working",
+			statusText: null,
+			needs: null,
+			statusUpdatedAt: now,
+			updatedAt: now,
+		})
+		.where(eq(workspaces.id, workspaceId))
+		.run();
+	reconcileAgentSources();
+	if (workspace.projectId)
+		eventBus?.emit(workspace.projectId, {
+			event: "status",
+			workspaceId,
+			phase: "working",
+			statusText: null,
+			needs: null,
+			ts: now.toISOString(),
+		});
 }
 
 export async function setOrchestrator(
@@ -848,6 +1100,10 @@ export async function sendMessage(
 	input: SendMessageRequest
 ): Promise<SendMessageResponse> {
 	const db = getDb();
+	const reporter =
+		ctx.queueIdentityVerified === false
+			? null
+			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
 
 	function insertAndEmitDm(opts: {
 		projectId: string;
@@ -856,15 +1112,37 @@ export async function sendMessage(
 	}): { messageId: string } {
 		const messageId = nanoid();
 		const now = new Date();
+		const question =
+			input.kind === "answer" && input.inReplyTo
+				? db
+						.select()
+						.from(agentMessages)
+						.where(
+							and(
+								eq(agentMessages.id, input.inReplyTo),
+								eq(agentMessages.projectId, opts.projectId),
+								eq(agentMessages.kind, "question")
+							)
+						)
+						.get()
+				: undefined;
+		const recipient =
+			question?.reporter?.type === "terminal" &&
+			(!opts.toWorkspaceId || opts.toWorkspaceId === question.fromWorkspaceId)
+				? question.reporter
+				: null;
+		const toWorkspaceId = recipient?.workspaceId ?? opts.toWorkspaceId;
 		db.insert(agentMessages)
 			.values({
 				id: messageId,
 				projectId: opts.projectId,
 				fromWorkspaceId: opts.fromId,
-				toWorkspaceId: opts.toWorkspaceId,
+				toWorkspaceId,
+				recipient,
 				kind: input.kind,
 				content: input.content,
 				inReplyTo: input.inReplyTo ?? null,
+				reporter,
 				createdAt: now,
 			})
 			.run();
@@ -872,12 +1150,37 @@ export async function sendMessage(
 			event: "message",
 			messageId,
 			from: opts.fromId,
-			to: opts.toWorkspaceId,
+			to: toWorkspaceId,
 			kind: input.kind,
 			content: input.content,
 			ts: now.toISOString(),
 		});
 		return { messageId };
+	}
+
+	// A correlated reply to a coordinator or workspace derives the exact recipient from the question.
+	if (input.kind === "answer" && input.inReplyTo) {
+		const question = db
+			.select()
+			.from(agentMessages)
+			.where(eq(agentMessages.id, input.inReplyTo))
+			.get();
+		if (
+			question?.kind === "question" &&
+			question.reporter?.type === "terminal" &&
+			(!input.toWorkspaceId || input.toWorkspaceId === question.fromWorkspaceId)
+		) {
+			const allowed =
+				ctx.kind === "xro"
+					? ctx.linkedProjectIds.includes(question.projectId)
+					: ctx.projectId === question.projectId;
+			if (!allowed) throw new ForbiddenError("cross-project answer");
+			return insertAndEmitDm({
+				projectId: question.projectId,
+				fromId: ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId,
+				toWorkspaceId: question.fromWorkspaceId,
+			});
+		}
 	}
 
 	if (ctx.kind === "xro") {
@@ -916,6 +1219,7 @@ export async function sendMessage(
 					kind: input.kind,
 					content: input.content,
 					inReplyTo: input.inReplyTo ?? null,
+					reporter,
 					createdAt: now,
 				})
 				.run();
@@ -956,51 +1260,114 @@ export async function readMessages(
 	input: ReadMessagesRequest
 ): Promise<ReadMessagesResponse> {
 	const db = getDb();
-	const includeBroadcasts = input.includeBroadcasts ?? true;
-	const sinceDate = input.since ? new Date(input.since) : new Date(0);
-
-	if (ctx.kind === "xro") {
-		// Read messages across all linked projects addressed to this xro or broadcast.
-		const targetFilter = includeBroadcasts
-			? or(eq(agentMessages.toWorkspaceId, ctx.xroId), isNull(agentMessages.toWorkspaceId))
-			: eq(agentMessages.toWorkspaceId, ctx.xroId);
-
-		const rows = db
-			.select()
-			.from(agentMessages)
-			.where(
-				and(
-					inArray(agentMessages.projectId, ctx.linkedProjectIds),
-					gt(agentMessages.createdAt, sinceDate),
-					targetFilter
-				)
+	const caller =
+		ctx.queueIdentityVerified === false
+			? null
+			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
+	// Admission happens in SQLite before LIMIT; a sibling's inbox cannot consume this page.
+	// Guard malformed legacy JSON without widening its visibility to an ownerless message.
+	const recipient = sql`CASE WHEN json_valid(${agentMessages.recipient}) THEN ${agentMessages.recipient} ELSE NULL END`;
+	const exactRecipient = caller
+		? and(
+				eq(agentMessages.toWorkspaceId, caller.workspaceId),
+				sql`json_extract(${recipient}, '$.type') = 'terminal'`,
+				sql`json_extract(${recipient}, '$.workspaceId') = ${caller.workspaceId}`,
+				sql`json_extract(${recipient}, '$.terminalId') = ${caller.terminalId}`,
+				sql`json_extract(${recipient}, '$.provider') = ${caller.provider}`,
+				sql`json_extract(${recipient}, '$.providerSessionId') = ${caller.providerSessionId}`,
+				sql`coalesce(json_extract(${recipient}, '$.entity.kind'), 'workspace') = ${caller.entity?.kind ?? "workspace"}`,
+				sql`coalesce(json_extract(${recipient}, '$.entity.id'), json_extract(${recipient}, '$.workspaceId')) = ${caller.entity?.id ?? caller.workspaceId}`
 			)
-			.orderBy(desc(agentMessages.createdAt))
-			.limit(200)
-			.all();
-
-		return { messages: rows.map(messageRowToDto) };
-	}
-
-	const targetFilter = includeBroadcasts
-		? or(eq(agentMessages.toWorkspaceId, ctx.workspaceId), isNull(agentMessages.toWorkspaceId))
-		: eq(agentMessages.toWorkspaceId, ctx.workspaceId);
-
+		: sql`0`;
+	const unreadAnswer = and(
+		exactRecipient,
+		eq(agentMessages.kind, "answer"),
+		isNull(agentMessages.retrievedAt)
+	);
+	const ownerId = ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId;
+	const targetFilter =
+		input.includeBroadcasts !== false
+			? or(eq(agentMessages.toWorkspaceId, ownerId), isNull(agentMessages.toWorkspaceId))
+			: eq(agentMessages.toWorkspaceId, ownerId);
+	const scope =
+		ctx.kind === "xro"
+			? inArray(agentMessages.projectId, ctx.linkedProjectIds)
+			: eq(agentMessages.projectId, ctx.projectId);
+	const sinceDate = input.since ? new Date(input.since) : new Date(0);
 	const rows = db
 		.select()
 		.from(agentMessages)
 		.where(
 			and(
-				eq(agentMessages.projectId, ctx.projectId),
-				gt(agentMessages.createdAt, sinceDate),
-				targetFilter
+				scope,
+				targetFilter,
+				or(isNull(agentMessages.recipient), exactRecipient),
+				// Since filters history, but must not skip an older undelivered answer after a poll advances.
+				or(unreadAnswer, gt(agentMessages.createdAt, sinceDate))
 			)
 		)
-		.orderBy(desc(agentMessages.createdAt))
+		.orderBy(
+			sql`CASE WHEN ${unreadAnswer} THEN 0 ELSE 1 END`,
+			sql`CASE WHEN ${unreadAnswer} THEN ${agentMessages.createdAt} END`,
+			desc(agentMessages.createdAt),
+			asc(agentMessages.id)
+		)
 		.limit(200)
 		.all();
-
+	// Oldest unread answers progress once returned rows are acknowledged; deferred HTTP reads
+	// repeat the same deterministic page until transport confirms it. Never mark unreturned rows.
+	if (!ctx.deferQueueRetrieval) {
+		for (const row of rows) {
+			if (row.recipient && !row.retrievedAt)
+				db.update(agentMessages)
+					.set({ retrievedAt: new Date() })
+					.where(eq(agentMessages.id, row.id))
+					.run();
+		}
+	}
 	return { messages: rows.map(messageRowToDto) };
+}
+
+/** HTTP callers confirm only after receiving the inbox payload; an aborted read is not delivery. */
+export function acknowledgeQuestionAnswers(
+	ctx: CallerContext,
+	messageIds: string[]
+): { retrieved: string[] } {
+	const owner =
+		ctx.queueIdentityVerified === false
+			? null
+			: workspaceReporter(ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId, ctx.terminalId);
+	if (!owner) return { retrieved: [] };
+	const db = getDb();
+	return db.transaction(() => {
+		const retrieved: string[] = [];
+		for (const id of new Set(messageIds)) {
+			const answer = db.select().from(agentMessages).where(eq(agentMessages.id, id)).get();
+			const recipient = answer?.recipient;
+			if (
+				!answer ||
+				answer.kind !== "answer" ||
+				recipient?.type !== "terminal" ||
+				recipient.workspaceId !== owner.workspaceId ||
+				recipient.terminalId !== owner.terminalId ||
+				recipient.provider !== owner.provider ||
+				recipient.providerSessionId !== owner.providerSessionId
+			)
+				continue;
+			if (
+				ctx.kind === "xro"
+					? !ctx.linkedProjectIds.includes(answer.projectId)
+					: answer.projectId !== ctx.projectId
+			)
+				continue;
+			db.update(agentMessages)
+				.set({ retrievedAt: answer.retrievedAt ?? new Date() })
+				.where(eq(agentMessages.id, id))
+				.run();
+			retrieved.push(id);
+		}
+		return { retrieved };
+	});
 }
 
 export interface RespawnAgentArgs {
@@ -1012,6 +1379,82 @@ export type RespawnAgentFn = (args: RespawnAgentArgs) => Promise<void>;
 
 export interface ResumeAgentDeps {
 	respawnAgent?: RespawnAgentFn;
+}
+
+async function resumeCoordinator(
+	ctx: CallerContext,
+	input: ResumeAgentRequest,
+	target: typeof crossRepoOrchestrators.$inferSelect
+): Promise<ResumeAgentResponse> {
+	authorizeCoordinatorDispatch(target, undefined, ctx);
+	const db = getDb();
+	const sessions = db
+		.select()
+		.from(agentSessions)
+		.where(and(eq(agentSessions.workspaceId, target.id), eq(agentSessions.managed, true)))
+		.all();
+	const owner = sessions.length === 1 ? sessions[0] : undefined;
+	if (
+		!owner ||
+		owner.entityKind !== "coordinator" ||
+		!owner.providerSessionId ||
+		!workspaceReporter(target.id, owner.terminalId)
+	)
+		throw new ResumeNotSupportedError("Coordinator has no unique exact managed conversation");
+	const auditPath = crossRepoEventsFilePath(target.id);
+	const canContinue = () => {
+		try {
+			const current = db
+				.select()
+				.from(crossRepoOrchestrators)
+				.where(eq(crossRepoOrchestrators.id, target.id))
+				.get();
+			if (!current) return false;
+			authorizeCoordinatorDispatch(current, undefined, ctx);
+			const reporter = workspaceReporter(target.id, owner.terminalId);
+			const managed = db
+				.select()
+				.from(agentSessions)
+				.where(and(eq(agentSessions.workspaceId, target.id), eq(agentSessions.managed, true)))
+				.all();
+			return (
+				managed.length === 1 &&
+				managed[0]?.terminalId === owner.terminalId &&
+				reporter?.provider === owner.provider &&
+				reporter.providerSessionId === owner.providerSessionId
+			);
+		} catch {
+			return false;
+		}
+	};
+	const result = await getAgentSessionManager()?.wakeWorkspace(
+		target.id,
+		input.message,
+		canContinue
+	);
+	if (result?.status !== "woke" || result.terminalId !== owner.terminalId)
+		throw new ResumeNotSupportedError(
+			"Exact managed coordinator conversation is unavailable or changed; no fallback was attempted"
+		);
+	const messageId = nanoid();
+	// Coordinator-wide activity has its own durable journal, not an invented linked project.
+	appendFileSync(
+		auditPath,
+		`${JSON.stringify({
+			event: "message",
+			messageId,
+			from: ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId,
+			to: target.id,
+			kind: "resume",
+			content: input.message,
+			terminalId: owner.terminalId,
+			provider: owner.provider,
+			providerSessionId: owner.providerSessionId,
+			ts: new Date().toISOString(),
+		})}\n`,
+		"utf-8"
+	);
+	return { ok: true, messageId };
 }
 
 export async function resumeAgent(
@@ -1035,6 +1478,16 @@ export async function resumeAgent(
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
+
+	const coordinator = db
+		.select()
+		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.id, input.workspaceId))
+		.get();
+	if (coordinator) {
+		if (target) throw new ForbiddenError("Ambiguous resume entity");
+		return resumeCoordinator(ctx, input, coordinator);
+	}
 
 	let fromId: string;
 	let auditProjectId: string;

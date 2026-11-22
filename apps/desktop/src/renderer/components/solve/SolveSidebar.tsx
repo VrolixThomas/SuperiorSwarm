@@ -9,6 +9,8 @@ import { SolveCommentCard } from "./SolveCommentCard";
 
 interface Props {
 	session: SolveSessionInfo;
+	onPushGroup?: (groupId: string) => void;
+	publicationBusy?: boolean;
 }
 
 interface FileRow {
@@ -55,7 +57,7 @@ export function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[
 
 const EMPTY_EXPANDED: ReadonlySet<string> = new Set();
 
-export function SolveSidebar({ session }: Props) {
+export function SolveSidebar({ session, onPushGroup, publicationBusy }: Props) {
 	const utils = trpc.useUtils();
 	const sessionKey = solveSessionKey(session.workspaceId, session.id);
 
@@ -137,6 +139,15 @@ export function SolveSidebar({ session }: Props) {
 				return (
 					<div key={group.id} className="border-b border-[var(--border-subtle)]">
 						<div
+							onKeyDown={(event) => {
+								if (
+									event.target === event.currentTarget &&
+									event.key === "Enter" &&
+									!isReverted &&
+									!isSolving
+								)
+									toggleGroupExpanded(sessionKey, group.id);
+							}}
 							onClick={
 								isReverted || isSolving
 									? undefined
@@ -177,8 +188,12 @@ export function SolveSidebar({ session }: Props) {
 										group={group}
 										onApprove={() => approveMutation.mutate({ groupId: group.id })}
 										onRevoke={() => revokeMutation.mutate({ groupId: group.id })}
-										onPush={() => pushMutation.mutate({ groupId: group.id })}
-										isPushing={pushMutation.isPending}
+										onPush={() =>
+											onPushGroup
+												? onPushGroup(group.id)
+												: pushMutation.mutate({ groupId: group.id })
+										}
+										isPushing={pushMutation.isPending || !!publicationBusy}
 									/>
 								</div>
 							)}
@@ -200,6 +215,9 @@ export function SolveSidebar({ session }: Props) {
 										<div
 											key={row.path}
 											title={row.path}
+											onKeyDown={(event) => {
+												if (event.key === "Enter") selectFile(sessionKey, row.path);
+											}}
 											onClick={() => selectFile(sessionKey, row.path)}
 											className={[
 												"flex items-center gap-[8px] py-[5px] pl-[26px] pr-[10px] cursor-pointer border-l-2",

@@ -73,5 +73,10 @@ test("rejects stale terminal ownership and late navigation after switching works
 	expect(openReviewTerminalTab({ ...terminal, tabId: "other-terminal" })).toBe(false);
 	useTabStore.setState({ activeWorkspaceId: "another-ws" });
 	expect(openReviewTerminalTab(terminal)).toBe(false);
-	expect(useTabStore.getState().getTabsByWorkspace("review-ws")).toEqual([]);
+	expect(
+		useTabStore
+			.getState()
+			.getTabsByWorkspace("review-ws")
+			.map((tab) => tab.kind)
+	).toEqual(["pr-review"]);
 });

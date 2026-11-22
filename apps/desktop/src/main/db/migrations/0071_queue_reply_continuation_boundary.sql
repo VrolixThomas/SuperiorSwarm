@@ -1,0 +1,1 @@
+ALTER TABLE `activity_queue_deliveries` ADD `continuation_turn_id` text;

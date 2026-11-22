@@ -10,6 +10,7 @@ import { usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
 import { useTabStore } from "../../stores/tab-store";
 import { TAB_DRAG_MIME } from "./DropZoneOverlay";
+import { NewOwnedChat } from "./NewOwnedChat";
 import { PaneContextMenu } from "./PaneContextMenu";
 
 function TabIcon({ kind }: { kind: TabItem["kind"] }) {
@@ -251,7 +252,7 @@ export function PaneTabBar({
 				◎
 			</button>
 			{/* New terminal button */}
-			<div className="app-no-drag flex shrink-0 pr-1">
+			<div className="app-no-drag flex shrink-0 items-center pr-1">
 				<button
 					type="button"
 					aria-label="New terminal tab"
@@ -281,6 +282,7 @@ export function PaneTabBar({
 						/>
 					</svg>
 				</button>
+				{canCreateTerminal && <NewOwnedChat workspaceId={workspaceId} paneId={pane.id} />}
 				<button
 					type="button"
 					aria-label="Split pane right"

@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AIDraftThread, PRContext } from "../../../shared/github-types";
+import { useQueuePRPublication } from "../../hooks/useQueuePRPublication";
 import {
 	type ReviewVerdict,
 	type SubmitOutcome,
 	hasSubmitPayload,
 } from "../../lib/pr-review-submit";
 import { threadExcerpt } from "../../lib/pr-review-threads";
+import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
+import { useReviewQueueOrigin, useReviewUI } from "./ReviewUIContext";
 
 interface SubmitReviewPopoverProps {
 	prCtx: PRContext;
+	headSha?: string;
 	draftId: string | null;
 	acceptedThreads: AIDraftThread[];
 	pendingCount: number;
@@ -29,15 +33,45 @@ function lineLabel(thread: AIDraftThread): string {
 
 export function SubmitReviewPopover({
 	prCtx,
+	headSha,
 	draftId,
 	acceptedThreads,
 	pendingCount,
 	onClose,
 	onSubmitted,
 }: SubmitReviewPopoverProps) {
+	const publication = useQueuePRPublication(prCtx, headSha);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const [verdict, setVerdict] = useState<ReviewVerdict>("COMMENT");
-	const [body, setBody] = useState("");
+	const origin = useReviewQueueOrigin();
+	const { key: scopeKey } = useReviewUI();
+	const draftKey = `${origin?.id ?? scopeKey ?? `${prCtx.provider}:${prCtx.owner}/${prCtx.repo}#${prCtx.number}`}:review`;
+	const [body, setBody] = useState(() => useReviewModeStore.getState().draftText[draftKey] ?? "");
+	const submissionIdentity = JSON.stringify([
+		origin,
+		prCtx.provider,
+		prCtx.owner,
+		prCtx.repo,
+		prCtx.number,
+		draftId,
+	]);
+	const latestIdentity = useRef(submissionIdentity);
+	latestIdentity.current = submissionIdentity;
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
+	const appliedIdentity = useRef(submissionIdentity);
+	useEffect(() => {
+		if (appliedIdentity.current === submissionIdentity) return;
+		appliedIdentity.current = submissionIdentity;
+		setBody(useReviewModeStore.getState().draftText[draftKey] ?? "");
+		setOutcome(null);
+		setSubmitting(false);
+	}, [submissionIdentity, draftKey]);
 	const [submitting, setSubmitting] = useState(false);
 	const [outcome, setOutcome] = useState<SubmitOutcome | null>(null);
 	const utils = trpc.useUtils();
@@ -80,11 +114,41 @@ export function SubmitReviewPopover({
 
 	const handleSubmit = async () => {
 		if (!canSubmit) return;
+		const submittedKey = draftKey;
+		const submittedBody = body;
+		const submittedVersion = useReviewModeStore.getState().draftVersions[submittedKey];
+		const isCurrent = () => mounted.current && latestIdentity.current === submissionIdentity;
 		setSubmitting(true);
 		setOutcome(null);
 		try {
+			if (publication.applicable) {
+				const receipt = await publication.submit(
+					draftId ? { kind: "draft", draftId, verdict, body } : { kind: "review", verdict, body }
+				);
+				const result = receipt.outcome;
+				if (!result) throw new Error("Publication result is unavailable.");
+				const cleared =
+					result.success &&
+					useReviewModeStore
+						.getState()
+						.clearDraftText(submittedKey, submittedBody, submittedVersion);
+				if (!isCurrent()) return;
+				setOutcome({
+					posted: result.postedCount,
+					failed: result.failedCount,
+					skipped: result.skippedCount,
+					errors: result.errors,
+					verdictSubmitted: result.verdictSubmitted,
+					skippedVerdict: false,
+				});
+				if (cleared) {
+					onSubmitted();
+				}
+				return;
+			}
 			if (draftId) {
 				const result = await publishDraftReview.mutateAsync({ draftId, verdict, body });
+				if (!isCurrent()) return;
 				const mapped: SubmitOutcome = {
 					posted: result.postedCount,
 					failed: result.failedCount,
@@ -123,6 +187,7 @@ export function SubmitReviewPopover({
 				verdict,
 				body: body.trim(),
 			});
+			if (!isCurrent()) return;
 			setOutcome({
 				posted: 0,
 				failed: 0,
@@ -133,6 +198,7 @@ export function SubmitReviewPopover({
 			});
 			onSubmitted();
 		} catch (err) {
+			if (!isCurrent()) return;
 			setOutcome({
 				posted: 0,
 				failed: 1,
@@ -142,7 +208,7 @@ export function SubmitReviewPopover({
 				skippedVerdict: false,
 			});
 		} finally {
-			setSubmitting(false);
+			if (isCurrent()) setSubmitting(false);
 		}
 	};
 
@@ -166,6 +232,7 @@ export function SubmitReviewPopover({
 						<button
 							key={item.value}
 							type="button"
+							disabled={submitting}
 							aria-pressed={verdict === item.value}
 							onClick={() => setVerdict(item.value)}
 							className={[
@@ -182,7 +249,11 @@ export function SubmitReviewPopover({
 
 				<textarea
 					value={body}
-					onChange={(event) => setBody(event.target.value)}
+					disabled={submitting}
+					onChange={(event) => {
+						setBody(event.target.value);
+						useReviewModeStore.getState().setDraftText(draftKey, event.target.value);
+					}}
 					rows={3}
 					placeholder="Summary comment (optional)"
 					className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-2 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] outline-none transition-colors duration-[120ms] focus:border-[var(--accent)]"
@@ -225,6 +296,7 @@ export function SubmitReviewPopover({
 					)}
 				</div>
 
+				{publication.notice}
 				{outcome && (
 					<div
 						className={[

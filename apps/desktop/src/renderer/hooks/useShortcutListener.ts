@@ -25,6 +25,9 @@ function isTerminalControlBracketKey(e: KeyboardEvent): boolean {
 
 export function shouldSkipShortcutHandling(e: KeyboardEvent, target: HTMLElement | null): boolean {
 	if (!target) return false;
+	// Peek owns plain quick keys even when a review shortcut remains registered underneath it.
+	if (target.closest("[aria-label='Queue peek']") && !e.metaKey && !e.ctrlKey && !e.altKey)
+		return true;
 
 	if (isTerminalElement(target)) {
 		if (isPlainPrintableKey(e)) return true;
@@ -78,6 +81,7 @@ export function useShortcutListener() {
 
 				e.preventDefault();
 				e.stopPropagation();
+				if (e.repeat && action.id.startsWith("queue.")) return;
 				action.execute();
 				return;
 			}

@@ -51,12 +51,14 @@ export function SidebarBand({
 	return (
 		<div
 			ref={setNodeRef}
-			className={`border-b border-[var(--border-subtle)] ${sizingClass(style)}`}
+			data-sidebar-band={id}
+			className={`border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] ${sizingClass(style)}`}
 			style={{
-				transform: CSS.Transform.toString(transform),
+				// Sections have different expanded heights. Never scale their content
+				// to the drop target's dimensions while reordering.
+				transform: CSS.Translate.toString(transform ? { ...transform, x: 0 } : null),
 				transition,
 				zIndex: isDragging ? 20 : undefined,
-				opacity: isDragging ? 0.85 : 1,
 				...heightStyle,
 			}}
 		>
@@ -70,7 +72,11 @@ export function SidebarBand({
 				className="shrink-0 bg-[var(--bg-surface)]"
 				dragHandle={{ attributes, listeners }}
 			/>
-			{isOpen && <div className={BODY_CLASS}>{children}</div>}
+			{isOpen && (
+				<div data-sidebar-band-body={id} className={BODY_CLASS}>
+					{children}
+				</div>
+			)}
 		</div>
 	);
 }

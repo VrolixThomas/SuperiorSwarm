@@ -1,7 +1,13 @@
 import type { Shortcut } from "../stores/action-store";
 
 export function shortcutsMatch(a: Shortcut, b: Shortcut): boolean {
-	return a.key === b.key && !!a.meta === !!b.meta && !!a.shift === !!b.shift && !!a.alt === !!b.alt;
+	const key = (value: string) => (value.length === 1 ? value.toLowerCase() : value);
+	return (
+		key(a.key) === key(b.key) &&
+		!!a.meta === !!b.meta &&
+		!!a.shift === !!b.shift &&
+		!!a.alt === !!b.alt
+	);
 }
 
 export function parseAccelerator(accelerator: string | null | undefined): Shortcut | null {

@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
-import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
 import { FolderList } from "./FolderList";
 import { OrchestratorList } from "./OrchestratorList";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { RepositoryList } from "./RepositoryList";
 import { type BandDescriptor, SidebarBandStack } from "./SidebarBandStack";
-import { SidebarRail } from "./SidebarRail";
 import { Tooltip } from "./Tooltip";
 import { HermesSidebar } from "./hermes/HermesSidebar";
 import { TicketsSidebar } from "./tickets/TicketsSidebar";
@@ -19,14 +17,12 @@ interface SidebarProps {
 	onExpand: (section?: "tickets" | "prs" | "hermes") => void;
 }
 
-export function Sidebar({ collapsed, onExpand, navigationInRail = false }: SidebarProps) {
-	const { openSettings, openAddModal, openCreateCrossRepoModal } = useProjectStore();
+export function Sidebar({ collapsed, navigationInRail = true }: SidebarProps) {
+	const { openAddModal, openCreateCrossRepoModal } = useProjectStore();
 	const { data: projectsList } = trpc.projects.list.useQuery();
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const canGoBackWorkspace = useTabStore((s) => s.workspaceBackStack.length > 0);
 	const canGoForwardWorkspace = useTabStore((s) => s.workspaceForwardStack.length > 0);
-	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
-	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
 	const goBackWorkspace = useTabStore((s) => s.goBackWorkspace);
 	const goForwardWorkspace = useTabStore((s) => s.goForwardWorkspace);
 
@@ -76,21 +72,6 @@ export function Sidebar({ collapsed, onExpand, navigationInRail = false }: Sideb
 		return () => window.removeEventListener("quick-terminal", listener);
 	}, [handleNewTerminal]);
 
-	// Check if any AI reviews need attention (ready or failed)
-	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
-		staleTime: 5_000,
-	});
-	const hasAINotification = (reviewDraftsQuery.data ?? []).some(
-		(d) => d.status === "ready" || d.status === "failed"
-	);
-
-	// Check if there are new PRs from the backend poller
-	const cachedPRs = trpc.prPoller.getCachedPRs.useQuery(undefined, {
-		staleTime: 10_000,
-		refetchInterval: 30_000,
-	});
-	const hasNewPRs = (cachedPRs.data?.length ?? 0) > 0;
-
 	const orchCount = trpc.crossRepoOrchestrators.list.useQuery().data?.length ?? 0;
 
 	const all = projectsList ?? [];
@@ -126,26 +107,16 @@ export function Sidebar({ collapsed, onExpand, navigationInRail = false }: Sideb
 		},
 	];
 
-	const handleExpand = (section?: "tickets" | "prs" | "hermes") => {
-		onExpand(section);
-		if (section === "tickets") {
-			setSidebarSegment("tickets");
-		} else if (section === "prs") {
-			setSidebarSegment("prs");
-		} else if (section === "hermes") {
-			setSidebarSegment("hermes");
-		}
-	};
-
-	if (collapsed) {
-		return navigationInRail ? null : <SidebarRail onExpand={handleExpand} />;
-	}
+	if (collapsed) return null;
 
 	return (
-		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+		<div
+			data-workspace-sidebar
+			className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]"
+		>
 			{/* Traffic light clearance */}
-			{!navigationInRail && (
-				<div className="app-drag flex h-[52px] shrink-0 items-center pl-[88px] pr-2">
+			{segment !== "prs" && (
+				<div className="app-drag flex h-[52px] shrink-0 items-center pl-3 pr-2">
 					<div className="app-no-drag flex shrink-0 items-center gap-0.5">
 						<Tooltip label="Go Back" actionId="nav.workspaceBack">
 							<button
@@ -197,44 +168,6 @@ export function Sidebar({ collapsed, onExpand, navigationInRail = false }: Sideb
 				</div>
 			)}
 
-			{/* Segmented control — legacy shell only */}
-			{!navigationInRail && (
-				<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
-					{(["repos", "tickets", "prs", "hermes"] as const).map((seg) => {
-						const actionIds = {
-							repos: "nav.repos",
-							tickets: "nav.tickets",
-							prs: "nav.prs",
-							hermes: "nav.hermes",
-						} as const;
-						const labels = {
-							repos: "Projects",
-							tickets: "Tickets",
-							prs: "PRs",
-							hermes: "Agents",
-						} as const;
-						return (
-							<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">
-								<button
-									type="button"
-									onClick={() => setSidebarSegment(seg)}
-									className={`relative flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
-										segment === seg
-											? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
-											: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-									}`}
-								>
-									{labels[seg]}
-									{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
-										<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
-									)}
-								</button>
-							</Tooltip>
-						);
-					})}
-				</div>
-			)}
-
 			{/* Segment content */}
 			<div className="flex min-h-0 flex-1 flex-col">
 				{segment === "repos" && <SidebarBandStack bands={bands} />}
@@ -250,42 +183,6 @@ export function Sidebar({ collapsed, onExpand, navigationInRail = false }: Sideb
 				)}
 				{segment === "hermes" && <HermesSidebar />}
 			</div>
-
-			{/* Footer — Settings */}
-			{!navigationInRail && (
-				<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
-					<Tooltip
-						label={hasDismissedUpdate ? "Settings — update ready" : "Settings"}
-						actionId="general.settings"
-					>
-						<button
-							type="button"
-							onClick={openSettings}
-							className="relative flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-						>
-							<svg
-								aria-hidden="true"
-								width="15"
-								height="15"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								className="shrink-0"
-							>
-								<circle cx="12" cy="12" r="3" />
-								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-							</svg>
-							<span className="truncate">Settings</span>
-							{hasDismissedUpdate && (
-								<span className="ml-auto size-[6px] shrink-0 rounded-full bg-[#30d158] shadow-[0_0_0_2px_var(--bg-base)]" />
-							)}
-						</button>
-					</Tooltip>
-				</div>
-			)}
 		</div>
 	);
 }

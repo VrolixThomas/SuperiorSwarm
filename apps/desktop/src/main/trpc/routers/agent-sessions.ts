@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getHookDiagnostics } from "../../agent-hooks/diagnostics";
 import { getAgentSessionManager } from "../../services/agent-session-manager-handle";
 import { publicProcedure, router } from "../index";
 
@@ -11,6 +12,7 @@ function requireManager() {
 const terminalInput = z.object({ terminalId: z.string().min(1) });
 
 export const agentSessionsRouter = router({
+	hookDiagnostics: publicProcedure.query(() => getHookDiagnostics()),
 	list: publicProcedure.query(() => getAgentSessionManager()?.listSessions() ?? []),
 
 	sleepNow: publicProcedure.input(terminalInput).mutation(({ input }) => {

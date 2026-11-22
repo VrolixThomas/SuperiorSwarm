@@ -5,6 +5,13 @@ import { mergeAgentSettings } from "./shared";
 
 const EVENT_MAP: Record<string, AgentAlert> = {
 	SessionStart: "active",
+	UserPromptSubmit: "active",
+	PreToolUse: "active",
+	PostToolUse: "active",
+	PermissionRequest: "needs-input",
+	PreCompact: "active",
+	PostCompact: "active",
+	Interrupt: "task-complete",
 	Stop: "task-complete",
 };
 

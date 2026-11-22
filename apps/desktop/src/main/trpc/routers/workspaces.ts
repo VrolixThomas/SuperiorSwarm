@@ -2,6 +2,8 @@ import { dirname, join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import { refreshTicketQueue } from "../../activity-queue/ticket-runtime";
+import { startTicketQueueWorkspace } from "../../activity-queue/ticket-start";
 import { getOrCreateReviewRecord } from "../../ai-review/review-workspace-preparation";
 import { getDb } from "../../db";
 import {
@@ -13,6 +15,7 @@ import {
 	worktrees,
 } from "../../db/schema";
 import { checkoutBranchWorktree } from "../../git/operations";
+import { resolveWorkspaceCwd } from "../../services/workspace-cwd";
 import { assertWorktreePathAvailable } from "../../services/worktree-cleanup-job-store";
 import { resumeWorktreeServices } from "../../services/worktree-deletion-coordinator";
 import { symlinkSharedFiles } from "../../shared-files";
@@ -27,7 +30,7 @@ function worktreeBasePath(repoPath: string): string {
 export const workspacesRouter = router({
 	getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
 		const db = getDb();
-		return (
+		const row =
 			db
 				.select({
 					id: workspaces.id,
@@ -40,12 +43,24 @@ export const workspacesRouter = router({
 					isOrchestrator: workspaces.isOrchestrator,
 					cliPreset: workspaces.cliPreset,
 					baseBranch: worktrees.baseBranch,
+					prProvider: workspaces.prProvider,
+					prIdentifier: workspaces.prIdentifier,
+					worktreePath: worktrees.path,
+					folderPath: workspaces.folderPath,
+					repoPath: projects.repoPath,
 				})
 				.from(workspaces)
+				.innerJoin(projects, eq(workspaces.projectId, projects.id))
 				.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 				.where(eq(workspaces.id, input.id))
-				.get() ?? null
-		);
+				.get() ?? null;
+		if (!row) return null;
+		const { worktreePath, folderPath, repoPath, ...workspace } = row;
+		return {
+			...workspace,
+			path: resolveWorkspaceCwd({ worktreePath, folderPath, repoPath }),
+			reviewWorktreePath: workspace.type === "review" ? (worktreePath ?? null) : undefined,
+		};
 	}),
 
 	listByProject: publicProcedure
@@ -61,15 +76,22 @@ export const workspacesRouter = router({
 				projectId: z.string(),
 				branch: z.string().min(1),
 				baseBranch: z.string().optional(),
+				queueTicket: z.object({ id: z.string(), revision: z.number().int().positive() }).optional(),
 			})
 		)
 		.mutation(async ({ input }) => {
+			if (input.queueTicket) await refreshTicketQueue();
 			const { createWorkspace } = await import("../../services/workspace-service");
-			const created = await createWorkspace({
-				projectId: input.projectId,
-				branch: input.branch,
-				baseBranch: input.baseBranch,
-			});
+			const created = input.queueTicket
+				? await startTicketQueueWorkspace(
+						{ ...input, queueTicket: input.queueTicket },
+						createWorkspace
+					)
+				: await createWorkspace({
+						projectId: input.projectId,
+						branch: input.branch,
+						baseBranch: input.baseBranch,
+					});
 
 			const { getCachedPRs } = await import("../../ai-review/pr-poller");
 			const matchingPR = getCachedPRs(input.projectId).find(

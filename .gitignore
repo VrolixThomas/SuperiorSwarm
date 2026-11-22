@@ -58,3 +58,7 @@ docs/
 
 # Graphify output
 graphify-out
+
+# Local agent plans and verification artifacts
+/.hermes/
+/docs/verification/

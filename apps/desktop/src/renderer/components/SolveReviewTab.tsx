@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
+import { useQueuePRPublication } from "../hooks/useQueuePRPublication";
 import { subscribeSolveReviewEvent } from "../lib/solve-review-events";
 import { solveSessionKey, useSolveSessionStore } from "../stores/solve-session-store";
 import { useTabStore } from "../stores/tab-store";
@@ -26,6 +27,15 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		}
 	);
 
+	const publicationContext = trpc.activityQueue.prSolvePublicationContext.useQuery({
+		sessionId: solveSessionId,
+	});
+	const publication = useQueuePRPublication(
+		publicationContext.data?.prCtx,
+		publicationContext.data?.headSha,
+		publicationContext.data
+	);
+	const [publicationError, setPublicationError] = useState<string | null>(null);
 	const cancelMutation = trpc.commentSolver.cancelSolve.useMutation({
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
@@ -48,6 +58,24 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
+	const push = async (groupId?: string) => {
+		setPublicationError(null);
+		try {
+			if (publicationContext.data === undefined)
+				throw new Error("Solver publication context is unavailable. Refresh before publishing.");
+			if (publicationContext.data) {
+				await publication.submit({
+					kind: "solve",
+					sessionId: solveSessionId,
+					...(groupId ? { groupId } : {}),
+				});
+				await utils.commentSolver.invalidate();
+			} else if (groupId) await pushGroupMutation.mutateAsync({ groupId });
+			else await pushMutation.mutateAsync({ sessionId: solveSessionId });
+		} catch (error) {
+			setPublicationError(error instanceof Error ? error.message : "Publication failed.");
+		}
+	};
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 
 	const prevStatusRef = useRef<SolveSessionStatus | undefined>(undefined);
@@ -64,13 +92,17 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		session,
 		approveGroup: approveGroupMutation.mutate,
 		revokeGroup: revokeGroupMutation.mutate,
-		pushGroup: pushGroupMutation.mutate,
+		pushGroup: ({ groupId }: { groupId: string }) => {
+			void push(groupId);
+		},
 	});
 	handlersRef.current = {
 		session,
 		approveGroup: approveGroupMutation.mutate,
 		revokeGroup: revokeGroupMutation.mutate,
-		pushGroup: pushGroupMutation.mutate,
+		pushGroup: ({ groupId }: { groupId: string }) => {
+			void push(groupId);
+		},
 	};
 
 	useEffect(() => {
@@ -207,6 +239,12 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
+			{publication.notice}
+			{publicationError && (
+				<div role="alert" className="p-2">
+					{publicationError}
+				</div>
+			)}
 			<div className="px-7 pt-[22px] pb-[18px] border-b border-[var(--border-subtle)]">
 				<PRHeader
 					session={session}
@@ -225,7 +263,13 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 			</div>
 			<div className="flex flex-1 min-h-0 overflow-hidden">
 				<div className="w-[400px] shrink-0">
-					<SolveSidebar session={session} />
+					<SolveSidebar
+						session={session}
+						onPushGroup={(groupId) => {
+							void push(groupId);
+						}}
+						publicationBusy={publication.pending || publicationContext.data === undefined}
+					/>
 				</div>
 				<div className="flex-1 min-w-0">
 					{activeWorkspaceCwd ? (
@@ -244,6 +288,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 			{isCancelled && (
 				<div className="px-7 py-3 text-center border-t border-[var(--border-subtle)]">
 					<button
+						type="button"
 						disabled
 						className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none opacity-40 cursor-not-allowed"
 					>
@@ -252,14 +297,16 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				</div>
 			)}
 			<BottomBar
-				canPush={canPushAll}
+				canPush={canPushAll && publicationContext.data !== undefined}
 				isSolving={isSolving}
 				isSubmitted={session.status === "submitted"}
 				approvedGroups={approvedGroups}
 				submittedGroups={submittedGroups}
-				isPushing={pushMutation.isPending}
+				isPushing={pushMutation.isPending || publication.pending}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
-				onPush={() => pushMutation.mutate({ sessionId: solveSessionId })}
+				onPush={() => {
+					void push();
+				}}
 			/>
 		</div>
 	);
@@ -291,6 +338,7 @@ function PRHeader({
 				</div>
 				{isSolving && (
 					<button
+						type="button"
 						onClick={onCancel}
 						className="px-[10px] py-[4px] rounded-[6px] text-[11.5px] font-medium text-[var(--danger)] bg-[var(--danger-subtle)] border-none cursor-pointer"
 					>

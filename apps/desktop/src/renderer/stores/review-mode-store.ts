@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { PRContext } from "../../shared/github-types";
+import type { QueuePROrigin } from "../../shared/queue-pr-publication";
 import type { AskMessage } from "../../shared/review-path-types";
 import type { SidebarSegment } from "../../shared/types";
 import type { ReviewCommentFilter } from "../lib/pr-review-threads";
@@ -20,6 +21,12 @@ export interface ReviewTerminal {
 	cwd: string;
 }
 
+export type QueueReviewOrigin = QueuePROrigin & { workspaceId: string };
+
+export function reviewSessionIdentity(workspaceId: string, prCtx: PRContext): string {
+	return JSON.stringify([workspaceId, prCtx.provider, prCtx.owner, prCtx.repo, prCtx.number]);
+}
+
 export interface ReviewModeStore {
 	findingsRequest: { headSha: string; nonce: number } | null;
 	requestFindings: (headSha: string) => void;
@@ -34,6 +41,16 @@ export interface ReviewModeStore {
 	setQueueOpen: (open: boolean) => void;
 	setOverviewOpen: (open: boolean) => void;
 	setAskAnchor: (anchor: AskMessage["anchor"] | null) => void;
+
+	draftText: Record<string, string>;
+	draftVersions: Record<string, number>;
+	setDraftText: (key: string, value: string) => void;
+	queueOrigin: QueueReviewOrigin | null;
+	queueOrigins: Record<string, QueueReviewOrigin>;
+	setQueueOrigin: (origin: QueueReviewOrigin | null) => void;
+	dropQueueOriginsForWorkspace: (workspaceId: string) => void;
+	restoreQueueState: (origins?: string, drafts?: string) => void;
+	clearDraftText: (key: string, submittedText: string, version?: number) => boolean;
 	active: { workspaceId: string; prCtx: PRContext } | null;
 	lastWorkspaceId: string | null;
 	view: ReviewView;
@@ -47,6 +64,7 @@ export interface ReviewModeStore {
 
 	open: (workspaceId: string, prCtx: PRContext) => void;
 	close: () => void;
+
 	setView: (view: ReviewView) => void;
 	toggleNavigator: () => void;
 	setDrawerOpen: (open: boolean) => void;
@@ -90,10 +108,82 @@ const readingPathDefaults = {
 };
 
 export const createReviewModeStore = () =>
-	create<ReviewModeStore>()((set) => ({
+	create<ReviewModeStore>()((set, get) => ({
 		...readingPathDefaults,
 		observedHeadSha: null,
+		draftText: {},
+		draftVersions: {},
+		setDraftText: (key, value) =>
+			set((state) => ({
+				draftText: { ...state.draftText, [key]: value },
+				draftVersions: { ...state.draftVersions, [key]: (state.draftVersions[key] ?? 0) + 1 },
+			})),
+		clearDraftText: (key, submittedText, version) => {
+			if ((get().draftText[key] ?? "") !== submittedText || get().draftVersions[key] !== version)
+				return false;
+			set((state) => ({ draftText: { ...state.draftText, [key]: "" } }));
+			return true;
+		},
 		active: null,
+		queueOrigin: null,
+		queueOrigins: {},
+		setQueueOrigin: (queueOrigin) =>
+			set((state) => {
+				const active = state.active;
+				if (!active || (queueOrigin && queueOrigin.workspaceId !== active.workspaceId))
+					return state;
+				const key = reviewSessionIdentity(active.workspaceId, active.prCtx);
+				const queueOrigins = { ...state.queueOrigins };
+				if (queueOrigin) queueOrigins[key] = queueOrigin;
+				else delete queueOrigins[key];
+				return { queueOrigin, queueOrigins };
+			}),
+		dropQueueOriginsForWorkspace: (workspaceId) =>
+			set((state) => ({
+				queueOrigins: Object.fromEntries(
+					Object.entries(state.queueOrigins).filter(
+						([, value]) => value.workspaceId !== workspaceId
+					)
+				),
+				queueOrigin: state.queueOrigin?.workspaceId === workspaceId ? null : state.queueOrigin,
+			})),
+		restoreQueueState: (origins, drafts) => {
+			const queueOrigins: Record<string, QueueReviewOrigin> = {};
+			const draftText: Record<string, string> = {};
+			try {
+				const parsed: unknown = JSON.parse(origins ?? "{}");
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+					for (const [key, value] of Object.entries(parsed)) {
+						if (!value || typeof value !== "object") continue;
+						const candidate = value as Record<string, unknown>;
+						if (
+							typeof candidate["id"] === "string" &&
+							typeof candidate["workspaceId"] === "string" &&
+							typeof candidate["revision"] === "number" &&
+							Number.isSafeInteger(candidate["revision"]) &&
+							candidate["revision"] > 0
+						)
+							queueOrigins[key] = {
+								id: candidate["id"],
+								workspaceId: candidate["workspaceId"],
+								revision: candidate["revision"],
+							};
+					}
+				}
+			} catch {
+				/* Ignore invalid optional snapshot data. Main still validates every publication. */
+			}
+			try {
+				const parsed: unknown = JSON.parse(drafts ?? "{}");
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+					for (const [key, value] of Object.entries(parsed))
+						if (typeof value === "string") draftText[key] = value;
+				}
+			} catch {
+				/* Keep invalid draft data out of controlled inputs. */
+			}
+			set({ queueOrigins, draftText, draftVersions: {}, queueOrigin: null });
+		},
 		lastWorkspaceId: null,
 		view: "overview",
 		navigatorCollapsed: false,
@@ -111,6 +201,7 @@ export const createReviewModeStore = () =>
 				if (sameWorkspace) {
 					return {
 						active: { workspaceId, prCtx },
+						queueOrigin: state.queueOrigins[reviewSessionIdentity(workspaceId, prCtx)] ?? null,
 						lastWorkspaceId: null,
 						intent: null,
 					};
@@ -118,6 +209,7 @@ export const createReviewModeStore = () =>
 				return {
 					...readingPathDefaults,
 					active: { workspaceId, prCtx },
+					queueOrigin: state.queueOrigins[reviewSessionIdentity(workspaceId, prCtx)] ?? null,
 					lastWorkspaceId: null,
 					view: "overview",
 					drawerOpen: false,
@@ -127,13 +219,20 @@ export const createReviewModeStore = () =>
 			}),
 
 		close: () =>
-			set((state) => ({
-				...readingPathDefaults,
-				active: null,
-				lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
-				drawerOpen: false,
-				intent: null,
-			})),
+			set((state) => {
+				const queueOrigins = { ...state.queueOrigins };
+				if (state.active)
+					delete queueOrigins[reviewSessionIdentity(state.active.workspaceId, state.active.prCtx)];
+				return {
+					...readingPathDefaults,
+					active: null,
+					queueOrigin: null,
+					queueOrigins,
+					lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
+					drawerOpen: false,
+					intent: null,
+				};
+			}),
 
 		requestFindings: (headSha) => set({ findingsRequest: { headSha, nonce: ++nextIntentNonce } }),
 		setRailMode: (railMode) => set({ railMode }),

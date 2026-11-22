@@ -51,6 +51,7 @@ export function ReviewWorkspaceTopBar({
 						</button>
 						{data.submitOpen && data.canSubmitReview && (
 							<SubmitReviewPopover
+								headSha={data.details?.headCommitOid}
 								prCtx={prCtx}
 								draftId={data.aiDraft?.id ?? null}
 								acceptedThreads={data.acceptedThreads}

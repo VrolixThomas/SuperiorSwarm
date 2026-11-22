@@ -3,6 +3,7 @@ import { PRIVACY_URL } from "../../../shared/telemetry";
 import type { ThemePref } from "../../../shared/types";
 import { useEditorSettingsStore } from "../../stores/editor-settings";
 import { useThemeStore } from "../../stores/theme-store";
+import { ProjectHookSettings } from "./ProjectHookSettings";
 import { PageHeading, SectionLabel } from "./SectionHeading";
 import { ToggleRow } from "./ToggleRow";
 
@@ -33,6 +34,7 @@ export function GeneralSettings() {
 	return (
 		<div>
 			<PageHeading title="General" subtitle="App preferences and editor configuration" />
+			<ProjectHookSettings />
 
 			<SectionLabel>Appearance</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">

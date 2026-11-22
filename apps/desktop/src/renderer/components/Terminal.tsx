@@ -380,7 +380,12 @@ export function Terminal({
 				creating = true;
 				reconnectPending = false;
 				api.terminal
-					.create(id, cwdRef.current || undefined, workspaceId)
+					.create(
+						id,
+						cwdRef.current || undefined,
+						workspaceId,
+						useTabStore.getState().terminalCreateIntents[id]
+					)
 					.then(({ wasAttached }) => {
 						if (disposed) return;
 						created = true;
@@ -585,7 +590,7 @@ export function Terminal({
 	}, [active, id]);
 
 	return (
-		<div ref={hostRef} className="relative flex h-full min-h-0 flex-col">
+		<div ref={hostRef} data-terminal-id={id} className="relative flex h-full min-h-0 flex-col">
 			{recovery && (
 				<div
 					aria-live="polite"

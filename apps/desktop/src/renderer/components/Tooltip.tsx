@@ -7,11 +7,13 @@ export function Tooltip({
 	label,
 	actionId,
 	className,
+	placement = "bottom",
 	children,
 }: {
 	label: string;
 	actionId?: string;
 	className?: string;
+	placement?: "bottom" | "right";
 	children: ReactNode;
 }) {
 	const triggerRef = useRef<HTMLSpanElement>(null);
@@ -21,7 +23,11 @@ export function Tooltip({
 	const show = () => {
 		if (!triggerRef.current) return;
 		const rect = triggerRef.current.getBoundingClientRect();
-		setPos({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
+		setPos(
+			placement === "right"
+				? { x: rect.right + 8, y: rect.top + rect.height / 2 }
+				: { x: rect.left + rect.width / 2, y: rect.bottom + 6 }
+		);
 		setVisible(true);
 	};
 
@@ -40,7 +46,8 @@ export function Tooltip({
 			{visible &&
 				createPortal(
 					<span
-						className="pointer-events-none fixed z-50 -translate-x-1/2 whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--bg-overlay)] px-2 py-1 text-[11px] text-[var(--text-secondary)] shadow-lg"
+						role="tooltip"
+						className={`pointer-events-none fixed z-50 ${placement === "right" ? "-translate-y-1/2" : "-translate-x-1/2"} whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--bg-overlay)] px-2 py-1 text-[11px] text-[var(--text-secondary)] shadow-lg`}
 						style={{ left: pos.x, top: pos.y }}
 					>
 						<span className="flex items-center gap-2">

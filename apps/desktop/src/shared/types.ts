@@ -6,6 +6,7 @@ import type {
 	HermesRendererAttachmentUploadMetadata,
 	HermesRendererAttachmentUploadStart,
 } from "./hermes";
+import type { TerminalCreateIntent } from "./terminal-create";
 
 export type { TerminalDataMeta } from "./daemon-protocol";
 
@@ -19,7 +20,12 @@ export interface TerminalDiagnostics {
 
 export interface TerminalAPI {
 	diagnostics: (id: string) => Promise<TerminalDiagnostics>;
-	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
+	create: (
+		id: string,
+		cwd?: string,
+		workspaceId?: string,
+		intent?: TerminalCreateIntent
+	) => Promise<{ wasAttached: boolean }>;
 	/** False when disconnected or the bounded pending-input queue rejects the write. */
 	write: (id: string, data: string) => Promise<boolean>;
 	/** Byte-valued string; false if unsupported, disconnected, invalid, or queue full. */
@@ -187,7 +193,7 @@ export interface QuickActionsAPI {
 	) => () => void;
 }
 
-export type SidebarSegment = "repos" | "tickets" | "prs" | "hermes";
+export type SidebarSegment = "queue" | "repos" | "tickets" | "prs" | "hermes";
 
 export type RepoChangeKind = "working-tree" | "index" | "head" | "refs" | "state";
 

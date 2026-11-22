@@ -28,6 +28,16 @@ function fakeTarget({ xterm = false } = {}): HTMLElement {
 }
 
 describe("matchesShortcut", () => {
+	test("queue chords match Cmd/Ctrl and uppercase shifted keys from terminals", () => {
+		for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
+			const jump = fakeEvent({ key: "j", ...modifier });
+			const peek = fakeEvent({ key: "J", shiftKey: true, ...modifier });
+			expect(matchesShortcut(jump, { key: "j", meta: true })).toBe(true);
+			expect(matchesShortcut(peek, { key: "j", meta: true, shift: true })).toBe(true);
+			expect(matchesShortcut(peek, { key: "j", meta: true })).toBe(false);
+			expect(shouldSkipShortcutHandling(jump, fakeTarget({ xterm: true }))).toBe(false);
+		}
+	});
 	test("matches Cmd+K", () => {
 		const shortcut: Shortcut = { key: "k", meta: true };
 		const event = fakeEvent({ key: "k", metaKey: true });

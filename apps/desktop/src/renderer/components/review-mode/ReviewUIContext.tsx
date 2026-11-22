@@ -13,6 +13,7 @@ import { usePRReviewSessionStore } from "../../stores/pr-review-session-store";
 import {
 	type ReviewModeStore,
 	createReviewModeStore,
+	reviewSessionIdentity,
 	useReviewModeStore,
 } from "../../stores/review-mode-store";
 
@@ -31,25 +32,48 @@ export function reviewUIStoreFor(key: string) {
 	}
 	return store;
 }
-const ReviewUIContext = createContext<{ key: string | null; active: boolean; compact: boolean }>({
+type ReviewOwner = { workspaceId: string; prCtx: PRContext };
+const ReviewUIContext = createContext<{
+	key: string | null;
+	active: boolean;
+	compact: boolean;
+	review: ReviewOwner | null;
+}>({
 	key: null,
 	active: true,
 	compact: false,
+	review: null,
 });
 export function ReviewUIProvider({
 	scopeKey,
+	review = null,
 	active = true,
 	compact = false,
 	children,
-}: { scopeKey: string | null; active?: boolean; compact?: boolean; children: ReactNode }) {
+}: {
+	scopeKey: string | null;
+	review?: ReviewOwner | null;
+	active?: boolean;
+	compact?: boolean;
+	children: ReactNode;
+}) {
 	return (
-		<ReviewUIContext.Provider value={{ key: scopeKey, active, compact }}>
+		<ReviewUIContext.Provider value={{ key: scopeKey, review, active, compact }}>
 			{children}
 		</ReviewUIContext.Provider>
 	);
 }
 export function useReviewUI() {
 	return useContext(ReviewUIContext);
+}
+/** Queue origin is durable navigation state, independent of which PR pane is focused. */
+export function useReviewQueueOrigin() {
+	const { review } = useReviewUI();
+	return useReviewModeStore((state) =>
+		review
+			? (state.queueOrigins[reviewSessionIdentity(review.workspaceId, review.prCtx)] ?? null)
+			: state.queueOrigin
+	);
 }
 export function useReviewUIApi() {
 	const { key } = useReviewUI();

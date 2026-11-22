@@ -19,10 +19,16 @@ let missingTarget = false;
 let needsFileInputUpdate = false;
 let requestedManaged = false;
 let createResult: TerminalCreateResult = { wasAttached: false };
+const invokes: unknown[][] = [];
 let exposed: {
 	terminalFiles: { nativePaths: (files: File[]) => Array<string | null> };
 	terminal: {
-		create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
+		create: (
+			id: string,
+			cwd?: string,
+			workspaceId?: string,
+			intent?: "attach-existing-only"
+		) => Promise<{ wasAttached: boolean }>;
 	};
 };
 mock.module("electron", () => ({
@@ -32,7 +38,13 @@ mock.module("electron", () => ({
 			exposed = api;
 		},
 	},
-	ipcRenderer: { on: () => {}, invoke: async () => structuredClone(createResult) },
+	ipcRenderer: {
+		on: () => {},
+		invoke: async (...args: unknown[]) => {
+			invokes.push(args);
+			return structuredClone(createResult);
+		},
+	},
 	webUtils: {
 		getPathForFile: (file: File) => {
 			nativeCalled++;
@@ -92,6 +104,7 @@ test("terminal:create error classification survives IPC clone and contextBridge 
 		"WORKSPACE_NOT_FOUND",
 		"WORKSPACE_FOLDER_MISSING",
 		"TERMINAL_WORKSPACE_MISMATCH",
+		"TERMINAL_NOT_RUNNING",
 		"DAEMON_UNAVAILABLE",
 		"REVIEW_TERMINAL_UNAVAILABLE",
 		"REVIEW_TERMINAL_OWNERSHIP_MISMATCH",
@@ -332,4 +345,17 @@ test("insertion-only Enter accepts draft typing state and sends no CR, while sle
 	} finally {
 		state = "idle";
 	}
+});
+
+test("preload carries the attach-only intent as the fourth terminal create argument", async () => {
+	await import("../src/preload/index");
+	createResult = { wasAttached: true };
+	await exposed.terminal.create("existing", "/fixture", "workspace", "attach-existing-only");
+	expect(invokes.at(-1)).toEqual([
+		"terminal:create",
+		"existing",
+		"/fixture",
+		"workspace",
+		"attach-existing-only",
+	]);
 });

@@ -1,0 +1,2 @@
+DROP INDEX `activity_queue_deliveries_occurrence_key_unique`;--> statement-breakpoint
+CREATE UNIQUE INDEX `activity_queue_deliveries_active_occurrence` ON `activity_queue_deliveries` (`occurrence_key`) WHERE "activity_queue_deliveries"."state" <> 'rejected';

@@ -89,7 +89,9 @@ export function PaneContainer({
 
 	return (
 		<div
-			className="relative flex h-full flex-col overflow-hidden"
+			data-queue-workspace={workspaceId}
+			tabIndex={-1}
+			className="relative flex h-full flex-col overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
 			onMouseDown={() => setFocusedPane(pane.id)}
 			onContextMenu={handleContextMenu}
 			onDragEnter={handleDragEnter}

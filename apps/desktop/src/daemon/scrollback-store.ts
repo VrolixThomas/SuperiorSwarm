@@ -1,4 +1,6 @@
 import Database from "better-sqlite3";
+import type { QueueLaunchOwner } from "../shared/queue-resume";
+import { QueueDeliveryAdmission } from "./queue-delivery";
 
 export class ScrollbackStore {
 	private db: Database.Database;
@@ -22,6 +24,28 @@ export class ScrollbackStore {
 		this.stmt = this.db.prepare(
 			"UPDATE terminal_sessions SET scrollback = ?, updated_at = ? WHERE id = ?"
 		);
+	}
+
+	admitQueueReply(
+		requestId: string,
+		terminalId: string,
+		content: string,
+		write: (target: QueueLaunchOwner, answer: boolean) => "admitted" | "rejected" | "uncertain",
+		mode: "live" | "resume" = "live"
+	) {
+		return new QueueDeliveryAdmission(this.db).admit(requestId, terminalId, content, write, mode);
+	}
+
+	signalQueueSleep(id: string, owner: QueueLaunchOwner, signal: () => boolean) {
+		return new QueueDeliveryAdmission(this.db).signalSleep(id, owner, signal);
+	}
+
+	resumeQueueView(
+		id: string,
+		owner: QueueLaunchOwner,
+		write: () => "admitted" | "rejected" | "uncertain"
+	) {
+		return new QueueDeliveryAdmission(this.db).resumeView(id, owner, write);
 	}
 
 	flush(sessions: Array<{ id: string; buffer: string }>): string[] {

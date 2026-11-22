@@ -9,6 +9,9 @@ import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionCon
 import { QuickActionPopover } from "./QuickActionPopover";
 import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
+import { QueueBar } from "./queue/QueueBar";
+import { QueueView } from "./queue/QueueView";
+import { QueueWorkspaceHeader } from "./queue/QueueWorkspaceHeader";
 import { PRReviewWorkspace } from "./review-mode/PRReviewWorkspace";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
@@ -35,6 +38,15 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
 	);
 	const projectId = wsQuery.data?.projectId ?? null;
+	const coordinatorQuery = trpc.crossRepoOrchestrators.get.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: !!activeWorkspaceId && wsQuery.isSuccess && !wsQuery.data, staleTime: 30_000 }
+	);
+	const queueEntity = wsQuery.data
+		? { kind: "workspace" as const, id: wsQuery.data.id }
+		: coordinatorQuery.data
+			? { kind: "coordinator" as const, id: coordinatorQuery.data.id }
+			: null;
 
 	const projectQuery = trpc.projects.getById.useQuery(
 		{ id: projectId ?? "" },
@@ -56,6 +68,8 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		setEditAction(undefined);
 	}
 
+	if (sidebarSegment === "queue") return <QueueView />;
+
 	if (sidebarSegment === "tickets") {
 		return <TicketsCanvas />;
 	}
@@ -64,14 +78,30 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		return <HermesSessionView />;
 	}
 	if (sidebarSegment === "prs") {
-		if (activeReview && activeReview.workspaceId === activeWorkspaceId)
+		if (activeReview && activeReview.workspaceId === activeWorkspaceId) {
 			return (
-				<PRReviewWorkspace
-					active={activeReview}
-					layout={layout}
-					savedScrollback={savedScrollback}
-				/>
+				<div className="flex h-full min-h-0 flex-col">
+					<QueueBar entity={queueEntity} />
+					<div className="min-h-0 flex-1">
+						<PRReviewWorkspace
+							active={activeReview}
+							layout={layout}
+							savedScrollback={savedScrollback}
+							workspaceHeader={
+								queueEntity ? (
+									<QueueWorkspaceHeader
+										key={`${queueEntity.kind}:${queueEntity.id}`}
+										entity={queueEntity}
+										title={wsQuery.data?.name ?? coordinatorQuery.data?.name ?? "Workspace"}
+										projectName={projectQuery.data?.name}
+									/>
+								) : undefined
+							}
+						/>
+					</div>
+				</div>
 			);
+		}
 		return (
 			<main className="flex h-full items-center justify-center text-[13px] text-[var(--text-secondary)]">
 				Select a pull request from the sidebar.
@@ -91,6 +121,17 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	return (
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
+			<QueueBar entity={queueEntity} />
+			{queueEntity && (
+				<div className="shrink-0">
+					<QueueWorkspaceHeader
+						key={`${queueEntity.kind}:${queueEntity.id}`}
+						entity={queueEntity}
+						title={wsQuery.data?.name ?? coordinatorQuery.data?.name ?? "Workspace"}
+						projectName={projectQuery.data?.name}
+					/>
+				</div>
+			)}
 			{/* Branch indicator bar */}
 			{projectId && !isFolderProject && (
 				<div className="app-drag flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">

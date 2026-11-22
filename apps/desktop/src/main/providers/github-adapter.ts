@@ -38,10 +38,12 @@ export class GitHubAdapter implements GitProvider {
 
 	async getMyPRs(): Promise<NormalizedPR[]> {
 		const prs = await getMyPRs();
+		if (prs.some((pr) => pr.state !== "open" && pr.state !== "closed"))
+			throw new Error("GitHub listing contained an unknown PR state");
 		return prs.map((pr) => ({
 			id: pr.number,
 			title: pr.title ?? "",
-			state: pr.state === "open" ? ("open" as const) : ("closed" as const),
+			state: pr.activity?.state ?? pr.state,
 			author: pr.repoOwner ?? "Unknown",
 			webUrl: pr.url ?? "",
 			sourceBranch: pr.branchName ?? "",
@@ -49,7 +51,8 @@ export class GitHubAdapter implements GitProvider {
 			role: pr.role ?? "author",
 			repoOwner: pr.repoOwner ?? "",
 			repoName: pr.repoName ?? "",
-			headCommitSha: "",
+			headCommitSha: pr.activity?.headSha ?? "",
+			activity: pr.activity,
 		}));
 	}
 
@@ -57,6 +60,7 @@ export class GitHubAdapter implements GitProvider {
 		const result = await getPRState(owner, repo, prNumber);
 		return {
 			headSha: result.headSha ?? "",
+			activity: result.activity,
 			state: result.merged ? "merged" : result.state === "open" ? "open" : "closed",
 		};
 	}
@@ -125,9 +129,22 @@ export class GitHubAdapter implements GitProvider {
 				: Promise.resolve(reviewRes),
 		]);
 
+		const completeComments = async (first: Response, path: string): Promise<RawCommentNode[]> => {
+			const comments: RawCommentNode[] = [];
+			let response = first;
+			for (let page = 1; page <= 100; page++) {
+				if (!response.ok) throw new Error("GitHub comments refresh failed.");
+				const rows: unknown = await response.json();
+				if (!Array.isArray(rows)) throw new Error("GitHub comments refresh is incomplete.");
+				comments.push(...(rows as RawCommentNode[]));
+				if (!response.headers.get("link")?.includes('rel="next"')) return comments;
+				if (page < 100) response = await githubFetch(`${path}?per_page=100&page=${page + 1}`);
+			}
+			throw new Error("GitHub comments exceeded the complete pagination limit.");
+		};
 		const [issueComments, reviewComments] = await Promise.all([
-			issueFull.json() as Promise<RawCommentNode[]>,
-			reviewFull.json() as Promise<RawCommentNode[]>,
+			completeComments(issueFull, `/repos/${owner}/${repo}/issues/${prNumber}/comments`),
+			completeComments(reviewFull, `/repos/${owner}/${repo}/pulls/${prNumber}/comments`),
 		]);
 
 		const newIssueEtag = issueFull.headers.get("etag") ?? issueEtag ?? "";

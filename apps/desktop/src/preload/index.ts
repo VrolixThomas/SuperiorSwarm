@@ -49,8 +49,10 @@ const exitDispatcher = createDispatcher<[number]>("terminal:exit");
 
 const terminalAPI: TerminalAPI = {
 	diagnostics: (id: string) => ipcRenderer.invoke("terminal:diagnostics", id),
-	create: (id: string, cwd?: string, workspaceId?: string) =>
-		ipcRenderer.invoke("terminal:create", id, cwd, workspaceId).then(unwrapTerminalCreateResult),
+	create: (id, cwd, workspaceId, intent) =>
+		ipcRenderer
+			.invoke("terminal:create", id, cwd, workspaceId, intent)
+			.then(unwrapTerminalCreateResult),
 	...createTerminalInputAPI((channel, id, data) => ipcRenderer.invoke(channel, id, data)),
 	resize: (id: string, cols: number, rows: number) =>
 		ipcRenderer.invoke("terminal:resize", id, cols, rows),

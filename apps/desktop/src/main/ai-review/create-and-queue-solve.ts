@@ -1,14 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { SolveLaunchInfo } from "../../shared/solve-types";
+import { currentPRScope } from "../activity-queue/pr-scope";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
+import type { NormalizedComment } from "../providers/types";
 import { queueSolve } from "./comment-solver-orchestrator";
 import { getCachedPRs } from "./pr-poller";
 
 export async function createAndQueueSolve(params: {
 	workspaceId: string;
 	excludeCommentIds?: string[];
+	/** Complete fresh comments supplied by guarded Queue admission; never fall back to cache. */
+	comments?: readonly (NormalizedComment & { threadId?: string | null })[];
+	queueOccurrence?: { id: string; revision: number };
+	expectedAccountId?: string;
 }): Promise<SolveLaunchInfo> {
 	const db = getDb();
 
@@ -55,6 +61,9 @@ export async function createAndQueueSolve(params: {
 		};
 	}
 
+	const { prProvider, prIdentifier } = workspace;
+	if (!prProvider || !prIdentifier) throw new Error("Workspace PR link is incomplete");
+
 	// 2. Fetch worktree
 	if (!workspace.worktreeId) throw new Error("Workspace has no worktree linked");
 	const worktree = db
@@ -65,44 +74,59 @@ export async function createAndQueueSolve(params: {
 
 	if (!worktree) throw new Error("Worktree not found for workspace");
 
-	// 3. Read comments from local cache (populated by poller / refreshWorkspaceComments)
-	const cachedComments = db
-		.select()
-		.from(schema.prCommentCache)
-		.where(eq(schema.prCommentCache.workspaceId, workspace.id))
-		.all();
+	const account =
+		prProvider === "github" || prProvider === "bitbucket" ? currentPRScope(prProvider) : null;
+	if (params.expectedAccountId && account?.accountId !== params.expectedAccountId)
+		throw new Error("The PR account changed before solver preparation.");
+	const scope = account
+		? JSON.stringify([
+				workspace.id,
+				prProvider,
+				account.host,
+				account.accountId,
+				prIdentifier,
+				...(params.queueOccurrence
+					? [params.queueOccurrence.id, params.queueOccurrence.revision]
+					: []),
+			])
+		: null;
 
-	if (cachedComments.length === 0) {
-		throw new Error("No cached comments found. Open the Comments tab first to load them.");
-	}
-
-	const rawComments = cachedComments.map((c) => ({
-		id: c.platformCommentId,
-		body: c.body,
-		author: c.author,
-		filePath: c.filePath,
-		lineNumber: c.lineNumber,
-		threadId: null as string | null,
-		side: c.side,
-	}));
-
-	// 4. Clean up stuck sessions
-	const stuckSessions = db
-		.select({ id: schema.commentSolveSessions.id })
-		.from(schema.commentSolveSessions)
-		.where(
-			and(
-				eq(schema.commentSolveSessions.prIdentifier, workspace.prIdentifier),
-				inArray(schema.commentSolveSessions.status, ["queued", "in_progress", "failed"])
+	// Never delete an active session as implicit 'cleanup'. Recovery owns that lifecycle.
+	if (
+		db
+			.select()
+			.from(schema.commentSolveSessions)
+			.where(
+				and(
+					eq(schema.commentSolveSessions.workspaceId, workspace.id),
+					inArray(schema.commentSolveSessions.status, ["queued", "in_progress"])
+				)
 			)
-		)
-		.all();
+			.get()
+	)
+		throw new Error("Another solve session is already active for this workspace");
 
-	for (const stuck of stuckSessions) {
-		db.delete(schema.commentSolveSessions)
-			.where(eq(schema.commentSolveSessions.id, stuck.id))
-			.run();
-	}
+	const cachedComments =
+		params.comments ??
+		db
+			.select()
+			.from(schema.prCommentCache)
+			.where(eq(schema.prCommentCache.workspaceId, workspace.id))
+			.all()
+			.map((c) => ({
+				id: c.platformCommentId,
+				body: c.body,
+				author: c.author,
+				filePath: c.filePath,
+				lineNumber: c.lineNumber,
+				side: c.side,
+				createdAt: c.createdAt,
+			}));
+	if (cachedComments.length === 0) throw new Error("No unresolved comments to solve.");
+	const rawComments = cachedComments.map((c) => ({
+		...c,
+		threadId: "threadId" in c && typeof c.threadId === "string" ? c.threadId : null,
+	}));
 
 	// 5. Filter out comments already known in completed sessions
 	const completedSessions = db
@@ -110,13 +134,25 @@ export async function createAndQueueSolve(params: {
 		.from(schema.commentSolveSessions)
 		.where(
 			and(
-				eq(schema.commentSolveSessions.prIdentifier, workspace.prIdentifier),
+				eq(schema.commentSolveSessions.prIdentifier, prIdentifier),
+				eq(schema.commentSolveSessions.workspaceId, workspace.id),
+				eq(schema.commentSolveSessions.prProvider, prProvider),
 				inArray(schema.commentSolveSessions.status, ["ready", "submitted"])
 			)
 		)
 		.all();
 
-	const completedSessionIds = completedSessions.map((s) => s.id);
+	const completedSessionIds = completedSessions
+		.filter((session) => {
+			if (!scope) return false;
+			const bound = db
+				.select()
+				.from(schema.sessionState)
+				.where(eq(schema.sessionState.key, `comment-solve-scope:${session.id}`))
+				.get();
+			return bound?.value === scope;
+		})
+		.map((s) => s.id);
 
 	let knownPlatformIds = new Set<string>();
 	if (completedSessionIds.length > 0) {
@@ -146,8 +182,8 @@ export async function createAndQueueSolve(params: {
 		tx.insert(schema.commentSolveSessions)
 			.values({
 				id: sessionId,
-				prProvider: workspace.prProvider,
-				prIdentifier: workspace.prIdentifier,
+				prProvider: prProvider,
+				prIdentifier: prIdentifier,
 				prTitle: workspace.name,
 				sourceBranch: worktree.branch,
 				targetBranch: worktree.baseBranch,
@@ -158,6 +194,13 @@ export async function createAndQueueSolve(params: {
 			})
 			.run();
 
+		if (scope)
+			tx.insert(schema.sessionState)
+				.values({
+					key: `comment-solve-scope:${sessionId}`,
+					value: scope,
+				})
+				.run();
 		for (const comment of commentsToInsert) {
 			tx.insert(schema.prComments)
 				.values({

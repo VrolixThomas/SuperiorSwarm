@@ -62,6 +62,7 @@ export function mapBitbucketPR(
 		repoOwner: pr.workspace,
 		repoName: pr.repoSlug,
 		headCommitSha: pr.headCommitSha,
+		activity: pr.activity,
 	};
 }
 
@@ -233,12 +234,18 @@ export class BitbucketAdapter implements GitProvider {
 
 	async getMyPRs(): Promise<NormalizedPR[]> {
 		const [authored, reviewing] = await Promise.all([getMyPullRequests(), getReviewRequests()]);
+		if (
+			[...authored, ...reviewing].some(
+				(pr) => !["OPEN", "CLOSED", "MERGED", "DECLINED", "SUPERSEDED"].includes(pr.state)
+			)
+		)
+			throw new Error("Bitbucket listing contained an unknown PR state");
 		return dedupBitbucketPRs(authored, reviewing);
 	}
 
 	async getPRState(owner: string, repo: string, prNumber: number): Promise<PRState> {
-		const { headSha, state } = await getPRState(owner, repo, prNumber);
-		return { headSha, state: normalizeBBState(state) };
+		const { headSha, state, activity } = await getPRState(owner, repo, prNumber);
+		return { headSha, state: normalizeBBState(state), activity };
 	}
 
 	async getPRComments(owner: string, repo: string, prNumber: number): Promise<NormalizedComment[]> {

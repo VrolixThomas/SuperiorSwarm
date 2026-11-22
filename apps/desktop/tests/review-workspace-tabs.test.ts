@@ -267,3 +267,53 @@ test("a hidden agent PTY retained by the daemon is not resurrected during hydrat
 	expect(tabs.getTabsByWorkspace("a").filter((t) => t.kind === "review-agent")).toHaveLength(0);
 	expect(tabs.isReviewAgentTabHidden("a", "job")).toBe(true);
 });
+
+test("a new solve review is registered before splitting without disturbing its agent terminal", () => {
+	const tabs = useTabStore.getState();
+	tabs.setActiveWorkspace("solve-workspace", "/solve");
+	const terminal = tabs.addTerminalTab("solve-workspace", "/solve", "Solver", "solver-terminal");
+	const first = required(usePaneStore.getState().findPaneForTab("solve-workspace", terminal));
+	const review = tabs.addSolveReviewTab("solve-workspace", "solve-session", { split: true });
+	const layout = required(usePaneStore.getState().getLayout("solve-workspace"));
+	const panes = getAllPanes(layout);
+	expect(panes).toHaveLength(2);
+	expect(panes[0]?.id).toBe(first.id);
+	expect(panes[0]?.activeTabId).toBe(terminal);
+	expect(panes[1]?.activeTabId).toBe(review);
+	expect(
+		tabs
+			.getTabsByWorkspace("solve-workspace")
+			.map((tab) => tab.id)
+			.sort()
+	).toEqual([review, terminal].sort());
+});
+
+test("Queue publication origin survives browser and job tabs plus sidebar return", async () => {
+	const { openBrowserTab } = await import("../src/renderer/browser/lifecycle");
+	const { useReviewModeStore } = await import("../src/renderer/stores/review-mode-store");
+	const tabs = useTabStore.getState();
+	tabs.activateReviewWorkspace("queue-review", "/repo", prCtx, "attach-existing-only");
+	const origin = { id: "queue-pr", revision: 7, workspaceId: "queue-review" };
+	useReviewModeStore.getState().setQueueOrigin(origin);
+	const browser = openBrowserTab("queue-review", "https://example.com/docs", "browser-docs");
+	const job = tabs.ensureReviewAgentTab({
+		id: "job",
+		identity: { workspaceId: "queue-review" },
+		agent: { label: "Codex" },
+		terminalId: "review-path:run:1",
+		cwd: "/isolated",
+	});
+	tabs.setActiveTab(job);
+	tabs.setActiveTab(browser);
+	tabs.setSidebarSegment("queue");
+	tabs.setSidebarSegment("prs");
+	expect(useReviewModeStore.getState().queueOrigin).toEqual(origin);
+	expect(useTabStore.getState().activeWorkspaceId).toBe("queue-review");
+	expect(usePaneStore.getState().getFocusedPane("queue-review")?.activeTabId).toBe(browser);
+	expect(
+		tabs
+			.getTabsByWorkspace("queue-review")
+			.map((tab) => tab.kind)
+			.sort()
+	).toEqual(["browser", "pr-review", "review-agent"]);
+});

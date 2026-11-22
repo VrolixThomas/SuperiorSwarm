@@ -5,9 +5,13 @@ import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { SUPERIORSWARM_DIR, daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
+import { initializeExternalQueue } from "./activity-queue/external-runtime";
 import { updateOpenCodePluginConfig } from "./agent-hooks/agents/opencode";
 import { getOrCreateAgentNotifyToken } from "./agent-hooks/auth-token";
+import { publishCurrentHookEndpoint } from "./agent-hooks/endpoint";
+import { setPermissionResponseEnabled } from "./agent-hooks/endpoint";
 import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
+import { queuePermissions, resolvePermissionEvent } from "./agent-hooks/permission-runtime";
 import { setAgentNotifyPort, setAgentNotifyToken } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
 import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
@@ -253,6 +257,18 @@ app.whenReady().then(async () => {
 
 	const agentNotifyToken = getOrCreateAgentNotifyToken();
 	setAgentNotifyToken(agentNotifyToken);
+	const refreshHookEndpoints = async () => {
+		if (!daemonClient.isConnected) return;
+		try {
+			for (const terminal of await daemonClient.listSessions())
+				publishCurrentHookEndpoint(terminal.id);
+		} catch (error) {
+			log.warn("[agent-hooks] could not refresh recovered terminal endpoints", error);
+		}
+	};
+	daemonClient.addConnectionStatusListener((connected) => {
+		if (connected) void refreshHookEndpoints();
+	});
 	agentSessionManager = new AgentSessionManager({
 		daemonClient,
 		processController: new PosixAgentProcessController(daemonClient),
@@ -444,20 +460,34 @@ app.whenReady().then(async () => {
 	if (!import.meta.env.DEV) {
 		await reclaimPort(AGENT_NOTIFY_PORT);
 	}
-	alertListener = createAlertListener(listenerPort, agentNotifyToken);
+	alertListener = createAlertListener(listenerPort, agentNotifyToken, {
+		service: queuePermissions,
+		resolve: resolvePermissionEvent,
+	});
+	alertListener.onEvent((event) => {
+		const normalizedEvent = agentSessionManager?.handleAgentEvent(event);
+		if (normalizedEvent) {
+			if (
+				["Interrupt", "Stop", "StopFailure", "UserPromptSubmit", "SessionStart"].includes(
+					normalizedEvent.rawEvent ?? ""
+				) &&
+				normalizedEvent.sessionSource !== "compact"
+			)
+				queuePermissions.invalidate(normalizedEvent.terminalId);
+			broadcastToWindows("agent:alert", normalizedEvent);
+		}
+	});
 	try {
 		await alertListener.start();
 		const port = alertListener.getPort();
 		if (port) {
 			setAgentNotifyPort(port);
+			setPermissionResponseEnabled(true);
+			await refreshHookEndpoints();
 			// Always rewrite the generated plugin after binding so both its port
 			// and persisted local authentication token are current.
 			updateOpenCodePluginConfig(port, agentNotifyToken);
 		}
-		alertListener.onEvent((event) => {
-			const normalizedEvent = agentSessionManager?.handleAgentEvent(event) ?? event;
-			broadcastToWindows("agent:alert", normalizedEvent);
-		});
 	} catch (err) {
 		log.error("[agent-notify] failed to start listener:", err);
 		alertListener = null;
@@ -484,6 +514,7 @@ app.whenReady().then(async () => {
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();
 	startPolling();
+	stopExternalQueue = initializeExternalQueue();
 	startPRPolling();
 	startCommentPoller();
 
@@ -549,7 +580,9 @@ app.whenReady().then(async () => {
 // NOTE: we only DETACH from the daemon - we do not kill it. The daemon is a
 // detached process that intentionally outlives the app so background agent PTYs
 // survive quit and can be re-attached on next launch (see src/daemon/index.ts).
+let stopExternalQueue: (() => void) | undefined;
 function teardownServices(t0: number): void {
+	stopExternalQueue?.();
 	try {
 		keepAwakeService.dispose();
 	} catch (error) {

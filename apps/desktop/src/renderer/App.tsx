@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
@@ -18,6 +17,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
+import { MainLayout } from "./components/MainLayout";
 import { NavRail } from "./components/NavRail";
 import { OpenPanelButton } from "./components/OpenPanelButton";
 import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
@@ -25,6 +25,7 @@ import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
+import { QueueNavigationRuntime } from "./components/queue/QueueNavigationRuntime";
 import { ReviewAgentJobCoordinator } from "./components/review-mode/useReviewAgentJob";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
@@ -32,6 +33,8 @@ import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoor
 import { useUpdaterStatus } from "./hooks/use-updater";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
+import { WorkspaceQueueSync } from "./hooks/useWorkspaceQueue";
+import { agentScriptInput } from "./lib/agent-script-input";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -292,10 +295,9 @@ function AuthenticatedApp() {
 				const store = useTabStore.getState();
 				store.setActiveWorkspace(workspaceId, cwd);
 				const tabId = store.addTerminalTab(workspaceId, cwd, title, terminalId);
-				const escaped = scriptPath.replace(/'/g, "'\\''");
 				const id = setTimeout(() => {
 					timers.delete(id);
-					window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
+					window.electron.terminal.write(tabId, agentScriptInput(scriptPath));
 				}, 300);
 				timers.add(id);
 			}
@@ -451,46 +453,11 @@ function AuthenticatedApp() {
 
 	useUpdaterStatus();
 
-	const sidebarPanelRef = usePanelRef();
-	const diffPanelRef = usePanelRef();
-	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
-	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
-	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-		id: "app-layout",
-		storage: localStorage,
-	});
-
-	// Sync panel collapse/expand with store state.
-	// Global canvas routes do not use the repository diff panel.
-	useEffect(() => {
-		if (!diffPanelRef.current) return;
-		if (sidebarSegment === "tickets" || sidebarSegment === "hermes" || sidebarSegment === "prs") {
-			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
-			return;
-		}
-		if (rightPanelOpen && diffPanelRef.current.isCollapsed()) {
-			diffPanelRef.current.expand();
-		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
-			diffPanelRef.current.collapse();
-		}
-	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
-
-	// Handle toggle-sidebar action from keyboard shortcut
-	useEffect(() => {
-		function handleToggleSidebar() {
-			const panel = sidebarPanelRef.current;
-			if (!panel) return;
-			if (panel.isCollapsed()) panel.expand();
-			else panel.collapse();
-		}
-		window.addEventListener("app:toggle-sidebar", handleToggleSidebar);
-		return () => window.removeEventListener("app:toggle-sidebar", handleToggleSidebar);
-	}, [sidebarPanelRef]);
 
 	// Handle create-worktree action from command palette
 	useEffect(() => {
@@ -540,6 +507,8 @@ function AuthenticatedApp() {
 	return (
 		<>
 			<TicketRefreshCoordinator />
+			<WorkspaceQueueSync />
+			<QueueNavigationRuntime />
 			<ReviewAgentJobCoordinator />
 			<NavRail />
 			<div className="ml-[72px] h-screen min-w-0">
@@ -547,56 +516,14 @@ function AuthenticatedApp() {
 					<SettingsPage />
 				) : (
 					<>
-						<Group
-							orientation="horizontal"
-							defaultLayout={defaultLayout}
-							onLayoutChanged={onLayoutChanged}
-							className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
+						<MainLayout
+							sidebar={(collapsed, onExpand) => (
+								<Sidebar navigationInRail collapsed={collapsed} onExpand={onExpand} />
+							)}
+							diff={<DiffPanel onClose={closeDiffPanel} />}
 						>
-							<Panel
-								id="sidebar"
-								panelRef={sidebarPanelRef}
-								defaultSize="288px"
-								minSize="232px"
-								maxSize="360px"
-								collapsible
-								collapsedSize="0px"
-								onResize={() => {
-									const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
-									setSidebarCollapsed(isCollapsed);
-								}}
-								className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
-							>
-								<Sidebar
-									navigationInRail
-									collapsed={sidebarCollapsed}
-									onExpand={() => sidebarPanelRef.current?.expand()}
-								/>
-							</Panel>
-
-							<Separator className="panel-resize-handle" />
-
-							<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
-								<MainContentArea savedScrollback={savedScrollback} />
-							</Panel>
-
-							<Separator className="panel-resize-handle" />
-							<Panel
-								id="diff"
-								panelRef={diffPanelRef}
-								defaultSize="19.4%"
-								minSize={200}
-								maxSize="40%"
-								collapsible
-								collapsedSize="0%"
-								onResize={() => {
-									const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
-									if (collapsed && rightPanelOpen) closeDiffPanel();
-								}}
-							>
-								<DiffPanel onClose={closeDiffPanel} />
-							</Panel>
-						</Group>
+							<MainContentArea savedScrollback={savedScrollback} />
+						</MainLayout>
 						{!rightPanelOpen &&
 							sidebarSegment === "repos" &&
 							!activeWorkspaceId?.startsWith("xro-") && (

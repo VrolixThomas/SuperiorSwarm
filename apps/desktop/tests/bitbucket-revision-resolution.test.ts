@@ -90,8 +90,32 @@ if (inIsolatedFileBrowserTest(import.meta.path, "Bitbucket exact revision resolu
 	});
 
 	test("state polling uses the same exact source revision as detail reads", async () => {
-		expect(await getPRState("org", "repo", 1)).toEqual({ headSha: head, state: "OPEN" });
+		expect(await getPRState("org", "repo", 1)).toEqual({
+			headSha: head,
+			state: "OPEN",
+			activity: { headSha: head, state: "open" },
+		});
 		expect(calls).toHaveLength(2);
+	});
+
+	test.each(["MERGED", "DECLINED", "CLOSED"])(
+		"confirmed %s state permits queue cleanup without a source revision",
+		async (state) => {
+			respond = (url) => {
+				if (url.endsWith("/pullrequests/1")) return Response.json({ ...metadata("", ""), state });
+				throw Error("Closed PR cleanup must not fetch an unavailable fork commit");
+			};
+			expect(await getPRState("org", "repo", 1)).toMatchObject({
+				state,
+				headSha: "",
+				activity: { state: state.toLowerCase() },
+			});
+			expect(calls).toHaveLength(1);
+		}
+	);
+	test("open PR state still requires an exact revision", async () => {
+		respond = () => Response.json(metadata("", ""));
+		await expect(getPRState("org", "repo", 1)).rejects.toThrow("revision unavailable");
 	});
 
 	test.each([40, 64])("already complete %s-character OIDs require no expansion", async (length) => {

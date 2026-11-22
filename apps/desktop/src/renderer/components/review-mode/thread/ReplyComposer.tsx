@@ -1,14 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useReviewDraft, useReviewUI } from "../ReviewUIContext";
 
 interface ReplyComposerProps {
 	draftKey?: string;
 	placeholder: string;
 	initialValue?: string;
+	onDraftChange?: (body: string) => void;
 	autoFocus?: boolean;
 	ariaLabel?: string;
 	submitLabel?: string;
-	onSubmit: (body: string) => void;
+	onSubmit: (body: string, draftText?: string) => void | Promise<void>;
 	onCancel: () => void;
 }
 
@@ -20,16 +21,36 @@ export function ReplyComposer({
 	ariaLabel,
 	submitLabel = "Submit",
 	onSubmit,
+	onDraftChange,
 	onCancel,
 }: ReplyComposerProps) {
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	const { active } = useReviewUI();
-	const [body, setBody] = useReviewDraft(`composer:${draftKey}`, initialValue);
+	const [savedBody, setSavedBody] = useReviewDraft(`composer:${draftKey}`, initialValue);
+	// A caller-provided draft callback owns persistence (and publication versioning).
+	// Do not revive an already-sent reply from a second session-backed copy.
+	const [localBody, setLocalBody] = useState(initialValue);
+	const body = onDraftChange ? localBody : savedBody;
+	const setBody = onDraftChange ? setLocalBody : setSavedBody;
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const initialValueRef = useRef(initialValue);
 	const dirtyRef = useRef(false);
 	const rows = Math.min(Math.max(body.split("\n").length, 2), 8);
 	const trimmedBody = body.trim();
 
+	const submit = async () => {
+		if (busy || !trimmedBody) return;
+		setBusy(true);
+		setError(null);
+		try {
+			await onSubmit(trimmedBody, body);
+		} catch (error) {
+			setError(error instanceof Error ? error.message : "Submission failed; draft retained.");
+		} finally {
+			setBusy(false);
+		}
+	};
 	useEffect(() => {
 		if (initialValueRef.current === initialValue) return;
 		initialValueRef.current = initialValue;
@@ -46,11 +67,13 @@ export function ReplyComposer({
 	return (
 		<div onMouseDown={(event) => event.stopPropagation()}>
 			<textarea
+				disabled={busy}
 				ref={textareaRef}
 				value={body}
 				onChange={(event) => {
 					dirtyRef.current = true;
 					setBody(event.target.value);
+					onDraftChange?.(event.target.value);
 				}}
 				placeholder={placeholder}
 				aria-label={ariaLabel ?? placeholder}
@@ -61,7 +84,7 @@ export function ReplyComposer({
 
 					if (event.key === "Enter" && !event.shiftKey) {
 						event.preventDefault();
-						if (trimmedBody) onSubmit(trimmedBody);
+						void submit();
 						return;
 					}
 
@@ -72,6 +95,7 @@ export function ReplyComposer({
 				}}
 				className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-2 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] outline-none transition-colors duration-[120ms] focus:border-[var(--accent)]"
 			/>
+			{error && <div role="alert">{error}</div>}
 			<div className="mt-1 flex items-center gap-2">
 				<div className="min-w-0 flex-1 text-[11px] text-[var(--text-quaternary)]">
 					Enter to send &middot; Shift+Enter for new line &middot; Esc to cancel
@@ -85,9 +109,9 @@ export function ReplyComposer({
 				</button>
 				<button
 					type="button"
-					disabled={!trimmedBody}
+					disabled={!trimmedBody || busy}
 					onClick={() => {
-						if (trimmedBody) onSubmit(trimmedBody);
+						void submit();
 					}}
 					className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-[12px] font-medium text-[var(--accent-foreground)] transition-opacity duration-[120ms] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
 				>

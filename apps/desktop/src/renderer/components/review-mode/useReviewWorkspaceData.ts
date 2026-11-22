@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { PRContext } from "../../../shared/github-types";
+import { useQueuePRPublication } from "../../hooks/useQueuePRPublication";
 import {
 	type ThreadFilter,
 	draftStatusAfterEdit,
@@ -8,6 +9,7 @@ import {
 } from "../../lib/pr-review-threads";
 import { openThreadInChanges, openThreadInComments } from "../../lib/review-mode-nav";
 import { resetReviewSnapshotAcquisition } from "../../lib/snapshot-acquisition";
+import { useReviewModeStore } from "../../stores/review-mode-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { useReviewUIApi, useReviewUIStore } from "./ReviewUIContext";
@@ -43,6 +45,8 @@ export function useReviewWorkspaceData(
 		fileOrder,
 	} = useReviewData(workspaceId, prCtx, options);
 	const isOpen = details?.state === "OPEN";
+	const publication = useQueuePRPublication(prCtx, details?.headCommitOid);
+	const [publicationError, setPublicationError] = useState<string | null>(null);
 	const canSubmitReview =
 		isOpen &&
 		!draftPending &&
@@ -118,6 +122,7 @@ export function useReviewWorkspaceData(
 
 	const handleClose = useCallback(() => {
 		closeReview();
+		useReviewModeStore.getState().dropQueueOriginsForWorkspace(workspaceId);
 		if (details && details.state !== "OPEN") {
 			cleanupReviewWorkspace.mutate({ workspaceId });
 		}
@@ -152,7 +157,13 @@ export function useReviewWorkspaceData(
 					userEdit: body,
 				});
 			},
-			onReply: (threadId, body) => {
+			onReplyCancel: publication.cancel,
+			onReply: async (threadId, body) => {
+				if (publication.applicable) {
+					await publication.submit({ kind: "reply", commentId: threadId, body });
+					invalidateDetails();
+					return;
+				}
 				if (prCtx.provider === "github") {
 					addReviewComment({ threadId, body });
 					return;
@@ -167,6 +178,16 @@ export function useReviewWorkspaceData(
 				});
 			},
 			onResolve: (threadId) => {
+				if (publication.applicable) {
+					setPublicationError(null);
+					void publication
+						.submit({ kind: "resolve", commentId: threadId })
+						.then(invalidateDetails)
+						.catch((error) =>
+							setPublicationError(error instanceof Error ? error.message : "Publication failed.")
+						);
+					return;
+				}
 				if (prCtx.provider === "github") {
 					resolveThread({ threadId });
 					return;
@@ -183,6 +204,10 @@ export function useReviewWorkspaceData(
 		};
 	}, [
 		ui,
+		publication.applicable,
+		publication.cancel,
+		publication.submit,
+		invalidateDetails,
 		addReviewComment,
 		allThreads,
 		deleteDraftComment,
@@ -240,5 +265,7 @@ export function useReviewWorkspaceData(
 		submitOpen,
 		setSubmitOpen,
 		jumpToComments,
+		publicationNotice: publication.notice,
+		publicationError,
 	};
 }

@@ -1,5 +1,6 @@
 import type { PRContext } from "../../shared/github-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
+import type { TerminalCreateIntent } from "../../shared/terminal-create";
 import { useTabStore } from "../stores/tab-store";
 
 export interface OpenPRReviewInput {
@@ -49,7 +50,11 @@ export async function openPRReview(
 	getOrCreateReview: (
 		input: ReviewWorkspaceRequest
 	) => Promise<{ id: string; worktreePath: string | null }>,
-	options: { timeoutMs?: number; isCurrent?: () => boolean } = {}
+	options: {
+		timeoutMs?: number;
+		isCurrent?: () => boolean;
+		terminalIntent?: TerminalCreateIntent;
+	} = {}
 ) {
 	return withReviewOpeningDeadline(async (isCurrent) => {
 		if (!isCurrent()) throw new Error("PR opening request is no longer active");
@@ -63,7 +68,14 @@ export async function openPRReview(
 		});
 		if (!isCurrent()) throw new Error("PR opening request is no longer active");
 		const cwd = workspace.worktreePath ?? prCtx.repoPath;
-		useTabStore.getState().activateReviewWorkspace(workspace.id, cwd, { ...prCtx, repoPath: cwd });
+		useTabStore
+			.getState()
+			.activateReviewWorkspace(
+				workspace.id,
+				cwd,
+				{ ...prCtx, repoPath: cwd },
+				options.terminalIntent
+			);
 		const store = useTabStore.getState();
 		const meta = store.workspaceMetadata[workspace.id];
 		if (meta)

@@ -25,6 +25,7 @@ import { collectSessionSnapshot, deserializeLayout } from "../src/renderer/sessi
 import { usePaneStore } from "../src/renderer/stores/pane-store";
 import { useTabStore } from "../src/renderer/stores/tab-store";
 import type { SerializedLayoutNode } from "../src/shared/pane-types";
+import { TerminalCreateError, type TerminalCreateIntent } from "../src/shared/terminal-create";
 import { makeRawTestDb } from "./test-db";
 
 type Handler = (request: typeof event, ...args: unknown[]) => unknown;
@@ -53,7 +54,7 @@ const writes: string[] = [];
 let daemonError: Error | undefined;
 let duringList: () => void | Promise<void> = () => {};
 const created: Array<{ id: string; cwd: string | undefined }> = [];
-const attached: Array<{ id: string; cwd: string | undefined }> = [];
+const attached: Array<{ id: string; cwd: string | undefined; intent?: TerminalCreateIntent }> = [];
 const now = new Date();
 beforeEach(() => {
 	root = realpathSync(mkdtempSync(join(tmpdir(), "coordinator-terminal-")));
@@ -89,8 +90,16 @@ beforeEach(() => {
 			if (daemonError) throw daemonError;
 			created.push({ id, cwd });
 		},
-		attach: async (id: string, _data: unknown, _exit: unknown, cwd: string | undefined) => {
-			attached.push({ id, cwd });
+		attach: async (
+			id: string,
+			_data: unknown,
+			_exit: unknown,
+			cwd: string | undefined,
+			_env: unknown,
+			intent?: TerminalCreateIntent
+		) => {
+			if (daemonError) throw daemonError;
+			attached.push(intent === "attach-existing-only" ? { id, cwd, intent } : { id, cwd });
 		},
 		detach: () => {},
 		addConnectionStatusListener: () => {},
@@ -228,9 +237,16 @@ describe("registered terminal directories", () => {
 		const xro = coordinator("xro-file", path);
 		expectLookupError(xro.id, "WORKSPACE_NOT_DIRECTORY", "Workspace folder is not a directory.");
 	});
-	test("ordinary record wins a duplicate ID, including when its folder is missing", () => {
+	test("entity collision is rejected without rebinding an ordinary workspace", () => {
 		const ws = workspace("same-id");
-		coordinator(ws.id);
+		expect(() => coordinator(ws.id)).toThrow("ambiguous agent entity");
+		expect(
+			db
+				.select()
+				.from(schema.crossRepoOrchestrators)
+				.where(eq(schema.crossRepoOrchestrators.id, ws.id))
+				.get()
+		).toBeUndefined();
 		expect(getWorkspaceCwdOrThrow(ws.id)).toBe(ws.repoPath);
 		rmSync(ws.repoPath, { recursive: true });
 		expectLookupError(ws.id, "WORKSPACE_FOLDER_MISSING", "Workspace folder no longer exists.");
@@ -592,6 +608,52 @@ describe("terminal root and record isolation", () => {
 	});
 });
 
+for (const cachedLive of [false, true]) {
+	test(`Queue IPC cannot create after preflight with live cache ${cachedLive}`, async () => {
+		const ws = workspace();
+		ensureTerminalSessionRow({ id: "restored", workspaceId: ws.id, cwd: ws.repoPath });
+		live = cachedLive;
+		// Inventory was live, but the actual atomic attach loses the PTY.
+		duringList = () => {
+			daemonError = new TerminalCreateError("TERMINAL_NOT_RUNNING");
+		};
+		const result = await handler("terminal:create")(
+			event,
+			"restored",
+			ws.repoPath,
+			ws.id,
+			"attach-existing-only"
+		);
+		expect(result).toMatchObject({ error: { code: "TERMINAL_NOT_RUNNING" } });
+		expect(created).toEqual([]);
+		expect(db.select().from(schema.terminalSessions).all()).toHaveLength(1);
+	});
+}
+test("Queue IPC always forwards attach-only even without a cached live PTY", async () => {
+	const ws = workspace();
+	ensureTerminalSessionRow({ id: "restored", workspaceId: ws.id, cwd: ws.repoPath });
+	const result = await handler("terminal:create")(
+		event,
+		"restored",
+		ws.repoPath,
+		ws.id,
+		"attach-existing-only"
+	);
+	expect(result).toEqual({ wasAttached: true });
+	expect(created).toEqual([]);
+	expect(attached).toEqual([{ id: "restored", cwd: ws.repoPath, intent: "attach-existing-only" }]);
+});
+test("Queue IPC rejects missing identity and invalid intent without inserting rows or creating", async () => {
+	const ws = workspace();
+	for (const intent of ["attach-existing-only", "unknown"])
+		expect(
+			await handler("terminal:create")(event, "missing", ws.repoPath, ws.id, intent)
+		).toHaveProperty("error");
+	expect(created).toEqual([]);
+	expect(attached).toEqual([]);
+	expect(db.select().from(schema.terminalSessions).all()).toEqual([]);
+});
+
 describe("owned reading-path terminal attachment", () => {
 	function owned() {
 		const ws = workspace();
@@ -642,6 +704,37 @@ describe("owned reading-path terminal attachment", () => {
 		expect(attached).toEqual([{ id, cwd: ws.repoPath }]);
 		expect(created).toEqual([]);
 		expect(writes).toEqual([]);
+	});
+	test.each([false, true])(
+		"Queue attaches owned review PTY without replacing it (cached=%s)",
+		async (cached) => {
+			const { ws, id } = owned();
+			live = cached;
+			expect(
+				await handler("terminal:create")(event, id, ws.repoPath, ws.id, "attach-existing-only")
+			).toEqual({ wasAttached: true });
+			expect(attached).toEqual([{ id, cwd: ws.repoPath, intent: "attach-existing-only" }]);
+			expect(created).toEqual([]);
+			expect(writes).toEqual([]);
+		}
+	);
+	test("Queue does not replace a missing owned review PTY", async () => {
+		const { ws, id } = owned();
+		inventoryMissing = true;
+		failed(
+			await handler("terminal:create")(event, id, ws.repoPath, ws.id, "attach-existing-only"),
+			"REVIEW_TERMINAL_UNAVAILABLE"
+		);
+	});
+	test("Queue rechecks review run ownership after inventory yields", async () => {
+		const { ws, id, store, run } = owned();
+		duringList = () => {
+			store.attachTerminal(run, "replacement");
+		};
+		failed(
+			await handler("terminal:create")(event, id, ws.repoPath, ws.id, "attach-existing-only"),
+			"REVIEW_TERMINAL_OWNERSHIP_MISMATCH"
+		);
 	});
 	test("ended owned runs may expose their surviving terminal without relaunch", async () => {
 		const { ws, id, store, run } = owned();

@@ -8,62 +8,11 @@ import { claudeConfig } from "./agents/claude";
 import { codexConfig } from "./agents/codex";
 import { geminiConfig } from "./agents/gemini";
 import { opencodeConfig, setOpenCodePluginAuthToken } from "./agents/opencode";
+import { HOOK_BRIDGE_SOURCE, buildHookLauncher } from "./bridge";
+import { recordHookConfiguration } from "./diagnostics";
 
 const HOOKS_DIR = join(homedir(), ".agent-notify", "hooks");
 const HOOK_SCRIPT_NAME = "on-event.sh";
-
-// Embedded hook script template. Kept inline because Rollup bundles JS only —
-// a separate .sh file would not be copied to the build output directory.
-const HOOK_TEMPLATE = `#!/bin/bash
-# agent-notify hook — called by AI agents to report lifecycle events.
-# Generated automatically. Do not edit manually.
-
-# Exit silently if not running inside a terminal with agent-notify.
-[ -z "$AGENT_NOTIFY_PORT" ] && exit 0
-[ -z "$AGENT_NOTIFY_TOKEN" ] && exit 0
-
-# Read JSON payload from stdin (Claude Code pipes hook data to stdin).
-INPUT=""
-if [ ! -t 0 ]; then
-\tINPUT=$(cat)
-fi
-
-# Also accept a JSON argument (some agents pass as $1).
-[ -z "$INPUT" ] && INPUT="\${1:-}"
-[ -z "$INPUT" ] && exit 0
-
-# Extract the raw event type. Try "hook_event_name" first (Claude Code), then "type".
-EVENT_TYPE=""
-EVENT_TYPE=$(printf '%s' "$INPUT" | grep -o '"hook_event_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
-if [ -z "$EVENT_TYPE" ]; then
-\tEVENT_TYPE=$(printf '%s' "$INPUT" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"type"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
-fi
-[ -z "$EVENT_TYPE" ] && exit 0
-
-# Capture the provider's durable conversation ID. The terminal ID remains a
-# separate routing identity owned by SuperiorSwarm.
-PROVIDER_SESSION_ID=""
-PROVIDER_SESSION_ID=$(printf '%s' "$INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"session_id"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
-if [ -z "$PROVIDER_SESSION_ID" ]; then
-\tPROVIDER_SESSION_ID=$(printf '%s' "$INPUT" | grep -o '"sessionID"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"sessionID"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
-fi
-
-# Forward raw event to the listener. Server-side mapping handles the rest.
-curl -sG \\
-\t--connect-timeout 1 \\
-\t--max-time 2 \\
-\t-H "Authorization: Bearer \${AGENT_NOTIFY_TOKEN}" \\
-\t"http://127.0.0.1:\${AGENT_NOTIFY_PORT}/event" \\
-\t--data-urlencode "rawEvent=\${EVENT_TYPE}" \\
-\t--data-urlencode "terminalId=\${AGENT_NOTIFY_TERMINAL_ID:-\${AGENT_NOTIFY_SESSION_ID:-}}" \\
-\t--data-urlencode "providerSessionId=\${PROVIDER_SESSION_ID}" \\
-\t--data-urlencode "workspaceId=\${AGENT_NOTIFY_WORKSPACE_ID:-}" \\
-\t--data-urlencode "cwd=\${PWD}" \\
-\t--data-urlencode "agent=\${AGENT_NOTIFY_AGENT:-unknown}" \\
-\t>/dev/null 2>&1 || true
-
-exit 0
-`;
 
 function installHookScript(): string {
 	if (!existsSync(HOOKS_DIR)) {
@@ -71,13 +20,15 @@ function installHookScript(): string {
 	}
 
 	const scriptPath = join(HOOKS_DIR, HOOK_SCRIPT_NAME);
-	writeFileSync(scriptPath, HOOK_TEMPLATE, { mode: 0o755 });
+	const bridgePath = join(HOOKS_DIR, "on-event.cjs");
+	writeFileSync(bridgePath, HOOK_BRIDGE_SOURCE, { mode: 0o644 });
+	writeFileSync(scriptPath, buildHookLauncher(bridgePath, process.execPath), { mode: 0o755 });
 
 	return scriptPath;
 }
 
 function buildHookCommand(scriptPath: string, agentName: string): string {
-	return `[ -n "$AGENT_NOTIFY_PORT" ] && AGENT_NOTIFY_AGENT="${agentName}" "${scriptPath}" || true`;
+	return `[ -n "$AGENT_NOTIFY_TOKEN" ] && AGENT_NOTIFY_AGENT="${agentName}" "${scriptPath}" || true`;
 }
 
 function installGeminiHookScript(sharedScriptPath: string): string {
@@ -90,7 +41,7 @@ function installGeminiHookScript(sharedScriptPath: string): string {
 		"printf '{}\\n'",
 		"",
 		"# Exit silently if not running inside a terminal with agent-notify.",
-		'[ -z "$AGENT_NOTIFY_PORT" ] && exit 0',
+		'[ -z "$AGENT_NOTIFY_TOKEN" ] && exit 0',
 		"",
 		"# Delegate to the shared hook script (stdin is passed through).",
 		`"${sharedScriptPath}" "$@"`,
@@ -120,12 +71,21 @@ export async function setupAgentHooks(agentNotifyToken: string): Promise<void> {
 				}
 				const hookCommand = buildHookCommand(scriptPath, agent.name);
 				await agent.setup(hookCommand);
-				log.info(`[agent-hooks] registered hooks for ${agent.name}`);
+				recordHookConfiguration(agent.name);
+				log.info(`[agent-hooks] installed hook definitions for ${agent.name}`);
+				if (agent.name === "codex") {
+					log.info(
+						"[agent-hooks] Codex delivery requires supported CLI hooks and trust for these exact definitions; review changed hooks with /hooks. Installation does not verify delivery."
+					);
+				}
 			} catch (err) {
+				recordHookConfiguration(agent.name, err instanceof Error ? err.message : String(err));
 				log.warn(`[agent-hooks] failed to setup ${agent.name}:`, err);
 			}
 		}
 	} catch (err) {
+		for (const agent of AGENTS)
+			recordHookConfiguration(agent.name, err instanceof Error ? err.message : String(err));
 		log.error("[agent-hooks] failed to install hook script:", err);
 	}
 }

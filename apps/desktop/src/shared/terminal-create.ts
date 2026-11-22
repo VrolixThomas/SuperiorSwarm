@@ -1,5 +1,7 @@
 import { WorkspaceError, workspaceErrorMessages } from "./workspace-errors";
 
+/** Queue navigation must never replace an absent PTY with a new shell. */
+export type TerminalCreateIntent = "create-or-attach" | "attach-existing-only";
 export function isReviewPathTerminal(id: string): boolean {
 	return id.startsWith("review-path:");
 }
@@ -10,6 +12,8 @@ const messages = {
 	...workspaceErrorMessages,
 	TERMINAL_WORKSPACE_MISMATCH:
 		"Terminal workspace mismatch. Reopen the terminal from its workspace.",
+	TERMINAL_NOT_RUNNING:
+		"This terminal is no longer running. Queue will not create a replacement shell.",
 	REVIEW_TERMINAL_UNAVAILABLE:
 		"Reading-path terminal is no longer available. Start a new run from the review workspace.",
 	REVIEW_TERMINAL_OWNERSHIP_MISMATCH:

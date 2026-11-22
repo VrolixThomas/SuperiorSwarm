@@ -5,12 +5,24 @@ import { listAgentSessionsForCwd } from "../../agent-launch/session-stores";
 import { getWorkspaceCwdOrThrow } from "../../agent-launch/workspace-cwd-lookup";
 import { probeCliInPath } from "../../services/cli-probe";
 import { detectInstalledClis } from "../../services/global-mcp-install";
+import { startOwnedChat } from "../../services/owned-chat";
 import { publicProcedure, router } from "../index";
 
 // Probes shell out with a 5s timeout each; cache for the app lifetime.
 let installedCache: Promise<CliPresetName[]> | null = null;
 
 export const agentLaunchRouter = router({
+	startChat: publicProcedure
+		.input(
+			z
+				.object({
+					workspaceId: z.string().min(1),
+					provider: z.enum(["claude", "codex"]),
+					initialPrompt: z.string().trim().max(4_000).optional(),
+				})
+				.strict()
+		)
+		.mutation(({ input }) => startOwnedChat(input)),
 	listSessions: publicProcedure
 		.input(z.object({ workspaceId: z.string() }))
 		.query(({ input }) => listAgentSessionsForCwd(getWorkspaceCwdOrThrow(input.workspaceId), 10)),

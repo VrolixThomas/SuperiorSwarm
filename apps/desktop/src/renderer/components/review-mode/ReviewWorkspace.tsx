@@ -41,7 +41,11 @@ export interface ReviewWorkspaceProps {
 export function ReviewWorkspace(props: ReviewWorkspaceProps) {
 	const key = reviewUIScopeKey(props.active);
 	return (
-		<ReviewUIProvider scopeKey={props.tabMode ? key : null} active={props.isActive ?? true}>
+		<ReviewUIProvider
+			scopeKey={props.tabMode ? key : null}
+			review={props.active}
+			active={props.isActive ?? true}
+		>
 			<ReviewWorkspaceContent {...props} />
 		</ReviewUIProvider>
 	);
@@ -312,6 +316,8 @@ function ReviewWorkspaceContent({
 			{!tabMode && (
 				<ReviewWorkspaceTopBar prCtx={prCtx} data={data} queue={queue} onNextPR={nextPR} />
 			)}
+			{data.publicationNotice}
+			{data.publicationError && <div role="alert">{data.publicationError}</div>}
 			{!tabMode && data.details && (
 				<ReviewWorkflowBar
 					source={source}

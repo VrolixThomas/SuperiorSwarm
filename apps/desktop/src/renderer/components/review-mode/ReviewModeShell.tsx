@@ -61,6 +61,8 @@ export function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		submitOpen,
 		setSubmitOpen,
 		jumpToComments,
+		publicationNotice,
+		publicationError,
 	} = useReviewWorkspaceData(workspaceId, prCtx);
 
 	useEffect(() => {
@@ -119,6 +121,8 @@ export function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			tabIndex={-1}
 			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none"
 		>
+			{publicationNotice}
+			{publicationError && <div role="alert">{publicationError}</div>}
 			<ReviewHeader
 				prCtx={prCtx}
 				commentCount={commentCount}
@@ -163,6 +167,7 @@ export function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 						</button>
 						{submitOpen && details && canSubmitReview && (
 							<SubmitReviewPopover
+								headSha={details.headCommitOid}
 								prCtx={prCtx}
 								draftId={aiDraft?.id ?? null}
 								acceptedThreads={acceptedThreads}

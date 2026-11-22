@@ -1,9 +1,12 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
+import { observeScopedPRPoll } from "../activity-queue/pr-source";
 import { getDb } from "../db";
-import { type TrackedPr, projects, trackedPrs } from "../db/schema";
+import { type TrackedPr, projects, reviewDrafts, trackedPrs } from "../db/schema";
 import { getConnectedGitProviders } from "../providers/git-provider";
+import { type PRActivityFacts, prIdentity } from "../providers/pr-activity";
 import type { NormalizedPR } from "../providers/types";
+import { PRConfirmationBudget, coalescePoll } from "./pr-poll-cycle";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -38,21 +41,30 @@ export function getCachedPRs(projectId?: string): CachedPR[] {
 
 // ── Project lookup helpers ─────────────────────────────────────────────────────
 
-function getProjectIdByRepo(owner: string, repoName: string): string {
+function getProjectIdByRepo(provider: string, owner: string, repoName: string): string {
 	const db = getDb();
+	const host = provider === "bitbucket" ? "bitbucket.org" : "github.com";
 
 	// Fast indexed lookup first
 	const exact = db
 		.select({ id: projects.id })
 		.from(projects)
-		.where(and(eq(projects.remoteOwner, owner), eq(projects.remoteRepo, repoName)))
+		.where(
+			and(
+				eq(projects.remoteOwner, owner),
+				eq(projects.remoteRepo, repoName),
+				eq(projects.remoteHost, host)
+			)
+		)
 		.get();
 	if (exact?.id) return exact.id;
 
 	// Fallback: path-based matching
 	const allProjects = db.select().from(projects).all();
 	const needle = `${owner.toLowerCase()}/${repoName.toLowerCase()}`;
-	const match = allProjects.find((p) => p.repoPath.toLowerCase().includes(needle));
+	const match = allProjects.find(
+		(p) => p.remoteHost === host && p.repoPath.toLowerCase().includes(needle)
+	);
 	return match?.id ?? "";
 }
 
@@ -78,7 +90,7 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 		updatedAt: new Date().toISOString(),
 		repoOwner: pr.repoOwner,
 		repoName: pr.repoName,
-		projectId: getProjectIdByRepo(pr.repoOwner, pr.repoName),
+		projectId: getProjectIdByRepo(provider, pr.repoOwner, pr.repoName),
 		role: pr.role,
 		headCommitSha: pr.headCommitSha,
 	};
@@ -86,64 +98,137 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 
 // ── Core poll logic ────────────────────────────────────────────────────────────
 
+const confirmationBudget = new PRConfirmationBudget();
+
+export function deduplicatePRs(prs: NormalizedPR[]): NormalizedPR[] {
+	return [...new Map(prs.map((pr) => [`${pr.repoOwner}/${pr.repoName}#${pr.id}`, pr])).values()];
+}
+
 async function fetchAllPRs(): Promise<{
 	results: CachedPR[];
 	successfulProviders: Set<string>;
+	observations: Map<string, PRActivityFacts>;
+	errors: Map<string, string>;
 }> {
 	const results: CachedPR[] = [];
 	const successfulProviders = new Set<string>();
-
-	// Providers are independent — run their list fetches concurrently so the
-	// poll wall-clock is bounded by max(t_github, t_bitbucket) instead of the
-	// sum. Each iteration has its own try/catch so a failure in one provider
-	// does not cancel the others (matches the previous serial semantics).
+	const observations = new Map<string, PRActivityFacts>();
+	const errors = new Map<string, string>();
+	const providers = getConnectedGitProviders();
+	const existing = getCachedPRs();
+	// A manually-created ready review can exist outside authored/requested listings.
+	const localDraftPRs = getDb()
+		.select()
+		.from(reviewDrafts)
+		.where(eq(reviewDrafts.status, "ready"))
+		.all()
+		.flatMap((draft) => {
+			const match = /^([^/]+)\/([^#]+)#(\d+)$/.exec(draft.prIdentifier);
+			if (!match || (draft.prProvider !== "github" && draft.prProvider !== "bitbucket")) return [];
+			return [
+				toCachedPR(
+					{
+						id: Number(match[3]),
+						repoOwner: match[1] ?? "",
+						repoName: match[2] ?? "",
+						title: draft.prTitle,
+						author: draft.prAuthor,
+						sourceBranch: draft.sourceBranch,
+						targetBranch: draft.targetBranch,
+						headCommitSha: "",
+						role: "reviewer",
+						state: "open",
+						webUrl: "",
+					},
+					draft.prProvider
+				),
+			];
+		});
 	await Promise.all(
-		getConnectedGitProviders().map(async (provider) => {
+		providers.map(async (provider) => {
 			try {
-				const prs = await provider.getMyPRs();
+				const prs = deduplicatePRs(await provider.getMyPRs());
 				successfulProviders.add(provider.name);
-				const seen = new Set<number>();
 				for (const pr of prs) {
-					if (!seen.has(pr.id)) {
-						seen.add(pr.id);
-						results.push(toCachedPR(pr, provider.name));
-					}
+					results.push(toCachedPR(pr, provider.name));
+					observations.set(
+						prIdentity(provider.name, pr.repoOwner, pr.repoName, pr.id),
+						pr.activity ?? {}
+					);
 				}
-			} catch (err) {
-				console.error(`[pr-poller] ${provider.name} fetch failed:`, err);
+			} catch (error) {
+				console.error(`[pr-poller] ${provider.name} fetch failed:`, error);
+				for (const pr of existing.filter((p) => p.provider === provider.name))
+					errors.set(
+						prIdentity(pr.provider, pr.repoOwner, pr.repoName, pr.number),
+						"PR provider fetch failed"
+					);
 			}
 		})
 	);
-
-	// Enrich head commit SHA only for PRs whose listing fetch did NOT supply
-	// it. Bitbucket now copies `source.commit.hash` straight from the listing
-	// (Task 4) so this loop is GitHub-only after this change. Each call here
-	// used to be 1 API request per open PR — eliminating the Bitbucket half
-	// cuts ~100 calls per poll cycle.
-	const openPRsNeedingEnrichment = results.filter((pr) => pr.state === "open" && !pr.headCommitSha);
-	await Promise.allSettled(
-		openPRsNeedingEnrichment.map(async (cachedPr) => {
-			const provider = getConnectedGitProviders().find((p) => p.name === cachedPr.provider);
-			if (!provider) return;
-			const prState = await provider.getPRState(
-				cachedPr.repoOwner,
-				cachedPr.repoName,
-				cachedPr.number
-			);
-			cachedPr.headCommitSha = prState.headSha;
-		})
+	const key = (pr: CachedPR) => prIdentity(pr.provider, pr.repoOwner, pr.repoName, pr.number);
+	const byKey = new Map(results.map((pr) => [key(pr), pr]));
+	const checkable = new Map(
+		[...localDraftPRs, ...existing.filter((pr) => pr.state === "open"), ...byKey.values()].map(
+			(pr) => [key(pr), pr]
+		)
 	);
-
-	return { results, successfulProviders };
+	const candidates = [...checkable.values()]
+		.filter((pr) => {
+			if (!successfulProviders.has(pr.provider)) return false;
+			const facts = observations.get(key(pr));
+			return (
+				!facts ||
+				!facts.headSha ||
+				facts.isDraft === undefined ||
+				facts.reviewRequested === undefined
+			);
+		})
+		.map((pr) => ({ key: key(pr), pr }));
+	await confirmationBudget.run(candidates, async ({ key, pr }) => {
+		try {
+			const provider = providers.find((p) => p.name === pr.provider);
+			if (!provider) throw new Error("PR provider disconnected");
+			const state = await provider.getPRState(pr.repoOwner, pr.repoName, pr.number);
+			const facts = {
+				...observations.get(key),
+				...state.activity,
+				state: state.state,
+				...(state.headSha ? { headSha: state.headSha } : {}),
+			};
+			observations.set(key, facts);
+			const current = byKey.get(key);
+			if (current) {
+				current.state = state.state;
+				if (state.headSha) current.headCommitSha = state.headSha;
+			} else {
+				const confirmed = {
+					...pr,
+					state: state.state,
+					headCommitSha: state.headSha || pr.headCommitSha,
+				};
+				results.push(confirmed);
+				byKey.set(key, confirmed);
+			}
+		} catch (error) {
+			errors.set(key, "PR confirmation failed; previous state retained");
+			throw error;
+		}
+	});
+	return { results, successfulProviders, observations, errors };
 }
 
 async function doPoll(): Promise<void> {
 	let fetched: CachedPR[];
 	let successfulProviders: Set<string>;
+	let observations: Map<string, PRActivityFacts>;
+	let errors: Map<string, string>;
 	try {
 		const result = await fetchAllPRs();
 		fetched = result.results;
 		successfulProviders = result.successfulProviders;
+		observations = result.observations;
+		errors = result.errors;
 	} catch (err) {
 		console.error("[pr-poller] Poll failed:", err);
 		return;
@@ -251,6 +336,13 @@ async function doPoll(): Promise<void> {
 		}
 	});
 
+	// Queue baselines are persisted only after tracked PR persistence succeeds.
+	try {
+		await observeScopedPRPoll(getCachedPRs(), observations, errors);
+	} catch (error) {
+		console.error("[pr-poller] Queue projection failed:", error);
+	}
+
 	// Fire events AFTER the transaction commits.
 	// Recurring mapping uses its durable claim, so restart/failure does not depend on a new-PR edge.
 	const newKeys = new Set(newPRsToEmit.map((pr) => `${pr.provider}:${pr.identifier}`));
@@ -309,14 +401,14 @@ function buildInsertRow(pr: CachedPR, now: Date): typeof trackedPrs.$inferInsert
  * with `buildInsertRow` (which DOES set `firstSeenAt`) is load-bearing — do
  * NOT add `firstSeenAt` here without changing the semantics intentionally.
  */
-function buildUpdateSet(pr: CachedPR, now: Date): Partial<typeof trackedPrs.$inferInsert> {
+export function buildUpdateSet(pr: CachedPR, now: Date): Partial<typeof trackedPrs.$inferInsert> {
 	return {
 		title: pr.title,
 		state: pr.state,
 		sourceBranch: pr.sourceBranch,
 		targetBranch: pr.targetBranch,
 		role: pr.role,
-		headCommitSha: pr.headCommitSha || null,
+		...(pr.headCommitSha ? { headCommitSha: pr.headCommitSha } : {}),
 		authorLogin: pr.author.login,
 		authorAvatarUrl: pr.author.avatarUrl || null,
 		projectId: pr.projectId || null,
@@ -426,6 +518,8 @@ export function diffTrackedPrs(args: DiffTrackedPrsArgs): DiffTrackedPrsResult {
 	return { newPRs, closedPRs, commitChangedPRs };
 }
 
+const poll = coalescePoll(doPoll);
+
 // ── Public control API ─────────────────────────────────────────────────────────
 
 export function startPolling(): void {
@@ -433,9 +527,9 @@ export function startPolling(): void {
 
 	console.log("[pr-poller] Starting background PR polling");
 	// Run an initial poll immediately, then on interval
-	doPoll().catch((err) => console.error("[pr-poller] Initial poll error:", err));
+	poll().catch((err) => console.error("[pr-poller] Initial poll error:", err));
 	pollTimer = setInterval(() => {
-		doPoll().catch((err) => console.error("[pr-poller] Poll cycle error:", err));
+		poll().catch((err) => console.error("[pr-poller] Poll cycle error:", err));
 	}, POLL_INTERVAL_MS);
 }
 
@@ -448,5 +542,5 @@ export function stopPolling(): void {
 }
 
 export async function refreshNow(): Promise<void> {
-	await doPoll();
+	await poll();
 }
