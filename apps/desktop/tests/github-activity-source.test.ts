@@ -82,7 +82,7 @@ test("production GitHub adapter reuses compact batches and distinguishes request
 		expect(prs[1]?.headCommitSha).toBe("sha1");
 		failGraph = true;
 		const partial = await adapter.getMyPRs();
-		expect(partial[0]?.activity).toEqual({});
+		expect(partial[0]?.activity).toEqual({ accountId: "me" });
 		expect(partial[0]?.headCommitSha).toBe("");
 	} finally {
 		fetch.mockRestore();

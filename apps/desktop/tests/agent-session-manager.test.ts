@@ -1,6 +1,10 @@
 import "./preload-electron-mock";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { sessionSourceId } from "../src/main/activity-queue/agent-source";
+import { ActivityQueueService } from "../src/main/activity-queue/service";
+import { geminiConfig } from "../src/main/agent-hooks/agents/gemini";
+import { opencodeConfig } from "../src/main/agent-hooks/agents/opencode";
 import { getDb } from "../src/main/db";
 import { agentSessions, projects, workspaces } from "../src/main/db/schema";
 import type {
@@ -14,7 +18,7 @@ import {
 } from "../src/main/services/agent-session-manager";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import type { AgentEvent } from "../src/shared/agent-events";
-import type { AgentSleepSettings } from "../src/shared/agent-session";
+import type { AgentSessionStatusEvent, AgentSleepSettings } from "../src/shared/agent-session";
 import { seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
 const ENABLED_SETTINGS: AgentSleepSettings = {
@@ -58,6 +62,7 @@ function makeManager(options: {
 }) {
 	const writes: Array<{ id: string; data: string }> = [];
 	const terminations: Array<{ terminalId: string; provider: string }> = [];
+	const statuses: AgentSessionStatusEvent[] = [];
 	const daemon = {
 		isConnected: true,
 		listSessions: async () =>
@@ -87,8 +92,9 @@ function makeManager(options: {
 		minuteMs: options.minuteMs ?? 10,
 		followUpReadyTimeoutMs: options.followUpReadyTimeoutMs,
 		followUpPollMs: options.followUpPollMs,
+		onStatus: (status) => statuses.push(status),
 	});
-	return { manager, writes, terminations };
+	return { manager, writes, terminations, statuses };
 }
 
 let projectId: string;
@@ -518,7 +524,7 @@ describe("AgentSessionManager", () => {
 	});
 });
 
-test("unidentified legacy completion cannot schedule automatic sleep", async () => {
+test("unidentified Claude completion cannot schedule automatic sleep", async () => {
 	const fixture = makeManager({ minuteMs: 1 });
 	managers.push(fixture.manager);
 	fixture.manager.registerManagedSession({
@@ -533,3 +539,155 @@ test("unidentified legacy completion cannot schedule automatic sleep", async () 
 	expect(fixture.manager.getSession("term-1")?.state).toBe("needs-input");
 	expect(fixture.terminations).toHaveLength(0);
 });
+
+for (const [provider, config, start, stop] of [
+	["opencode", opencodeConfig, "Start", "Stop"],
+	["gemini", geminiConfig, "BeforeAgent", "AfterAgent"],
+] as const) {
+	test(`${provider} lifecycle without turn IDs completes and starts again without changing queue ordering`, () => {
+		const fixture = makeManager({ settings: { ...ENABLED_SETTINGS, enabled: false } });
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider,
+			providerSessionId: "provider-session-1",
+			skipPermissions: false,
+		});
+		fixture.statuses.length = 0;
+		const queue = new ActivityQueueService();
+		const id = sessionSourceId(workspaceId, "term-1", provider, "provider-session-1");
+		for (const [rawEvent, expectedState] of [
+			[start, "running"],
+			[stop, "idle"],
+			[start, "running"],
+		] as const) {
+			const alert = config.mapEvent(rawEvent);
+			expect(alert).not.toBeNull();
+			if (!alert) throw Error("Missing provider mapping");
+			const accepted = fixture.manager.handleAgentEvent({
+				...event("term-1", workspaceId, alert),
+				agent: provider,
+				rawEvent,
+				turnId: undefined,
+			});
+			expect(accepted?.alert).toBe(alert);
+			expect(fixture.manager.getSession("term-1")?.state).toBe(expectedState);
+		}
+		expect(fixture.statuses.map((status) => status.state)).toEqual(["running", "idle", "running"]);
+		expect(queue.read(id)?.snapshot).toMatchObject({
+			alert: "active",
+			ordering: "uncertain",
+			turnId: null,
+		});
+		expect(queue.read(id)?.candidate).toBeNull();
+	});
+
+	test(`${provider} identified history still rejects an uncorrelated lifecycle downgrade`, () => {
+		const fixture = makeManager({ settings: { ...ENABLED_SETTINGS, enabled: false } });
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider,
+			providerSessionId: "provider-session-1",
+			skipPermissions: false,
+		});
+		fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId, "active"),
+			agent: provider,
+			rawEvent: start,
+		});
+		const accepted = fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId),
+			agent: provider,
+			rawEvent: stop,
+			turnId: undefined,
+		});
+		expect(accepted?.alert).toBe("active");
+		expect(fixture.manager.getSession("term-1")?.state).toBe("running");
+	});
+}
+
+test("OpenCode PermissionRequest after Start emits needs-input without inventing queue ordering", () => {
+	const fixture = makeManager({ settings: { ...ENABLED_SETTINGS, enabled: false } });
+	managers.push(fixture.manager);
+	fixture.manager.registerManagedSession({
+		terminalId: "term-1",
+		workspaceId,
+		provider: "opencode",
+		providerSessionId: "provider-session-1",
+		skipPermissions: false,
+	});
+	const send = (rawEvent: string) => {
+		const alert = opencodeConfig.mapEvent(rawEvent);
+		if (!alert) throw Error("Missing provider mapping");
+		return fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId, alert),
+			agent: "opencode",
+			rawEvent,
+			turnId: undefined,
+		});
+	};
+	send("Start");
+	expect(send("PermissionRequest")?.alert).toBe("needs-input");
+	expect(fixture.manager.getSession("term-1")?.state).toBe("needs-input");
+	expect(fixture.statuses.at(-1)?.state).toBe("needs-input");
+});
+
+test("legacy lifecycle callbacks do not consume or resurrect a dismissed queue occurrence", () => {
+	const fixture = makeManager({ settings: { ...ENABLED_SETTINGS, enabled: false } });
+	managers.push(fixture.manager);
+	fixture.manager.registerManagedSession({
+		terminalId: "term-1",
+		workspaceId,
+		provider: "opencode",
+		providerSessionId: "provider-session-1",
+		skipPermissions: false,
+	});
+	const send = (rawEvent: string, alert: AgentEvent["alert"]) =>
+		fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId, alert),
+			agent: "opencode",
+			rawEvent,
+			turnId: undefined,
+		});
+	send("PermissionRequest", "needs-input");
+	const queue = new ActivityQueueService();
+	const id = sessionSourceId(workspaceId, "term-1", "opencode", "provider-session-1");
+	const before = queue.read(id);
+	if (!before?.candidate) throw Error("Missing initial permission attention");
+	send("Start", "active");
+	expect(queue.read(id)?.revision).toBe(before.revision);
+	expect(queue.read(id)?.candidate?.kind).toBe("agent-input");
+	queue.acknowledge({ id, revision: before.revision });
+	send("Stop", "task-complete");
+	expect(fixture.manager.getSession("term-1")?.state).toBe("idle");
+	expect(queue.read(id)?.revision).toBe(before.revision);
+	expect(queue.read(id)?.acknowledgedRevision).toBe(before.revision);
+});
+
+for (const provider of ["claude", "codex"] as const) {
+	test(`${provider} missing-turn callback cannot downgrade an identified active turn`, () => {
+		const fixture = makeManager({ settings: { ...ENABLED_SETTINGS, enabled: false } });
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider,
+			providerSessionId: "provider-session-1",
+			skipPermissions: false,
+		});
+		fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId, "active"),
+			agent: provider,
+		});
+		const accepted = fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId),
+			agent: provider,
+			turnId: undefined,
+		});
+		expect(accepted?.alert).toBe("active");
+		expect(fixture.manager.getSession("term-1")?.state).toBe("running");
+	});
+}

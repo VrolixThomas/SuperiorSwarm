@@ -1,0 +1,157 @@
+$ electron-vite build
+vite v6.4.1 building SSR bundle for production...
+transforming...
+✓ 506 modules transformed.
+rendering chunks...
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/git/operations.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/terminal-sessions.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/terminal-sessions.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/review-workspace.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/atlassian/bitbucket.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/db/index.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/git/branch-ops.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/git/cached-ops.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/git/merge-ops.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/git/repo-watcher.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/folder-projects.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/workspace-service.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/diff.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/merge.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/projects.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/terminal-sessions.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/pr-poller.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/activity-queue/external-runtime.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/comment-poller.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/create-and-queue-solve.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/index.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/pr-poller.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/atlassian/jira.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/activity-queue/ticket-detail.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/activity-queue/ticket-fetch.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/providers/jira-adapter.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/atlassian.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/workspace-service.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/activity-queue/hook-actions.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/activity-queue/pr-solve.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/cleanup.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/control-plane/server.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/index.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/agent-session-manager.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/cross-repo-orchestrators.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/owned-chat.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/cleanup.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/ai-review/commit-poller.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/index.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/ai-review.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/cross-repo-orchestrator-membership.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/control-plane/server.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/cross-repo-orchestrators.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/external-managers.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/cross-repo-orchestrators.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/terminal/daemon-ownership.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/index.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/index.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/terminal/daemon-client.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/linear/linear.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/activity-queue/ticket-detail.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/providers/linear-adapter.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/linear.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/tickets/cache.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/atlassian.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/linear.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/linear.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/atlassian.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/linear.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/tickets.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/telemetry/sync.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/index.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/supabase/auth.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/services/folder-projects.ts is dynamically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/projects.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/projects.ts, /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/workspaces.ts but also statically imported by /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/src/main/trpc/routers/projects.ts, dynamic import will not move module into another chunk.
+
+out/main/process-watchdog-entry.js                0.69 kB
+out/main/workspace-ordering-Pu2x5RxH.js           4.23 kB
+out/main/worktree-cleanup-D8CA3DrW.js             4.54 kB
+out/main/orchestrator-membership-D5CIXfcX.js      5.28 kB
+out/main/cleanup-daemon.js                       26.97 kB
+out/main/terminal-replay-buffer-BKdT9A8T.js      34.94 kB
+out/main/daemon.js                               36.36 kB
+out/main/index.js                             1,967.58 kB
+✓ built in 1.57s
+vite v6.4.1 building SSR bundle for production...
+transforming...
+✓ 7 modules transformed.
+rendering chunks...
+out/preload/index.cjs  11.49 kB
+✓ built in 19ms
+vite v6.4.1 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+✓ 2243 modules transformed.
+rendering chunks...
+../../out/renderer/index.html                                   8.37 kB
+../../out/renderer/assets/codicon-ngg6Pgfi.ttf                121.97 kB
+../../out/renderer/assets/editor.worker-CNgWLVu7.js           540.92 kB
+../../out/renderer/assets/json.worker-D4JVmXIe.js             840.01 kB
+../../out/renderer/assets/html.worker-BT47iy49.js           1,241.54 kB
+../../out/renderer/assets/css.worker-umuuUiIb.js            1,865.95 kB
+../../out/renderer/assets/ts.worker-C7hW3aY-.js            13,264.91 kB
+../../out/renderer/assets/index-CQRGXMbH.css                  307.03 kB
+../../out/renderer/assets/content-hash-BSbnHUwr.js              0.29 kB
+../../out/renderer/assets/azcli-BEAhqcuE.js                     1.30 kB
+../../out/renderer/assets/javascript-BjXz2tTn.js                1.30 kB
+../../out/renderer/assets/ini-BcQysCTb.js                       1.67 kB
+../../out/renderer/assets/csp-D_3BK2Wp.js                       1.70 kB
+../../out/renderer/assets/scheme-D7PxodDG.js                    2.36 kB
+../../out/renderer/assets/bat-Bqkp9Cfu.js                       2.66 kB
+../../out/renderer/assets/xml-Cn4F0ahP.js                       2.75 kB
+../../out/renderer/assets/flow9-ZSTChSMd.js                     2.76 kB
+../../out/renderer/assets/sb-Chfc_wZF.js                        2.81 kB
+../../out/renderer/assets/pla-DEV89yYj.js                       2.87 kB
+../../out/renderer/assets/dockerfile--oxj0cAH.js                3.02 kB
+../../out/renderer/assets/pascaligo-VA_LQ1oU.js                 3.25 kB
+../../out/renderer/assets/lua-hNsuGJkO.js                       3.43 kB
+../../out/renderer/assets/bicep-DIlfshcM.js                     3.44 kB
+../../out/renderer/assets/objective-c-B1L1C5EC.js               3.48 kB
+../../out/renderer/assets/cameligo-CLaaYNMV.js                  3.51 kB
+../../out/renderer/assets/graphql-BeiGgjIU.js                   3.77 kB
+../../out/renderer/assets/lexon-C1U0m2n9.js                     3.81 kB
+../../out/renderer/assets/typespec-R77Ln7Jb.js                  3.90 kB
+../../out/renderer/assets/sparql-DxuVdnRl.js                    3.94 kB
+../../out/renderer/assets/mips-CJm71dS3.js                      4.14 kB
+../../out/renderer/assets/m3-6ko6q9-_.js                        4.15 kB
+../../out/renderer/assets/sophia-D7pU0Y1d.js                    4.27 kB
+../../out/renderer/assets/shell-vZEubQ82.js                     4.48 kB
+../../out/renderer/assets/go-brnMpFrj.js                        4.49 kB
+../../out/renderer/assets/fsharp-D2uoxuLH.js                    4.51 kB
+../../out/renderer/assets/pascal-DMQyD4Xk.js                    4.71 kB
+../../out/renderer/assets/r-CtqYUQ6l.js                         4.80 kB
+../../out/renderer/assets/less-B7Qaxw-O.js                      5.00 kB
+../../out/renderer/assets/tcl-Bb4GCwBr.js                       5.05 kB
+../../out/renderer/assets/liquid-Dd_WKPU1.js                    5.08 kB
+../../out/renderer/assets/qsharp-BWK6YLKm.js                    5.14 kB
+../../out/renderer/assets/cypher-D0--_GAN.js                    5.15 kB
+../../out/renderer/assets/java-Dt3iMn2o.js                      5.16 kB
+../../out/renderer/assets/kotlin-Ddo1SjA5.js                    5.20 kB
+../../out/renderer/assets/hcl-CrX1Es2W.js                       5.21 kB
+../../out/renderer/assets/redis-O7gSt3oh.js                     5.25 kB
+../../out/renderer/assets/restructuredtext-B-KQCVu_.js          5.33 kB
+../../out/renderer/assets/powershell-BXiKvz7Z.js                5.39 kB
+../../out/renderer/assets/coffee-CzJ5oEdj.js                    5.51 kB
+../../out/renderer/assets/mdx-Cu_2sae2.js                       5.76 kB
+../../out/renderer/assets/yaml-j-SrmK8R.js                      5.81 kB
+../../out/renderer/assets/css-i3rI3_64.js                       6.10 kB
+../../out/renderer/assets/cssMode-MR53p7f5.js                   6.15 kB
+../../out/renderer/assets/rust-B1c0VCeq.js                      6.27 kB
+../../out/renderer/assets/apex-DVGUZ64i.js                      6.39 kB
+../../out/renderer/assets/python-BXervaF4.js                    6.43 kB
+../../out/renderer/assets/dart-vLMHv35g.js                      6.48 kB
+../../out/renderer/assets/markdown-B0YTnTxW.js                  6.65 kB
+../../out/renderer/assets/htmlMode-CURmymcZ.js                  6.89 kB
+../../out/renderer/assets/msdax-BBeIktCY.js                     6.95 kB
+../../out/renderer/assets/csharp-BJeIuvde.js                    6.98 kB
+../../out/renderer/assets/swift-BmOZGynf.js                     7.18 kB
+../../out/renderer/assets/html-D7MW7sP9.js                      7.56 kB
+../../out/renderer/assets/typescript-C6skoiZr.js                7.84 kB
+../../out/renderer/assets/ecl-CeuUgzaZ.js                       7.94 kB
+../../out/renderer/assets/cpp-CcN6f0ik.js                       8.22 kB
+../../out/renderer/assets/pug-BxCXwerb.js                       8.26 kB
+../../out/renderer/assets/vb-Bm6ESA0Q.js                        8.33 kB
+../../out/renderer/assets/scss-B42qMyAu.js                      9.07 kB
+../../out/renderer/assets/wgsl-_KPae5vw.js                      9.78 kB
+../../out/renderer/assets/st-C-b0Dh53.js                       10.15 kB
+../../out/renderer/assets/twig-DvgEGWAV.js                     10.26 kB
+../../out/renderer/assets/handlebars-A0PgSg1s.js               10.34 kB
+../../out/renderer/assets/julia-Cm3ItYL_.js                    10.54 kB
+../../out/renderer/assets/scala-DbVzH-3O.js                    10.70 kB
+../../out/renderer/assets/systemverilog-BOC0OOdC.js            11.63 kB
+../../out/renderer/assets/php-Bkx1qpkQ.js                      12.48 kB
+../../out/renderer/assets/protobuf-CndvAUGu.js                 12.68 kB
+../../out/renderer/assets/perl-DC0Z0tlO.js                     12.82 kB
+../../out/renderer/assets/razor-CdWjfXLy.js                    13.27 kB
+../../out/renderer/assets/clojure-fcgFaMHx.js                  13.94 kB
+../../out/renderer/assets/ruby-DCd4DmAr.js                     15.31 kB
+../../out/renderer/assets/sql-BAGepFCR.js                      15.56 kB
+../../out/renderer/assets/mysql-BWiizXSn.js                    16.16 kB
+../../out/renderer/assets/redshift-CvYMMYZY.js                 16.33 kB
+../../out/renderer/assets/pgsql-DaSGFTLp.js                    18.25 kB
+../../out/renderer/assets/elixir-eLfY1jWH.js                   18.74 kB
+../../out/renderer/assets/postiats-CVVurEnu.js                 19.30 kB
+../../out/renderer/assets/powerquery-BQ_t1ZiQ.js               21.65 kB
+../../out/renderer/assets/abap-D5KwWAsZ.js                     22.97 kB
+../../out/renderer/assets/solidity-yHOxYChb.js                 26.03 kB
+../../out/renderer/assets/jsonMode-KT04fXuQ.js                 29.12 kB
+../../out/renderer/assets/tsMode-81D9HVyd.js                   40.32 kB
+../../out/renderer/assets/freemarker2-_jFVvydi.js              42.10 kB
+../../out/renderer/assets/lspLanguageFeatures-DGfBibGw.js      61.69 kB
+../../out/renderer/assets/index-CRo8vHYI.js                12,275.82 kB
+✓ built in 17.25s

@@ -285,7 +285,14 @@ export class AgentSessionManager {
 		let identifiedTurn: string | null = null;
 		if (
 			!observeValidatedAgentEvent(event, (normalized, snapshot) => {
-				event = normalized;
+				// These legacy hooks do not supply turn IDs. Queue uncertainty must not
+				// replace their lifecycle alerts (also broadcast to renderer listeners).
+				// Identified histories and Claude/Codex retain ordered normalization.
+				const legacyLifecycle =
+					(incoming.agent === "opencode" || incoming.agent === "gemini") &&
+					!incoming.turnId &&
+					!snapshot.turnId;
+				event = legacyLifecycle ? { ...normalized, alert: incoming.alert } : normalized;
 				identifiedTurn = snapshot.ordering === "identified" ? snapshot.turnId : null;
 				confirmedPrompt = snapshot.ordering === "identified" && snapshot.continuation === "prompt";
 			})

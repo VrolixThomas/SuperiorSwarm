@@ -1,0 +1,59 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/agent-evidence-persistence.test.ts:
+(pass) claude: acknowledged failure stays handled through Stop, compaction and missing-turn replay [25.44ms]
+(pass) codex: acknowledged failure stays handled through Stop, compaction and missing-turn replay [20.09ms]
+
+tests/agent-event-transition.test.ts:
+(pass) claude > Stop and tool activity retain unresolved permission and actual request text [0.40ms]
+(pass) claude > new prompt explicitly continues without claiming permission was granted [0.05ms]
+(pass) claude > only a matching explicit permission outcome changes pending permission [0.05ms]
+(pass) claude > legacy replay keeps cleared attention cleared; a genuine later turn still appears [0.04ms]
+(pass) claude > missing-turn prompt cannot clear newer work [0.05ms]
+(pass) codex > Stop and tool activity retain unresolved permission and actual request text [0.03ms]
+(pass) codex > new prompt explicitly continues without claiming permission was granted [0.05ms]
+(pass) codex > only a matching explicit permission outcome changes pending permission [0.03ms]
+(pass) codex > legacy replay keeps cleared attention cleared; a genuine later turn still appears
+(pass) codex > missing-turn prompt cannot clear newer work
+(pass) stable event IDs reject replay and provider timestamps reject older events [0.06ms]
+(pass) view-only resume and compaction preserve attention and fingerprint [0.04ms]
+(pass) compaction cannot mutate completed work
+(pass) same-turn new text changes the exact revision fingerprint [0.06ms]
+(pass) uncertain replay cannot invalidate an exact dismissal receipt [0.02ms]
+(pass) old v2 snapshot format retains its receipt unless new evidence arrives [0.06ms]
+(pass) retained permission plus reply and error remain bounded without dropping either kind [0.20ms]
+(pass) unseen event identity alone cannot order a missing-turn Stop after explicit continuation [0.05ms]
+(pass) a distinct permission request replaces stale request text instead of relabeling it [0.01ms]
+(pass) failure receipt and error survive generic Stop and compaction until a real continuation [0.13ms]
+(pass) unconfirmed permission outcome updates wording without reopening an exact receipt
+
+tests/agent-session-manager.test.ts:
+(pass) buildAgentResumeCommand > builds provider-specific resume commands [0.93ms]
+(pass) AgentSessionManager > sleeps a hidden idle agent and wakes it in the preserved shell [23.36ms]
+(pass) AgentSessionManager > does not auto-sleep a visible terminal, then schedules it when hidden [25.24ms]
+(pass) AgentSessionManager > needs-input cancels a pending automatic sleep [72.29ms]
+(pass) AgentSessionManager > keeps orchestrator workspaces awake by default [14.84ms]
+(pass) AgentSessionManager > wakes a non-Claude workspace when an orchestrator sends follow-up work [2.99ms]
+(pass) AgentSessionManager > waits for a completing managed child before resuming the same provider session [10.21ms]
+(pass) AgentSessionManager > fails closed without writing into a child that remains active [6.66ms]
+(pass) AgentSessionManager > records a failed automatic sleep without retrying in a tight loop [19.83ms]
+(pass) AgentSessionManager > keeps exactly one managed dispatch target and ignores newer unmanaged sessions [3.83ms]
+(pass) AgentSessionManager > fails closed when persisted data has multiple managed targets [2.82ms]
+(pass) AgentSessionManager > treats a cascaded session as a harmless automatic-sleep no-op [26.98ms]
+(pass) AgentSessionManager > clears pre-captured in-memory state after database rows cascade away [4.10ms]
+(pass) AgentSessionManager > recovers an interrupted hibernation from the retained shell and wakes it [2.13ms]
+(pass) AgentSessionManager > does not overwrite a hook event that wins a reconciliation race [4.50ms]
+(pass) unidentified Claude completion cannot schedule automatic sleep [19.28ms]
+(pass) opencode lifecycle without turn IDs completes and starts again without changing queue ordering [6.19ms]
+(pass) opencode identified history still rejects an uncorrelated lifecycle downgrade [3.91ms]
+(pass) gemini lifecycle without turn IDs completes and starts again without changing queue ordering [6.19ms]
+(pass) gemini identified history still rejects an uncorrelated lifecycle downgrade [3.80ms]
+(pass) OpenCode PermissionRequest after Start emits needs-input without inventing queue ordering [5.03ms]
+(pass) legacy lifecycle callbacks do not consume or resurrect a dismissed queue occurrence [6.19ms]
+(pass) claude missing-turn callback cannot downgrade an identified active turn [4.41ms]
+(pass) codex missing-turn callback cannot downgrade an identified active turn [4.05ms]
+
+ 47 pass
+ 0 fail
+ 217 expect() calls
+Ran 47 tests across 3 files. [525.00ms]

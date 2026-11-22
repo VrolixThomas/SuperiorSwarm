@@ -285,7 +285,7 @@ async function searchPRs(query: string): Promise<RawSearchIssueNode[]> {
 
 // ── Public API functions ──────────────────────────────────────────────────────
 
-const COMPACT_PR_FIELDS = `headRefName baseRefName headRefOid isDraft state author { ... on User { databaseId } }
+const COMPACT_PR_FIELDS = `headRefName baseRefName headRefOid isDraft state author { ... on User { databaseId } ... on Bot { databaseId } }
  reviewRequests(first: 100) { pageInfo { hasNextPage } nodes { requestedReviewer { ... on User { login } ... on Team { slug organization { login } } } } }
  reviews(last: 100) { totalCount nodes { id state submittedAt author { login } commit { oid } } }
  comments(last: 1) { totalCount nodes { id updatedAt } }`;
