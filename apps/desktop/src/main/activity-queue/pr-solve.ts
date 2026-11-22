@@ -1,23 +1,26 @@
 import { readFileSync } from "node:fs";
 import { and, eq, inArray } from "drizzle-orm";
 import type { WorkspaceQueueRevisionInput } from "../../shared/activity-queue";
-import { pollWorkspace } from "../ai-review/comment-poller";
 import { createAndQueueSolve } from "../ai-review/create-and-queue-solve";
 import { getSettings } from "../ai-review/orchestrator";
 import { requestConfirm } from "../control-plane/confirm-bridge";
 import { getDb } from "../db";
 import { commentSolveSessions, workspaces } from "../db/schema";
+import { getGitProvider } from "../providers/git-provider";
 import { defaultSpawnFn } from "../services/workspace-service";
+import { isPRQueueItemCurrent } from "./pr-scope";
 import { currentExternalQueueItem } from "./queue-view";
 const running = new Set<string>();
 export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
-	const requireLinked = () => {
+	const bound: { workspaceId?: string } = {};
+	const requireLinked = (ownSessionId?: string) => {
 		const item = currentExternalQueueItem(input);
 		if (
 			!item ||
 			item.kind !== "pr-feedback" ||
 			item.target.type !== "pr" ||
-			!item.context.workspaceId
+			!item.context.workspaceId ||
+			!isPRQueueItemCurrent(item)
 		)
 			throw new Error("Link one workspace to this PR before solving feedback.");
 		const row = getDb()
@@ -27,6 +30,7 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 			.get();
 		if (
 			!row ||
+			(bound.workspaceId !== undefined && row.id !== bound.workspaceId) ||
 			row.prProvider !== item.target.provider ||
 			row.prIdentifier !== `${item.target.owner}/${item.target.repo}#${item.target.number}` ||
 			!row.worktreeId
@@ -42,12 +46,14 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 						inArray(commentSolveSessions.status, ["queued", "in_progress"])
 					)
 				)
-				.get()
+				.all()
+				.some((session) => session.id !== ownSessionId)
 		)
 			throw new Error("A solver is already running for this workspace.");
-		return row;
+		return { workspace: row, target: item.target };
 	};
-	const workspace = requireLinked();
+	const { workspace, target } = requireLinked();
+	bound.workspaceId = workspace.id;
 	if (running.has(workspace.id)) throw new Error("A solver launch is already in progress.");
 	running.add(workspace.id);
 	try {
@@ -67,15 +73,25 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 			getSettings().skipPermissions !== settings.skipPermissions
 		)
 			throw new Error("Solver configuration changed while confirming. Review the launch again.");
-		await pollWorkspace(workspace);
+		// A failed or unchanged conditional fetch cannot certify the legacy cache.
+		// Force a complete fetch, bind it to this account/PR, and pass that exact result forward.
+		const git = getGitProvider(target.provider);
+		if (!git.isConnected()) throw new Error("The PR provider is unavailable.");
+		const refresh = await git.getPRCommentsIfChanged(target.owner, target.repo, target.number);
+		if (!refresh.changed) throw new Error("Complete current feedback could not be refreshed.");
 		requireLinked();
 		if (
 			getSettings().cliPreset !== settings.cliPreset ||
 			getSettings().skipPermissions !== settings.skipPermissions
 		)
 			throw new Error("Solver configuration changed. Review the launch again.");
-		const solve = await createAndQueueSolve({ workspaceId: workspace.id });
+		const solve = await createAndQueueSolve({
+			workspaceId: workspace.id,
+			comments: refresh.comments,
+			expectedAccountId: target.accountId,
+		});
 		try {
+			requireLinked(solve.sessionId);
 			const spawned = await defaultSpawnFn({
 				workspaceId: workspace.id,
 				cwd: solve.worktreePath,

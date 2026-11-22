@@ -209,6 +209,13 @@ export async function observeScopedPRPoll(
 				});
 			} else {
 				const old = readPRSnapshot(previous?.snapshot);
+				if (facts.reviewRequested !== true && facts.viewerIsReviewer === undefined && previous) {
+					queue.markUnavailable(
+						sourceId,
+						"Your review history is incomplete. Previous attention is retained."
+					);
+					continue;
+				}
 				const result = classifyPR(
 					old,
 					facts,

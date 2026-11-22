@@ -129,9 +129,22 @@ export class GitHubAdapter implements GitProvider {
 				: Promise.resolve(reviewRes),
 		]);
 
+		const completeComments = async (first: Response, path: string): Promise<RawCommentNode[]> => {
+			const comments: RawCommentNode[] = [];
+			let response = first;
+			for (let page = 1; page <= 100; page++) {
+				if (!response.ok) throw new Error("GitHub comments refresh failed.");
+				const rows: unknown = await response.json();
+				if (!Array.isArray(rows)) throw new Error("GitHub comments refresh is incomplete.");
+				comments.push(...(rows as RawCommentNode[]));
+				if (!response.headers.get("link")?.includes('rel="next"')) return comments;
+				if (page < 100) response = await githubFetch(`${path}?per_page=100&page=${page + 1}`);
+			}
+			throw new Error("GitHub comments exceeded the complete pagination limit.");
+		};
 		const [issueComments, reviewComments] = await Promise.all([
-			issueFull.json() as Promise<RawCommentNode[]>,
-			reviewFull.json() as Promise<RawCommentNode[]>,
+			completeComments(issueFull, `/repos/${owner}/${repo}/issues/${prNumber}/comments`),
+			completeComments(reviewFull, `/repos/${owner}/${repo}/pulls/${prNumber}/comments`),
 		]);
 
 		const newIssueEtag = issueFull.headers.get("etag") ?? issueEtag ?? "";

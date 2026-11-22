@@ -155,6 +155,17 @@ export function cancelQueuePRReview(requestId: string) {
 export function queuePRReviewReceipt(requestId: string) {
 	return read(requestId);
 }
+function finishSubmittedReceipt(receipt: Receipt) {
+	try {
+		// Repeating local cleanup is safe; never repeat the external submission.
+		if (currentExternalQueueItem(receipt)) getActivityQueueService().acknowledge(receipt);
+		receipt.detail = "Review submitted.";
+	} catch {
+		receipt.detail = "Review submitted. Queue cleanup is pending; retrying will not post again.";
+	}
+	write(receipt);
+	return receipt;
+}
 export async function dispatchQueuePRReview(requestId: string) {
 	const claim = getDb().transaction(() => {
 		const current = read(requestId);
@@ -174,7 +185,8 @@ export async function dispatchQueuePRReview(requestId: string) {
 	});
 	// Only the caller winning the pending-to-attempted transition may dispatch.
 	const receipt = claim.receipt;
-	if (!claim.won) return receipt;
+	if (!claim.won) return receipt.status === "submitted" ? finishSubmittedReceipt(receipt) : receipt;
+	let submissionAttempted = false;
 	try {
 		const item = requireItem(receipt);
 		const target = item.target;
@@ -192,6 +204,7 @@ export async function dispatchQueuePRReview(requestId: string) {
 			throw new Error("The PR changed before submission. Nothing was submitted.");
 		requireItem(receipt);
 		try {
+			submissionAttempted = true;
 			if (target.provider === "github") {
 				const response = await githubFetch(
 					`/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}/pulls/${target.number}/reviews`,
@@ -227,9 +240,13 @@ export async function dispatchQueuePRReview(requestId: string) {
 		receipt.detail = "Review submitted.";
 		write(receipt);
 		// A newer occurrence must remain pending.
-		if (currentExternalQueueItem(receipt)) getActivityQueueService().acknowledge(receipt);
-		return receipt;
+		return finishSubmittedReceipt(receipt);
 	} catch (error) {
+		// Any failure after the irreversible call must keep the durable occurrence reserved.
+		if (submissionAttempted) {
+			if (receipt.status !== "submitted") receipt.status = "attempted";
+			return receipt;
+		}
 		receipt.status = "rejected";
 		receipt.detail =
 			error instanceof Error ? error.message : "Approval check failed. Nothing was submitted.";

@@ -213,3 +213,17 @@ test("Bitbucket outside review clears only a previously confirmed unchanged head
 	await observe("third", "simultaneous-review");
 	expect(queue().list().items).toHaveLength(1);
 });
+test("review stays pending when bounded review window loses viewer history", async () => {
+	await poll(pr, { ...facts, reviewRequested: false, viewerReviewHead: "old" });
+	await poll(pr, { ...facts, reviewRequested: false, headSha: "new", viewerReviewHead: "old" });
+	expect(queue().list().items).toHaveLength(1);
+	await poll(pr, {
+		...facts,
+		reviewRequested: false,
+		headSha: "new",
+		viewerReviewHead: undefined,
+		viewerIsReviewer: undefined,
+	});
+	console.log("Pending after unknown bounded viewer history:", queue().list().items.length);
+	expect(queue().list().items).toHaveLength(1);
+});
