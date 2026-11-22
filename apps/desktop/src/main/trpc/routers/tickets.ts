@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { TicketIteration, TicketNavigationTarget, TicketScope } from "../../../shared/tickets";
 import {
 	recordTicketQueueLink,
+	ticketLinkAccount,
 	ticketQueueAccountCurrent,
 } from "../../activity-queue/ticket-runtime";
 import { getAuth as getJiraAuth } from "../../atlassian/auth";
@@ -453,6 +454,7 @@ export const ticketsRouter = router({
 			z.object({
 				provider: z.enum(["linear", "jira"]),
 				ticketId: z.string(),
+				ticketUrl: z.string().optional(),
 				workspaceId: z.string(),
 				queueAccount: z
 					.object({
@@ -470,6 +472,8 @@ export const ticketsRouter = router({
 					!ticketQueueAccountCurrent(input.queueAccount))
 			)
 				throw new Error("Ticket account changed. Refresh the queue.");
+			const linkAccount =
+				input.queueAccount ?? ticketLinkAccount(input.provider, input.ticketId, input.ticketUrl);
 			const db = getDb();
 			db.insert(ticketBranchLinks)
 				.values({
@@ -481,8 +485,7 @@ export const ticketsRouter = router({
 				})
 				.onConflictDoNothing()
 				.run();
-			if (input.queueAccount)
-				recordTicketQueueLink(input.queueAccount, input.ticketId, input.workspaceId);
+			if (linkAccount) recordTicketQueueLink(linkAccount, input.ticketId, input.workspaceId);
 		}),
 
 	getLinkedTickets: publicProcedure.query(() => {

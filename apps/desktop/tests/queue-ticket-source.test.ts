@@ -11,6 +11,9 @@ import {
 	isTicketQueueItemCurrent,
 	prepareTicketQueueAction,
 	recordTicketQueueLink,
+	refreshTicketQueue,
+	stopTicketQueue,
+	ticketLinkAccount,
 	ticketQueueLinks,
 } from "../src/main/activity-queue/ticket-runtime";
 import {
@@ -292,4 +295,75 @@ test("feedback stays resolved on return until a new external comment after new b
 	expect(queue.list().items).toHaveLength(0);
 	poll([fact({ state: "started", comments: [comment("old"), comment("new", "other", 11)] })]);
 	expect(queue.list().items).toHaveLength(1);
+});
+
+test("ordinary ticket linking verifies observed Jira site instead of a bare key", () => {
+	authenticateJira();
+	getDb().update(atlassianAuth).set({ siteUrl: "https://a.atlassian.net" }).run();
+	expect(ticketLinkAccount("jira", "SUP-1", "https://a.atlassian.net/browse/SUP-1")).toMatchObject(
+		jira
+	);
+	expect(() => ticketLinkAccount("jira", "SUP-1", "https://b.atlassian.net/browse/SUP-1")).toThrow(
+		"different Jira site"
+	);
+	expect(() =>
+		ticketLinkAccount("jira", "SUP-1", "https://a.atlassian.net/browse/SUP-2")
+	).toThrow();
+	expect(ticketLinkAccount("jira", "SUP-1")).toBeUndefined();
+});
+
+test("runtime refresh uses complete provider transport and retains state on errors", async () => {
+	authenticateJira();
+	let nodes: unknown[] = [];
+	let fail = false;
+	const transport: TicketQueueTransport = {
+		linear: unavailable,
+		jira: async () => {
+			if (fail) throw Error("offline");
+			return { issues: nodes, isLast: true };
+		},
+	};
+	await refreshTicketQueue(transport);
+	nodes = [
+		{
+			key: "SUP-39",
+			fields: {
+				summary: "Queue task",
+				status: { id: "todo", name: "Todo", statusCategory: { key: "new" } },
+				priority: null,
+				issuetype: { name: "Task" },
+				project: { key: "SUP" },
+				created: "2026-11-22",
+				updated: "2026-11-22",
+				assignee: { accountId: "me", displayName: "Me" },
+			},
+		},
+	];
+	await refreshTicketQueue(transport);
+	expect(queue.list().items[0]?.kind).toBe("ticket-start");
+	fail = true;
+	await refreshTicketQueue(transport);
+	expect(queue.list().items[0]?.stale).toBe(true);
+	fail = false;
+	nodes = [];
+	await refreshTicketQueue(transport);
+	expect(queue.list().items).toHaveLength(0);
+});
+
+test("shutdown invalidates in-flight provider results before DB writes", async () => {
+	authenticateJira();
+	let release: ((value: unknown) => void) | undefined;
+	const transport: TicketQueueTransport = {
+		linear: unavailable,
+		jira: () =>
+			new Promise((resolve) => {
+				release = resolve;
+			}),
+	};
+	const pending = refreshTicketQueue(transport);
+	stopTicketQueue();
+	if (!release) throw Error("transport did not start");
+	release({ issues: [], isLast: true });
+	await pending;
+	expect(getDb().select().from(activityQueueSources).all()).toHaveLength(0);
 });

@@ -16,7 +16,11 @@ import {
 	workspaces,
 } from "../db/schema";
 import { getActivityQueueService } from "./service";
-import { fetchTicketQueueComments, fetchTicketQueueFacts } from "./ticket-fetch";
+import {
+	type TicketQueueTransport,
+	fetchTicketQueueComments,
+	fetchTicketQueueFacts,
+} from "./ticket-fetch";
 import { markTicketPollUnavailable, observeTicketPoll } from "./ticket-source";
 
 const SHOW_ALL = "queue_tickets_show_all";
@@ -124,22 +128,25 @@ export function ticketQueueLinks(account: TicketQueueAccount): Map<string, Ticke
 	return result;
 }
 let running: Promise<void> | null = null;
-async function poll(): Promise<void> {
+let generation = 0;
+async function poll(transport?: TicketQueueTransport): Promise<void> {
+	const startedGeneration = generation;
 	const queue = getActivityQueueService();
 	await Promise.all(
 		currentTicketQueueAccounts().map(async (account) => {
 			const observedAt = Date.now();
 			try {
-				const facts = await fetchTicketQueueFacts(account, account.siteUrl);
-				if (!ticketQueueAccountCurrent(account)) return;
+				const facts = await fetchTicketQueueFacts(account, account.siteUrl, transport);
+				if (generation !== startedGeneration || !ticketQueueAccountCurrent(account)) return;
 				const links = ticketQueueLinks(account);
 				// Bounded concurrent comments: a failed ticket keeps its previous feedback.
 				for (let offset = 0; offset < facts.length; offset += 4) {
+					if (generation !== startedGeneration) return;
 					await Promise.all(
 						facts.slice(offset, offset + 4).map(async (fact) => {
 							if (fact.state !== "started" && !links.has(fact.id)) return;
 							try {
-								fact.comments = await fetchTicketQueueComments(account, fact.id);
+								fact.comments = await fetchTicketQueueComments(account, fact.id, transport);
 							} catch {
 								fact.commentsError =
 									"Ticket comments could not be refreshed. The last confirmed feedback is retained.";
@@ -147,13 +154,13 @@ async function poll(): Promise<void> {
 						})
 					);
 				}
-				if (!ticketQueueAccountCurrent(account)) return;
+				if (generation !== startedGeneration || !ticketQueueAccountCurrent(account)) return;
 				observeTicketPoll(
 					{ account, facts, links, showAll: getTicketQueueSettings().showAll, observedAt },
 					queue
 				);
 			} catch {
-				if (ticketQueueAccountCurrent(account))
+				if (generation === startedGeneration && ticketQueueAccountCurrent(account))
 					markTicketPollUnavailable(
 						account,
 						"Ticket provider could not be refreshed. The last confirmed items are retained.",
@@ -163,9 +170,9 @@ async function poll(): Promise<void> {
 		})
 	);
 }
-export function refreshTicketQueue(): Promise<void> {
+export function refreshTicketQueue(transport?: TicketQueueTransport): Promise<void> {
 	if (!running)
-		running = poll().finally(() => {
+		running = poll(transport).finally(() => {
 			running = null;
 		});
 	return running;
@@ -203,4 +210,42 @@ export function prepareTicketQueueAction(input: {
 	)
 		throw new Error("This ticket is no longer ready to start. Refresh the queue.");
 	return { target: candidate.target, title: candidate.title, settings: getTicketQueueSettings() };
+}
+
+/** Ordinary Tickets UI sends its observed URL so a cached Jira key cannot acquire a new site. */
+export function ticketLinkAccount(
+	provider: "linear" | "jira",
+	ticketId: string,
+	ticketUrl?: string
+): TicketQueueAccount | undefined {
+	const account = currentTicketQueueAccounts().find((value) => value.provider === provider);
+	if (!account) return undefined;
+	if (provider === "linear") return account;
+	if (!ticketUrl) return undefined; // legacy API callers remain unscoped
+	let matches = false;
+	try {
+		const observed = new URL(ticketUrl);
+		const site = account.siteUrl ? new URL(account.siteUrl) : null;
+		matches =
+			!!site &&
+			observed.protocol === "https:" &&
+			observed.origin === site.origin &&
+			decodeURIComponent(observed.pathname) === `/browse/${ticketId}` &&
+			!observed.username &&
+			!observed.password;
+	} catch {
+		/* invalid or ambiguous URLs never establish a site */
+	}
+	if (!matches)
+		throw new Error(
+			"The ticket belongs to a different Jira site. Refresh Tickets before linking it."
+		);
+	return account;
+}
+
+/** Pending network reads may finish, but cannot touch the closed DB after this boundary. */
+export function stopTicketQueue(): void {
+	generation++;
+	if (interval) clearInterval(interval);
+	interval = null;
 }

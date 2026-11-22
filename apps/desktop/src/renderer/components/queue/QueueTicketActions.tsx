@@ -51,6 +51,7 @@ export function QueueTicketActions({
 					type="button"
 					disabled={prepare.isPending || item.stale}
 					onClick={() => void act("start")}
+					data-queue-ticket-start
 					className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[var(--accent-foreground)]"
 				>
 					Start work…

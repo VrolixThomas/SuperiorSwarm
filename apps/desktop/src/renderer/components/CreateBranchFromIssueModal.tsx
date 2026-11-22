@@ -59,6 +59,7 @@ export function CreateBranchFromIssueModal({ issue, onClose, queueStart }: Props
 					await linkTicketMutation.mutateAsync({
 						provider: issue.provider,
 						ticketId: issue.id,
+						ticketUrl: issue.url,
 						workspaceId: workspace.id,
 						queueAccount: queueStart.account,
 					});
@@ -91,6 +92,7 @@ export function CreateBranchFromIssueModal({ issue, onClose, queueStart }: Props
 				linkTicketMutation.mutate({
 					provider: issue.provider,
 					ticketId: issue.id,
+					ticketUrl: issue.url,
 					workspaceId: workspace.id,
 				});
 			}
