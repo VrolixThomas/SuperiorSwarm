@@ -141,6 +141,9 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		// behind using the bare command name instead of an absolute path.
 		const args = preset.buildArgs(launchOpts);
 		const parts = [preset.command];
+		// Solvers carry a per-session task token and terminal callback environment.
+		// A shared Codex daemon must not reuse another launch's environment.
+		if (settings.cliPreset === "codex") parts.push("--no-daemon");
 		if (settings.skipPermissions && preset.permissionFlag) {
 			parts.push(preset.permissionFlag);
 		}

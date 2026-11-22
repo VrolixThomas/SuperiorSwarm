@@ -243,7 +243,7 @@ async function run() {
 	// Test-only adapter keeps every production argument, adding restrictive isolated configuration.
 	writeFileSync(
 		join(bin, provider),
-		`#!/bin/sh\n${provider === "codex" ? '[ "$1" = "--no-daemon" ] || set -- --no-daemon "$@"\n' : ""}exec ${[realBinary, ...wrapperArgs].map(quote).join(" ")} "$@"\n`,
+		`#!/bin/sh\n${provider === "codex" ? '[ "$1" = "--no-daemon" ] || exit 97\n' : ""}exec ${[realBinary, ...wrapperArgs].map(quote).join(" ")} "$@"\n`,
 		{ mode: 0o700 }
 	);
 	process.env["PATH"] = `${bin}:${process.env["PATH"]}`;
@@ -444,6 +444,7 @@ async function run() {
 	const script = readFileSync(launch.scriptPath, "utf8");
 	assert(!script.includes("dangerously"));
 	assert(!script.includes("approval_policy=never"));
+	if (provider === "codex") assert.equal(script.match(/codex --no-daemon/g)?.length, 1);
 	step = "renderer create-before-write";
 	await win.webContents.executeJavaScript(
 		`window.nativeLaunchProbe.start(${JSON.stringify(launch)})`
