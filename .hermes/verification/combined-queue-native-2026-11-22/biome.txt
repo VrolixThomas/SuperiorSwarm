@@ -1,0 +1,173 @@
+apps/desktop/tests/fixtures/combined-queue-electron/renderer.tsx:76:12 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    74 │ 	);
+    75 │ }
+  > 76 │ createRoot(document.getElementById("root")!).render(
+       │            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    77 │ 	<trpc.Provider client={trpcVanilla} queryClient={client}>
+    78 │ 		<QueryClientProvider client={client}>
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:52:14 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    50 │ import { queueHooksRouter } from "../../../src/main/trpc/routers/queue-hooks";
+    51 │ import type { TicketQueueFact, TicketQueueLink } from "../../../src/shared/ticket-queue";
+  > 52 │ const root = process.env["SS_QUEUE_FIXTURE_ROOT"]!;
+       │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    53 │ app.setPath("userData", join(root, "profile"));
+    54 │ app.setPath("sessionData", join(root, "profile"));
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:76:39 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    74 │ async function run() {
+    75 │ 	await app.whenReady();
+  > 76 │ 	migrate(getDb(), { migrationsFolder: process.env["SS_QUEUE_MIGRATIONS"]! });
+       │ 	                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    77 │ 	server.listen();
+    78 │ 	await daemon.connect();
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:295:2 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    293 │ 	]);
+    294 │ 	observeTicketPoll({ account, facts, links, showAll: true, observedAt: Date.now() }, queue);
+  > 295 │ 	facts[1]!.comments = [
+        │ 	^^^^^^^^^
+    296 │ 		{
+    297 │ 			id: "comment-1",
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:311:17 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    309 │ 	);
+    310 │ 	setProjectHooksEnabled(true);
+  > 311 │ 	const status = listProjectHookStatus().find((s) => s.projectId === "repo")!;
+        │ 	               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    312 │ 	assert(status.hash);
+    313 │ 	trustProjectHooks("repo", status.hash);
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:460:15 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    458 │ 	assert.deepEqual(receipts(), originalReceipts);
+    459 │ 	step = "later isolation";
+  > 460 │ 	await select(items["ticket-feedback"]!.id);
+        │ 	             ^^^^^^^^^^^^^^^^^^^^^^^^^
+    461 │ 	await click("Later H", "document.querySelector('[aria-label=\"Queue item details\"]')");
+    462 │ 	const popoverStyle = await js<{
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    458 458 │   	assert.deepEqual(receipts(), originalReceipts);
+    459 459 │   	step = "later isolation";
+    460     │ - → await·select(items["ticket-feedback"]!.id);
+        460 │ + → await·select(items["ticket-feedback"]?.id);
+    461 461 │   	await click("Later H", "document.querySelector('[aria-label=\"Queue item details\"]')");
+    462 462 │   	const popoverStyle = await js<{
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:487:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    485 │ 	step = "Done and Undo across sources";
+    486 │ 	for (const key of ["w-repo", "ticket-start", "pr-feedback", "project-hook"]) {
+  > 487 │ 		const item = items[key]!;
+        │ 		             ^^^^^^^^^^^
+    488 │ 		await select(item.id);
+    489 │ 		await click("Done E", "document.querySelector('[aria-label=\"Queue item details\"]')");
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:511:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    509 │ 		"project-hook",
+    510 │ 	]) {
+  > 511 │ 		const item = items[key]!;
+        │ 		             ^^^^^^^^^^^
+    512 │ 		await select(item.id);
+    513 │ 		await js(
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:549:72 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    547 │ 		wc.sendInputEvent({ type: "keyUp", keyCode: "j", modifiers: ["meta"] });
+    548 │ 		await until(() =>
+  > 549 │ 			js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]!.id)}`)
+        │ 			                                                                    ^^^^^^^^^^^
+    550 │ 		);
+    551 │ 		assert.deepEqual(receipts(), originalReceipts);
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    547 547 │   		wc.sendInputEvent({ type: "keyUp", keyCode: "j", modifiers: ["meta"] });
+    548 548 │   		await until(() =>
+    549     │ - → → → js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]!.id)}`)
+        549 │ + → → → js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]?.id)}`)
+    550 550 │   		);
+    551 551 │   		assert.deepEqual(receipts(), originalReceipts);
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:566:53 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    564 │ 	await click("Close · Esc", "document.querySelector('[aria-label=\"Queue peek\"]')");
+    565 │ 	for (const key of ["w-repo", "ticket-feedback", "pr-feedback", "project-hook"]) {
+  > 566 │ 		await js(`window.mixedQueue.jump(${JSON.stringify(items[key]!.id)})`);
+        │ 		                                                  ^^^^^^^^^^^
+    567 │ 		await until(() =>
+    568 │ 			js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]!.id)}`)
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    564 564 │   	await click("Close · Esc", "document.querySelector('[aria-label=\"Queue peek\"]')");
+    565 565 │   	for (const key of ["w-repo", "ticket-feedback", "pr-feedback", "project-hook"]) {
+    566     │ - → → await·js(`window.mixedQueue.jump(${JSON.stringify(items[key]!.id)})`);
+        566 │ + → → await·js(`window.mixedQueue.jump(${JSON.stringify(items[key]?.id)})`);
+    567 567 │   		await until(() =>
+    568 568 │   			js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]!.id)}`)
+  
+
+apps/desktop/tests/fixtures/combined-queue-electron/main.ts:568:72 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    566 │ 		await js(`window.mixedQueue.jump(${JSON.stringify(items[key]!.id)})`);
+    567 │ 		await until(() =>
+  > 568 │ 			js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]!.id)}`)
+        │ 			                                                                    ^^^^^^^^^^^
+    569 │ 		);
+    570 │ 		assert.deepEqual(receipts(), originalReceipts);
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    566 566 │   		await js(`window.mixedQueue.jump(${JSON.stringify(items[key]!.id)})`);
+    567 567 │   		await until(() =>
+    568     │ - → → → js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]!.id)}`)
+        568 │ + → → → js<boolean>(`window.mixedQueue.state().sessionId===${JSON.stringify(items[key]?.id)}`)
+    569 569 │   		);
+    570 570 │   		assert.deepEqual(receipts(), originalReceipts);
+  
+
+Skipped 4 suggested fixes.
+If you wish to apply the suggested (unsafe) fixes, use the command biome check --fix --unsafe
+
+Checked 3 files in 27ms. Fixed 1 file.
+Found 11 warnings.
