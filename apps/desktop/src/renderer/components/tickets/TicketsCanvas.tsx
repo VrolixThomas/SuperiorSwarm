@@ -4,6 +4,7 @@ import type { MergedTicketIssue, TicketIteration, TicketViewMode } from "../../.
 import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
+import { useQueueTicketStore } from "../../stores/queue-ticket-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { ConnectBanner } from "../ConnectBanner";
@@ -11,6 +12,7 @@ import { CreateBranchFromIssueModal } from "../CreateBranchFromIssueModal";
 import { IssueContextMenu } from "../IssueContextMenu";
 import type { LinkedWorkspace } from "../WorkspacePopover";
 import { AssigneePicker } from "./AssigneePicker";
+import { QueueTicketDetail } from "./QueueTicketDetail";
 import { TicketDetailPanel } from "./TicketDetailPanel";
 import { TicketsBoardView } from "./TicketsBoardView";
 import { TicketsListView } from "./TicketsListView";
@@ -29,6 +31,11 @@ function compareIterations(a: TicketIteration, b: TicketIteration): number {
 }
 
 export function TicketsCanvas() {
+	const destination = useQueueTicketStore((state) => state.destination);
+	return destination ? <QueueTicketDetail /> : <TicketsCanvasBody />;
+}
+
+function TicketsCanvasBody() {
 	const utils = trpc.useUtils();
 
 	const selectedTicketId = useTabStore((s) => s.selectedTicketId);

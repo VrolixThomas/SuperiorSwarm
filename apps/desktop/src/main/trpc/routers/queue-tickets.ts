@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getActivityQueueService } from "../../activity-queue/service";
+import { readTicketQueueDetail } from "../../activity-queue/ticket-detail";
 import {
 	getTicketQueueSettings,
 	prepareTicketQueueAction,
@@ -10,6 +11,18 @@ import { ticketSnapshotFact } from "../../activity-queue/ticket-source";
 import { publicProcedure } from "../index";
 
 export const queueTicketProcedures = {
+	ticketDetail: publicProcedure
+		.input(
+			z.object({
+				sourceId: z.string(),
+				provider: z.enum(["linear", "jira"]),
+				accountId: z.string(),
+				siteId: z.string(),
+				ticketId: z.string(),
+			})
+		)
+		.query(({ input }) => readTicketQueueDetail(input)),
+
 	ticketSettings: publicProcedure.query(() => getTicketQueueSettings()),
 	ticketSetSettings: publicProcedure
 		.input(z.object({ showAll: z.boolean(), defaultAgent: z.enum(["claude", "codex"]) }))

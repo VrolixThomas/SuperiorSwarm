@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ExternalQueueItem } from "../../../shared/activity-queue";
 import type { TicketQueueAccount } from "../../../shared/ticket-queue";
 import type { TicketIssue } from "../../../shared/tickets";
+import { openTicketQueueTarget } from "../../stores/queue-ticket-store";
 import { trpc } from "../../trpc/client";
 import { CreateBranchFromIssueModal } from "../CreateBranchFromIssueModal";
 
@@ -22,7 +23,7 @@ export function QueueTicketActions({
 		setError(null);
 		try {
 			const result = await prepare.mutateAsync({ id: item.id, revision: item.revision, action });
-			if (action === "open") await window.electron.shell.openExternal(result.target.url);
+			if (action === "open") openTicketQueueTarget(item.id, result.target);
 			else
 				setStart({
 					issue: result.issue,

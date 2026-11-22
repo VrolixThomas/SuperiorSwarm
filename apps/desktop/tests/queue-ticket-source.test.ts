@@ -1,6 +1,7 @@
 import "./preload-electron-mock";
 import { beforeAll, beforeEach, expect, test } from "bun:test";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
+import { readTicketQueueDetail } from "../src/main/activity-queue/ticket-detail";
 import {
 	type TicketQueueTransport,
 	fetchTicketQueueComments,
@@ -366,4 +367,33 @@ test("shutdown invalidates in-flight provider results before DB writes", async (
 	release({ issues: [], isLast: true });
 	await pending;
 	expect(getDb().select().from(activityQueueSources).all()).toHaveLength(0);
+});
+
+test("in-app ticket details are account bound and reading never handles the occurrence", async () => {
+	authenticateJira();
+	poll([], { account: jira });
+	poll([fact({ provider: "jira", id: "SUP-1" })], { account: jira });
+	const sourceId = ticketQueueSourceId(jira, "SUP-1");
+	const destination = { ...jira, sourceId, ticketId: "SUP-1" };
+	const reads = {
+		description: async () => ({ description: "Actual task requirements" }),
+		comments: async () => [comment("feedback")],
+	};
+	const detail = await readTicketQueueDetail(destination, reads);
+	expect(detail.description).toBe("Actual task requirements");
+	expect(detail.comments[0]?.id).toBe("feedback");
+	expect(queue.list().items).toHaveLength(1);
+	await expect(readTicketQueueDetail({ ...destination, siteId: "wrong" }, reads)).rejects.toThrow(
+		"account or site"
+	);
+	await expect(
+		readTicketQueueDetail(destination, {
+			...reads,
+			description: async () => {
+				authenticateJira("other-site");
+				return { description: "must not leak" };
+			},
+		})
+	).rejects.toThrow("could not be loaded");
+	expect(queue.list().items).toHaveLength(1);
 });

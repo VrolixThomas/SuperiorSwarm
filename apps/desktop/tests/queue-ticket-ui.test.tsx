@@ -40,6 +40,9 @@ const noop = () => undefined;
 const invalidate = async () => undefined;
 const store = {
 	setActiveWorkspace: noop,
+	setSidebarSegment: (segment: string) => {
+		calls.push({ type: "navigate", input: segment });
+	},
 	addTerminalTab: (_id: string, _cwd: string, _title: string, terminalId: string) => terminalId,
 };
 mock.module("../src/renderer/stores/tab-store", () => ({ useTabStore: { getState: () => store } }));
@@ -189,12 +192,12 @@ async function confirm() {
 		await new Promise((resolve) => setTimeout(resolve, 5));
 	});
 }
-test("Open validates exact receipt and opens ticket without creating or acknowledging", async () => {
+test("Open validates exact receipt and navigates to Tickets without creating or acknowledging", async () => {
 	await mount();
 	await click("Open ticket");
 	expect(calls).toEqual([
 		{ type: "prepare", input: { id: item.id, revision: 2, action: "open" } },
-		{ type: "open", input: issue.url },
+		{ type: "navigate", input: "tickets" },
 	]);
 	expect(document.querySelector("form")).toBeNull();
 });
