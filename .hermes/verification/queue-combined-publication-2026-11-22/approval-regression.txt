@@ -1,0 +1,20 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-pr-actions.test.ts:
+(pass) undo and close reservation never post [3.66ms]
+(pass) main enforces 5-second window [0.47ms]
+(pass) changed head and evidence refuse dispatch [2.06ms]
+(pass) duplicates and uncertain outcomes never post twice [1.41ms]
+(pass) recovered attempted receipt never dispatches [0.69ms]
+(pass) account change during undo retains attention [0.67ms]
+(pass) concurrent distinct request IDs reserve an occurrence only once [0.56ms]
+(pass) uncertain attempt blocks a fresh request ID for same occurrence [0.83ms]
+(pass) successful approval acknowledges only its exact queue occurrence [3.89ms]
+
+tests/queue-pr-approval-recovery.test.ts:
+(pass) successful post keeps submitted receipt if local cleanup fails [1.57ms]
+
+ 10 pass
+ 0 fail
+ 27 expect() calls
+Ran 10 tests across 2 files. [94.00ms]

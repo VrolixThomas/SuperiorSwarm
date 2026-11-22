@@ -1,0 +1,74 @@
+apps/desktop/src/main/activity-queue/pr-publication.ts:80:33 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    78 │ 				.select()
+    79 │ 				.from(draftComments)
+  > 80 │ 				.where(eq(draftComments.id, comment.previousCommentId!))
+       │ 				                            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    81 │ 				.get();
+    82 │ 			const owner = original
+  
+
+apps/desktop/src/main/activity-queue/pr-publication.ts:209:20 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    207 │ 			return true;
+    208 │ 		});
+  > 209 │ 		if (!won) return read(requestId)!;
+        │ 		                 ^^^^^^^^^^^^^^^^
+    210 │ 		attempted = true;
+    211 │ 		const params = { owner: target.owner, repo: target.repo, prNumber: target.number };
+  
+
+apps/desktop/tests/queue-combined-publication.test.ts:61:52 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    59 │  const row=queue().observe({sourceId:id,sourceType:"pr",fingerprint,snapshot:{},observedAt:Date.now(),candidate:{kind,title:id,summary:"Inspect PR",occurredAt:Date.now(),reasons:[],target:{type:"pr",provider:"github",host:"github.com",accountId:"me",owner:"owner",repo:"repo",number}}});return {id:row.sourceId,revision:row.revision};
+    60 │ }
+  > 61 │ function origin(id="review-a"){return {id,revision:queue().read(id)!.revision};}
+       │                                                    ^^^^^^^^^^^^^^^^^
+    62 │ function elapsed(family:"publication"|"review",requestId:string){
+    63 │  const key=`queue-pr-${family}:${requestId}`;const row=getDb().select().from(sessionState).where(eq(sessionState.key,key)).get()!;
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+     59  59 │    const row=queue().observe({sourceId:id,sourceType:"pr",fingerprint,snapshot:{},observedAt:Date.now(),candidate:{kind,title:id,summary:"Inspect PR",occurredAt:Date.now(),reasons:[],target:{type:"pr",provider:"github",host:"github.com",accountId:"me",owner:"owner",repo:"repo",number}}});return {id:row.sourceId,revision:row.revision};
+     60  60 │   }
+     61     │ - function·origin(id="review-a"){return·{id,revision:queue().read(id)!.revision};}
+         61 │ + function·origin(id="review-a"){return·{id,revision:queue().read(id)?.revision};}
+     62  62 │   function elapsed(family:"publication"|"review",requestId:string){
+     63  63 │    const key=`queue-pr-${family}:${requestId}`;const row=getDb().select().from(sessionState).where(eq(sessionState.key,key)).get()!;
+  
+
+apps/desktop/tests/queue-combined-publication.test.ts:63:56 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    61 │ function origin(id="review-a"){return {id,revision:queue().read(id)!.revision};}
+    62 │ function elapsed(family:"publication"|"review",requestId:string){
+  > 63 │  const key=`queue-pr-${family}:${requestId}`;const row=getDb().select().from(sessionState).where(eq(sessionState.key,key)).get()!;
+       │                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    64 │  getDb().update(sessionState).set({value:JSON.stringify({...JSON.parse(row.value),notBefore:Date.now()-1})}).where(eq(sessionState.key,key)).run();
+    65 │ }
+  
+
+apps/desktop/tests/queue-combined-publication.test.ts:99:13 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+     97 │  feedback=[{id:"thread:a",authorId:"reviewer-a",author:"Reviewer A",body:"Fix A",at:Date.now(),threadId:"a"},{id:"thread:b",authorId:"reviewer-b",author:"Reviewer B",body:"Fix B",at:Date.now(),threadId:"b"}];
+     98 │  await pollOwned();
+   > 99 │  const item=(await view.listQueueView()).items.find(i=>i.target.type==="pr"&&i.target.number===9)!;
+        │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    100 │  expect(item.kind).toBe("pr-feedback");
+    101 │  await preparePub("own-comment",item.id);elapsed("publication","own-comment");
+  
+
+Skipped 1 suggested fixes.
+If you wish to apply the suggested (unsafe) fixes, use the command biome check --fix --unsafe
+
+Checked 4 files in 37ms. Fixed 2 files.
+Found 5 warnings.
