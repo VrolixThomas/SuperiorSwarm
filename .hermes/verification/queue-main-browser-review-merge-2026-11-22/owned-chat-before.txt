@@ -11,7 +11,7 @@ tests/owned-chat-launch.test.ts:
 (pass) codex own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [11.64ms]
 [workspace-cwd] Cannot resolve directory: {
   path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-4Ozte5",
-  error:  9 | 
+  error:  9 |
 10 | export function canonicalWorkspaceDirectory(path: string): string {
 11 | 	if (!path || !isAbsolute(path) || path.includes("\0") || Buffer.from(path).toString() !== path)
 12 | 		throw new WorkspaceError("WORKSPACE_PATH_INVALID");

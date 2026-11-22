@@ -1,14 +1,14 @@
 apps/desktop/src/main/terminal/daemon-client.ts:1131:20 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━
 
   ! Forbidden non-null assertion.
-  
+
     1129 │ 		const pending = this.pendingListeners.get(msg.type);
     1130 │ 		if (pending && pending.length > 0) {
   > 1131 │ 			const handler = pending.shift()!;
          │ 			                ^^^^^^^^^^^^^^^^
     1132 │ 			if (pending.length === 0) this.pendingListeners.delete(msg.type);
     1133 │ 			handler(msg);
-  
+
 
 Checked 26 files in 68ms. No fixes applied.
 Found 1 warning.
