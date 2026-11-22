@@ -1,0 +1,27 @@
+{
+  "commit": "e050050c",
+  "status": "approved within UI review scope",
+  "snapshot": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-retest-publication-final-9tuga5v4",
+  "tests": {
+    "originalOriginRegression": 1,
+    "originalReactRegressions": 2,
+    "publicationHook": 5,
+    "surfaceRegressionWithIndependentAdditions": 9
+  },
+  "evidence": [
+    "/tmp/ss-retest-final-review-publication-origin.test.ts.log",
+    "/tmp/ss-retest-final-review-publication-surfaces.test.tsx.log",
+    "/tmp/ss-retest-final-queue-pr-publication-ui.test.tsx.log",
+    "/tmp/ss-retest-final-ui-extra.log"
+  ],
+  "independentAdditions": [
+    "Same-origin identical summary retyped after old component unmount survives completion",
+    "Explicit review close is reflected in persisted origin state while saved text remains"
+  ],
+  "limits": [
+    "Fake RPC, no live posts/GUI",
+    "Backend separately reviewed by parent team",
+    "No author build claim independently repeated"
+  ],
+  "dependencyLinksRemoved": true
+}

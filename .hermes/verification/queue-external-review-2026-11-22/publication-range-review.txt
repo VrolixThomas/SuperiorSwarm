@@ -1,0 +1,10 @@
+bun test v1.3.9 (cf6cdbbb)
+selected approved commit 929a998ab7b8fb7b1e37bb84d92bc53a5185a91c unapproved commit ad994879cb9d6c64995f2d4195d43dd979a33279
+
+tests/review-solve-approved-range.test.ts:
+(pass) solver publication pins local content, exact scope and remote without pushing [186.42ms]
+
+ 1 pass
+ 0 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [259.00ms]

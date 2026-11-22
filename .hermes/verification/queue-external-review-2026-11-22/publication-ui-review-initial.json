@@ -1,0 +1,29 @@
+{
+  "publicationCommit": "d8cba5bd",
+  "publicationStatus": "request changes",
+  "findings": [
+    {
+      "severity": "P1",
+      "file": "apps/desktop/src/renderer/stores/review-mode-store.ts",
+      "line": 94,
+      "summary": "Normal PR workspace restoration clears Queue origin; real SubmitReviewPopover bypasses delayed publication",
+      "proof": "/tmp/review-publication-surfaces.log"
+    },
+    {
+      "severity": "P2",
+      "file": "apps/desktop/src/renderer/components/review-mode/thread/ThreadCard.tsx",
+      "line": 388,
+      "summary": "Late reply result clears draft under current rather than submitted origin",
+      "proof": "/tmp/review-publication-surfaces.log"
+    }
+  ],
+  "existingUITestsPassed": 5,
+  "newReactReproductionsFailed": 2,
+  "generatorCommit": "5add7a48",
+  "generatorStatus": "approved",
+  "generatorTestsPassed": 4,
+  "nativeEvidence": "source/evidence reviewed; not rerun",
+  "publicationSnapshot": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-retest-publication-5ol8nmri",
+  "codex-generatorSnapshot": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-retest-codex-generator-nt33j4_1",
+  "temporaryDependencyLinksRemoved": true
+}

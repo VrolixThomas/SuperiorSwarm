@@ -1,0 +1,11 @@
+bun test v1.3.9 (cf6cdbbb)
+result rejected posts [] storedEdit Correction: do NOT publish the old advice
+
+tests/review-publication-draft-adverse.test.ts:
+(pass) draft edited during publisher preflight must not post the obsolete accepted body [20.89ms]
+(pass) draft resolution cannot post to an original thread belonging to a different PR [1.46ms]
+
+ 2 pass
+ 0 fail
+ 3 expect() calls
+Ran 2 tests across 1 file. [151.00ms]
