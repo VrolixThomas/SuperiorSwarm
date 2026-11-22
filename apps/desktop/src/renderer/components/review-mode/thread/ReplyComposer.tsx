@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from "react";
+import { useReviewDraft, useReviewUI } from "../ReviewUIContext";
 
 interface ReplyComposerProps {
+	draftKey?: string;
 	placeholder: string;
 	initialValue?: string;
 	onDraftChange?: (body: string) => void;
 	autoFocus?: boolean;
 	ariaLabel?: string;
 	submitLabel?: string;
-	onSubmit: (body: string) => void | Promise<void>;
+	onSubmit: (body: string, draftText?: string) => void | Promise<void>;
 	onCancel: () => void;
 }
 
 export function ReplyComposer({
+	draftKey = "composer",
 	placeholder,
 	initialValue = "",
 	autoFocus = false,
@@ -23,7 +26,13 @@ export function ReplyComposer({
 }: ReplyComposerProps) {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [body, setBody] = useState(initialValue);
+	const { active } = useReviewUI();
+	const [savedBody, setSavedBody] = useReviewDraft(`composer:${draftKey}`, initialValue);
+	// A caller-provided draft callback owns persistence (and publication versioning).
+	// Do not revive an already-sent reply from a second session-backed copy.
+	const [localBody, setLocalBody] = useState(initialValue);
+	const body = onDraftChange ? localBody : savedBody;
+	const setBody = onDraftChange ? setLocalBody : setSavedBody;
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const initialValueRef = useRef(initialValue);
 	const dirtyRef = useRef(false);
@@ -35,7 +44,7 @@ export function ReplyComposer({
 		setBusy(true);
 		setError(null);
 		try {
-			await onSubmit(trimmedBody);
+			await onSubmit(trimmedBody, body);
 		} catch (error) {
 			setError(error instanceof Error ? error.message : "Submission failed; draft retained.");
 		} finally {
@@ -46,14 +55,14 @@ export function ReplyComposer({
 		if (initialValueRef.current === initialValue) return;
 		initialValueRef.current = initialValue;
 		if (!dirtyRef.current) setBody(initialValue);
-	}, [initialValue]);
+	}, [initialValue, setBody]);
 
 	useEffect(() => {
-		if (!autoFocus) return;
+		if (!autoFocus || !active) return;
 
 		textareaRef.current?.focus();
 		textareaRef.current?.select();
-	}, [autoFocus]);
+	}, [autoFocus, active]);
 
 	return (
 		<div onMouseDown={(event) => event.stopPropagation()}>

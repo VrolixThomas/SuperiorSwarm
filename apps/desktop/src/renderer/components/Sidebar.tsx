@@ -13,10 +13,11 @@ import { TicketsSidebar } from "./tickets/TicketsSidebar";
 
 interface SidebarProps {
 	collapsed: boolean;
+	navigationInRail?: boolean;
 	onExpand: (section?: "tickets" | "prs" | "hermes") => void;
 }
 
-export function Sidebar({ collapsed }: SidebarProps) {
+export function Sidebar({ collapsed, navigationInRail = true }: SidebarProps) {
 	const { openAddModal, openCreateCrossRepoModal } = useProjectStore();
 	const { data: projectsList } = trpc.projects.list.useQuery();
 	const segment = useTabStore((s) => s.sidebarSegment);
@@ -114,56 +115,58 @@ export function Sidebar({ collapsed }: SidebarProps) {
 			className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]"
 		>
 			{/* Traffic light clearance */}
-			<div className="app-drag flex h-[52px] shrink-0 items-center pl-3 pr-2">
-				<div className="app-no-drag flex shrink-0 items-center gap-0.5">
-					<Tooltip label="Go Back" actionId="nav.workspaceBack">
-						<button
-							type="button"
-							onClick={() => goBackWorkspace()}
-							disabled={!canGoBackWorkspace}
-							aria-label="Go Back"
-							className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
-						>
-							<svg
-								aria-hidden="true"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
+			{segment !== "prs" && (
+				<div className="app-drag flex h-[52px] shrink-0 items-center pl-3 pr-2">
+					<div className="app-no-drag flex shrink-0 items-center gap-0.5">
+						<Tooltip label="Go Back" actionId="nav.workspaceBack">
+							<button
+								type="button"
+								onClick={() => goBackWorkspace()}
+								disabled={!canGoBackWorkspace}
+								aria-label="Go Back"
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
 							>
-								<path d="M15 18l-6-6 6-6" />
-							</svg>
-						</button>
-					</Tooltip>
-					<Tooltip label="Go Forward" actionId="nav.workspaceForward">
-						<button
-							type="button"
-							onClick={() => goForwardWorkspace()}
-							disabled={!canGoForwardWorkspace}
-							aria-label="Go Forward"
-							className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
-						>
-							<svg
-								aria-hidden="true"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
+								<svg
+									aria-hidden="true"
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M15 18l-6-6 6-6" />
+								</svg>
+							</button>
+						</Tooltip>
+						<Tooltip label="Go Forward" actionId="nav.workspaceForward">
+							<button
+								type="button"
+								onClick={() => goForwardWorkspace()}
+								disabled={!canGoForwardWorkspace}
+								aria-label="Go Forward"
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
 							>
-								<path d="M9 18l6-6-6-6" />
-							</svg>
-						</button>
-					</Tooltip>
+								<svg
+									aria-hidden="true"
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M9 18l6-6-6-6" />
+								</svg>
+							</button>
+						</Tooltip>
+					</div>
 				</div>
-			</div>
+			)}
 
 			{/* Segment content */}
 			<div className="flex min-h-0 flex-1 flex-col">
@@ -174,8 +177,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
 					</div>
 				)}
 				{segment === "prs" && (
-					<div className="min-h-0 flex-1 overflow-y-auto">
-						<PullRequestsTab />
+					<div className="min-h-0 flex-1 overflow-hidden">
+						<PullRequestsTab navigationInRail={navigationInRail} />
 					</div>
 				)}
 				{segment === "hermes" && <HermesSidebar />}

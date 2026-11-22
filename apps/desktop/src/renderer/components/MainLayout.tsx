@@ -35,7 +35,7 @@ function WorkspaceLayout({ children, sidebar, diff }: MainLayoutProps) {
 	useEffect(() => {
 		const panel = diffPanelRef.current;
 		if (!panel) return;
-		if (["tickets", "hermes"].includes(segment)) {
+		if (["tickets", "hermes", "prs"].includes(segment)) {
 			if (!panel.isCollapsed()) panel.collapse();
 		} else if (rightPanelOpen && panel.isCollapsed()) panel.expand();
 		else if (!rightPanelOpen && !panel.isCollapsed()) panel.collapse();

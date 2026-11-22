@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PRContext } from "../../shared/github-types";
 import type { QueuePROrigin, QueuePRPublication } from "../../shared/queue-pr-publication";
+import {
+	useReviewQueueOrigin,
+	useReviewUI,
+	useReviewUIStore,
+} from "../components/review-mode/ReviewUIContext";
 import { usePaneStore } from "../stores/pane-store";
 import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
@@ -10,10 +15,12 @@ export function useQueuePRPublication(
 	headSha: string | undefined,
 	binding?: { origin: QueuePROrigin; workspaceId: string } | null
 ) {
-	const reviewOrigin = useReviewModeStore((s) => s.queueOrigin);
+	const reviewOrigin = useReviewQueueOrigin();
+	const scope = useReviewUI();
 	const origin = binding ? { ...binding.origin, workspaceId: binding.workspaceId } : reviewOrigin;
-	const active = useReviewModeStore((s) => s.active);
-	const view = useReviewModeStore((s) => s.view);
+	const globalActive = useReviewModeStore((s) => s.active);
+	const active = scope.review ?? globalActive;
+	const view = useReviewUIStore((s) => s.view);
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const workspace = useTabStore((s) => s.activeWorkspaceId);
 	const applicable =
@@ -58,7 +65,7 @@ export function useQueuePRPublication(
 	const paneTab = usePaneStore((s) =>
 		workspace ? s.getFocusedPane(workspace)?.activeTabId : null
 	);
-	const identity = JSON.stringify([origin, view, segment, workspace, paneTab]);
+	const identity = JSON.stringify([origin, view, segment, workspace, paneTab, scope.active]);
 	const previousIdentity = useRef(identity);
 	useEffect(() => {
 		if (previousIdentity.current !== identity) cancel();
@@ -66,7 +73,7 @@ export function useQueuePRPublication(
 	}, [cancel, identity]);
 	const submit = useCallback(
 		async (payload: QueuePRPublication) => {
-			if (!applicable || !origin || !headSha)
+			if (!applicable || !origin || !headSha || !scope.active)
 				throw new Error("Refresh the queue review before publishing.");
 			if (operation.current) throw new Error("A publication is already pending.");
 			const requestId = crypto.randomUUID();
@@ -141,7 +148,7 @@ export function useQueuePRPublication(
 					});
 			});
 		},
-		[applicable, origin, headSha]
+		[applicable, origin, headSha, scope.active]
 	);
 	const notice = pending ? (
 		<output className="border border-[var(--border)] p-2 text-[12px]">

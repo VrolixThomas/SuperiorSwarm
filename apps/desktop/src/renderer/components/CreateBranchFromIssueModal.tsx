@@ -186,6 +186,7 @@ export function CreateBranchFromIssueModal({ issue, onClose, queueStart }: Props
 
 	return (
 		<div
+			data-browser-modal
 			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-[2px]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();

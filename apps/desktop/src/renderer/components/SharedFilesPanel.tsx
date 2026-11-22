@@ -331,6 +331,7 @@ export function SharedFilesPanel() {
 
 	return (
 		<div
+			data-browser-modal
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/[0.62] backdrop-blur-[4px]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closePanel();

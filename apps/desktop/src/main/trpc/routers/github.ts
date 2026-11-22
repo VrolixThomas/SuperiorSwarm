@@ -20,9 +20,21 @@ import {
 	submitReview,
 } from "../../github/github";
 import { connectGitHub } from "../../github/oauth-flow";
+import { getGitHubCurrentReviewer } from "../../providers/reviewer-identity";
 import { publicProcedure, router } from "../index";
 
 export const githubRouter = router({
+	getCurrentReviewer: publicProcedure
+		.input(
+			z.object({
+				host: z.string(),
+				owner: z.string().min(1),
+				repo: z.string().min(1),
+				accountId: z.string().nullable(),
+			})
+		)
+		.query(({ input }) => getGitHubCurrentReviewer(input)),
+
 	getStatus: publicProcedure.query(() => {
 		const auth = getAuth();
 		return auth

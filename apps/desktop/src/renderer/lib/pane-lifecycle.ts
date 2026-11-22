@@ -1,9 +1,12 @@
 import type { Pane } from "../../shared/pane-types";
 import type { TerminalAPI } from "../../shared/types";
 import { findPaneById, usePaneStore } from "../stores/pane-store";
+import { useTabStore } from "../stores/tab-store";
 
 export function terminalIdsInPane(pane: Pane): string[] {
-	return pane.tabs.filter((tab) => tab.kind === "terminal").map((tab) => tab.id);
+	return pane.tabs
+		.filter((tab) => tab.kind === "terminal" && !tab.id.startsWith("review-path:"))
+		.map((tab) => tab.id);
 }
 
 function disposeTerminal(id: string): void {
@@ -25,8 +28,10 @@ export function closeTabWithTerminalCleanup(
 	const layout = paneStore.getLayout(workspaceId);
 	if (!layout) return;
 	const tab = findPaneById(layout, paneId)?.tabs.find((tab) => tab.id === tabId);
-	if (!tab) return;
-	if (tab.kind === "terminal") disposeTerminal(tab.id);
+	if (!tab || tab.kind === "pr-review") return;
+	if (tab.kind === "review-agent")
+		useTabStore.getState().hideReviewAgentTab(workspaceId, tab.jobId);
+	if (tab.kind === "terminal" && !tab.id.startsWith("review-path:")) disposeTerminal(tab.id);
 	paneStore.removeTabFromPane(workspaceId, paneId, tabId);
 }
 
@@ -40,10 +45,23 @@ export function closePaneWithTerminalCleanup(workspaceId: string, paneId: string
 	const layout = paneStore.getLayout(workspaceId);
 	if (!layout) return;
 	const pane = findPaneById(layout, paneId);
-	if (!pane) return;
+	if (!pane || layout.id === paneId) return;
 
+	for (const tab of pane.tabs)
+		if (tab.kind === "review-agent")
+			useTabStore.getState().hideReviewAgentTab(workspaceId, tab.jobId);
 	for (const terminalId of terminalIdsInPane(pane)) {
 		disposeTerminal(terminalId);
 	}
 	paneStore.closePane(workspaceId, paneId);
+}
+
+/** Closing a view never cancels a job. This explicit action is handled by the PR controller. */
+export const REVIEW_AGENT_STOP_EVENT = "superiorswarm:review-agent-stop";
+export interface ReviewAgentStopDetail {
+	workspaceId: string;
+	jobId: string;
+}
+export function requestReviewAgentStop(detail: ReviewAgentStopDetail): void {
+	window.dispatchEvent(new CustomEvent<ReviewAgentStopDetail>(REVIEW_AGENT_STOP_EVENT, { detail }));
 }

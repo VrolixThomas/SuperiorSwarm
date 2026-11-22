@@ -9,6 +9,7 @@ import {
 type Service = "jira" | "bitbucket";
 
 interface StoredAuth {
+	credentialVersion: string;
 	accessToken: string;
 	refreshToken: string;
 	expiresAt: Date;
@@ -28,15 +29,18 @@ function makeHarness(opts: {
 
 	const deps: AuthCoreDeps<Service> = {
 		getAuth: (service) => store.get(service) ?? null,
-		saveTokens: (service, tokens) => {
+		saveTokens: (service, tokens, expected) => {
+			if (store.get(service)?.credentialVersion !== expected.credentialVersion) return false;
 			store.set(service, {
+				credentialVersion: crypto.randomUUID(),
 				accessToken: tokens.accessToken,
 				refreshToken: tokens.refreshToken,
 				expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
 			});
+			return true;
 		},
-		deleteAuthIfRefreshTokenMatches: (service, refreshToken) => {
-			if (store.get(service)?.refreshToken === refreshToken) {
+		deleteAuthIfMatches: (service, expected) => {
+			if (store.get(service)?.credentialVersion === expected.credentialVersion) {
 				store.delete(service);
 			}
 		},
@@ -52,6 +56,7 @@ function makeHarness(opts: {
 
 function expiredAuth(): StoredAuth {
 	return {
+		credentialVersion: crypto.randomUUID(),
 		accessToken: "old-access-token",
 		refreshToken: "refresh-token-1",
 		expiresAt: new Date(Date.now() - 3600_000),
@@ -60,6 +65,7 @@ function expiredAuth(): StoredAuth {
 
 function validAuth(): StoredAuth {
 	return {
+		credentialVersion: crypto.randomUUID(),
 		accessToken: "old-access-token",
 		refreshToken: "refresh-token-1",
 		expiresAt: new Date(Date.now() + 3600_000),
@@ -156,6 +162,7 @@ describe("token refresh failure handling", () => {
 			auth: expiredAuth(),
 			refresh: async (_service, _refreshToken, store) => {
 				store.set("bitbucket", {
+					credentialVersion: crypto.randomUUID(),
 					accessToken: "access-token-from-another-process",
 					refreshToken: "refresh-token-2",
 					expiresAt: new Date(Date.now() + 7200_000),

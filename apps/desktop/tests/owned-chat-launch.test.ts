@@ -318,3 +318,52 @@ test("whitespace initial prompt stays promptless; leading flag is treated as use
 			expect(readFileSync(launch.scriptPath, "utf8")).toContain("'User request:\n--help'");
 	}
 });
+
+for (const provider of ["claude", "codex"] as const) {
+	test(`${provider} own chat cannot start in an unprepared logical PR root`, async () => {
+		const f = await fixture("orchestrator");
+		getDb()
+			.update(workspaces)
+			.set({ type: "review", worktreeId: null })
+			.where(eq(workspaces.id, f.workspaceId))
+			.run();
+		let calls = 0;
+		await expect(
+			startOwnedChat(
+				{ workspaceId: f.workspaceId, provider },
+				{
+					spawn: async () => {
+						calls++;
+						throw Error("unexpected source checkout launch");
+					},
+				}
+			)
+		).rejects.toThrow("prepare this PR workspace");
+		expect(calls).toBe(0);
+	});
+	test(`${provider} own chat uses the prepared isolated PR checkout`, async () => {
+		const f = await fixture("worktree");
+		const source = directory();
+		const ws = getDb().select().from(workspaces).where(eq(workspaces.id, f.workspaceId)).get();
+		if (!ws) throw Error("Missing test workspace");
+		getDb().update(projects).set({ repoPath: source }).where(eq(projects.id, ws.projectId)).run();
+		getDb()
+			.update(workspaces)
+			.set({ type: "review" })
+			.where(eq(workspaces.id, f.workspaceId))
+			.run();
+		let actualCwd: string | undefined;
+		const launch = await startOwnedChat(
+			{ workspaceId: f.workspaceId, provider },
+			{
+				spawn: async (args) => {
+					actualCwd = args.cwd;
+					return defaultSpawnFn(args);
+				},
+			}
+		);
+		expect(actualCwd).toBe(f.cwd);
+		expect(launch.cwd).toBe(f.cwd);
+		expect(launch.cwd).not.toBe(source);
+	});
+}

@@ -1,8 +1,10 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
+import { openBrowserTab } from "../../browser/lifecycle";
 import {
 	closePaneWithTerminalCleanup,
 	closeTabWithTerminalCleanup,
+	requestReviewAgentStop,
 } from "../../lib/pane-lifecycle";
 import { usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
@@ -12,7 +14,8 @@ import { NewOwnedChat } from "./NewOwnedChat";
 import { PaneContextMenu } from "./PaneContextMenu";
 
 function TabIcon({ kind }: { kind: TabItem["kind"] }) {
-	if (kind === "terminal") {
+	if (kind === "browser") return <span aria-hidden="true">◎</span>;
+	if (kind === "terminal" || kind === "review-agent") {
 		return (
 			<span className="shrink-0 font-mono text-[10px] text-[var(--text-quaternary)]">&gt;_</span>
 		);
@@ -22,7 +25,7 @@ function TabIcon({ kind }: { kind: TabItem["kind"] }) {
 			<span className="shrink-0 h-[6px] w-[6px] rounded-full bg-[var(--term-yellow)] opacity-70" />
 		);
 	}
-	if (kind === "review") {
+	if (kind === "review" || kind === "pr-review") {
 		return (
 			<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
 				<path d="M2 2h12v2H2V2zm0 5h12v2H2V7zm0 5h8v2H2v-2z" />
@@ -101,30 +104,54 @@ function TabPill({
 				/>
 			)}
 			<TabIcon kind={tab.kind} />
-			<span className="min-w-0 truncate">{tab.title}</span>
-			<button
-				type="button"
-				ref={closeRef}
-				aria-label="Close tab"
-				onClick={(e) => {
-					e.stopPropagation();
-					onClose();
-				}}
-				className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border-none bg-transparent p-0 transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] ${
-					isActive
-						? "text-[var(--text-tertiary)] opacity-100"
-						: "text-[var(--text-quaternary)] opacity-0"
-				}`}
-			>
-				<svg aria-hidden="true" width="8" height="8" viewBox="0 0 9 9" fill="none">
-					<path
-						d="M2 2l5 5M7 2l-5 5"
-						stroke="currentColor"
-						strokeWidth="1.4"
-						strokeLinecap="round"
+			<span className="min-w-0 truncate">
+				{tab.title}
+				{tab.kind === "review-agent" && (tab.state === "queued" || tab.state === "preparing")
+					? " · preparing"
+					: tab.kind === "review-agent" && tab.state === "running"
+						? tab.phase === "answering"
+							? " · answering"
+							: " · mapping"
+						: ""}
+			</span>
+			{tab.kind === "review-agent" &&
+				["queued", "preparing", "running"].includes(tab.state ?? "") && (
+					<span
+						aria-label="Agent working"
+						className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border border-[var(--accent)] border-t-transparent"
 					/>
-				</svg>
-			</button>
+				)}
+			{tab.kind === "review-agent" && (tab.state === "failed" || tab.state === "needs-input") && (
+				<span
+					aria-label={tab.state === "failed" ? "Agent failed" : "Agent needs input"}
+					className={`h-[6px] w-[6px] shrink-0 rounded-full ${tab.state === "failed" ? "bg-[var(--term-red)]" : "bg-[var(--term-yellow)]"}`}
+				/>
+			)}
+			{tab.kind !== "pr-review" && (
+				<button
+					type="button"
+					ref={closeRef}
+					aria-label="Close tab"
+					onClick={(e) => {
+						e.stopPropagation();
+						onClose();
+					}}
+					className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border-none bg-transparent p-0 transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] ${
+						isActive
+							? "text-[var(--text-tertiary)] opacity-100"
+							: "text-[var(--text-quaternary)] opacity-0"
+					}`}
+				>
+					<svg aria-hidden="true" width="8" height="8" viewBox="0 0 9 9" fill="none">
+						<path
+							d="M2 2l5 5M7 2l-5 5"
+							stroke="currentColor"
+							strokeWidth="1.4"
+							strokeLinecap="round"
+						/>
+					</svg>
+				</button>
+			)}
 		</div>
 	);
 }
@@ -140,7 +167,9 @@ export function PaneTabBar({
 }) {
 	const setActiveTabInPane = usePaneStore((s) => s.setActiveTabInPane);
 	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
-	const splitPane = usePaneStore((s) => s.splitPane);
+	const splitPane = usePaneStore((s) => s.splitPaneForCommand);
+	const metadata = useTabStore((s) => s.workspaceMetadata[workspaceId]);
+	const canCreateTerminal = metadata?.type !== "review" || Boolean(metadata.reviewWorktreePath);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	// O(1) check: a split root means at least 2 panes exist
@@ -197,7 +226,10 @@ export function PaneTabBar({
 								tab={tab}
 								isActive={isActive}
 								paneId={pane.id}
-								onSelect={() => setActiveTabInPane(workspaceId, pane.id, tab.id)}
+								onSelect={() => {
+									setFocusedPane(pane.id);
+									setActiveTabInPane(workspaceId, pane.id, tab.id);
+								}}
 								onClose={() => closeTabWithTerminalCleanup(workspaceId, pane.id, tab.id)}
 								onContextMenu={(e) => handleTabContextMenu(e, tab)}
 							/>
@@ -206,15 +238,38 @@ export function PaneTabBar({
 				})}
 			</div>
 
+			{/* Workspace browser entry beside the new terminal button. */}
+			<button
+				type="button"
+				aria-label="New browser tab"
+				title="New browser tab"
+				className="app-no-drag shrink-0 rounded px-2 text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+				onClick={() => {
+					setFocusedPane(pane.id);
+					openBrowserTab(workspaceId);
+				}}
+			>
+				◎
+			</button>
 			{/* New terminal button */}
 			<div className="app-no-drag flex shrink-0 items-center pr-1">
 				<button
 					type="button"
 					aria-label="New terminal tab"
+					disabled={!canCreateTerminal}
+					title={
+						canCreateTerminal
+							? "New terminal tab"
+							: "Start an agent to prepare an isolated review workspace"
+					}
 					onClick={() => {
 						// Focus this pane so addTerminalTab adds the tab here
 						setFocusedPane(pane.id);
-						addTerminalTab(workspaceId, activeWorkspaceCwd);
+						addTerminalTab(
+							workspaceId,
+							metadata?.reviewWorktreePath ?? activeWorkspaceCwd,
+							undefined
+						);
 					}}
 					className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 				>
@@ -227,7 +282,19 @@ export function PaneTabBar({
 						/>
 					</svg>
 				</button>
-				<NewOwnedChat workspaceId={workspaceId} paneId={pane.id} />
+				{canCreateTerminal && <NewOwnedChat workspaceId={workspaceId} paneId={pane.id} />}
+				<button
+					type="button"
+					aria-label="Split pane right"
+					title="Split right (⌘\\)"
+					onClick={() => splitPane(workspaceId, pane.id, "horizontal")}
+					className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] border-none bg-transparent text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+				>
+					<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
+						<rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" />
+						<path d="M8 3v10" stroke="currentColor" />
+					</svg>
+				</button>
 			</div>
 
 			{contextMenu && (
@@ -238,6 +305,25 @@ export function PaneTabBar({
 					onSplitDown={() => splitPane(workspaceId, pane.id, "vertical", contextMenu.tab)}
 					onClosePane={
 						canClosePane ? () => closePaneWithTerminalCleanup(workspaceId, pane.id) : undefined
+					}
+					onOpenBesideReview={
+						contextMenu.tab?.kind === "review-agent"
+							? () =>
+									useTabStore.getState().revealReviewAgentTab(workspaceId, {
+										jobId: (contextMenu.tab as Extract<TabItem, { kind: "review-agent" }>).jobId,
+										beside: true,
+									})
+							: undefined
+					}
+					onStopAgent={
+						contextMenu.tab?.kind === "review-agent" &&
+						["queued", "preparing", "running", "needs-input"].includes(contextMenu.tab.state ?? "")
+							? () =>
+									requestReviewAgentStop({
+										workspaceId,
+										jobId: (contextMenu.tab as Extract<TabItem, { kind: "review-agent" }>).jobId,
+									})
+							: undefined
 					}
 					onClose={() => setContextMenu(null)}
 				/>

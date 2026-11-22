@@ -30,6 +30,30 @@ afterAll(() => {
 });
 
 describe("session persistence diffing", () => {
+	test("closing an agent view preserves its runtime session while closed shells are removed", () => {
+		ensureTerminalSessionRow({
+			id: "review-path:hidden:1",
+			workspaceId: "ws-hidden",
+			cwd: "/review",
+		});
+		ensureTerminalSessionRow({ id: "closed-shell", workspaceId: "ws-hidden", cwd: "/review" });
+		saveTerminalSessions({ sessions: [], state: {} });
+		expect(
+			isolatedDb
+				.select()
+				.from(schema.terminalSessions)
+				.where(eq(schema.terminalSessions.id, "review-path:hidden:1"))
+				.get()?.cwd
+		).toBe("/review");
+		expect(
+			isolatedDb
+				.select()
+				.from(schema.terminalSessions)
+				.where(eq(schema.terminalSessions.id, "closed-shell"))
+				.get()
+		).toBeUndefined();
+	});
+
 	test("keeps the hook token stable for daemon-owned terminals across restarts", () => {
 		const first = getOrCreateAgentNotifyToken();
 		const second = getOrCreateAgentNotifyToken();

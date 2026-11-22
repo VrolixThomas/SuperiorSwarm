@@ -17,6 +17,7 @@ import { getWorkspaceCwdOrThrow } from "../src/main/agent-launch/workspace-cwd-l
 import { _setDbForTesting } from "../src/main/db";
 import * as schema from "../src/main/db/schema";
 import { ensureTerminalSessionRow, saveTerminalSessions } from "../src/main/db/session-persistence";
+import { ReviewPathStorage } from "../src/main/review-path/storage";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { rendererTrust } from "../src/main/terminal/renderer-trust";
 import { terminalFileOwners } from "../src/main/terminal/terminal-files";
@@ -48,6 +49,8 @@ let raw: ReturnType<typeof makeRawTestDb>;
 let db: ReturnType<typeof drizzle<typeof schema>>;
 let live = false;
 let liveCwd: string | undefined;
+let inventoryMissing = false;
+const writes: string[] = [];
 let daemonError: Error | undefined;
 let duringList: () => void | Promise<void> = () => {};
 const created: Array<{ id: string; cwd: string | undefined }> = [];
@@ -60,6 +63,8 @@ beforeEach(() => {
 	_setDbForTesting(db);
 	live = false;
 	liveCwd = undefined;
+	inventoryMissing = false;
+	writes.length = 0;
 	daemonError = undefined;
 	duringList = () => {};
 	created.length = 0;
@@ -68,9 +73,13 @@ beforeEach(() => {
 	setupTerminalIPC({
 		hasLiveSession: () => live,
 		isConnected: true,
-		write: () => true,
+		write: (_id: string, data: string) => {
+			writes.push(data);
+			return true;
+		},
 		listSessionsStrict: async () => {
 			await duringList();
+			if (inventoryMissing) return [];
 			return db
 				.select()
 				.from(schema.terminalSessions)
@@ -228,9 +237,16 @@ describe("registered terminal directories", () => {
 		const xro = coordinator("xro-file", path);
 		expectLookupError(xro.id, "WORKSPACE_NOT_DIRECTORY", "Workspace folder is not a directory.");
 	});
-	test("ordinary record wins a duplicate ID, including when its folder is missing", () => {
+	test("entity collision is rejected without rebinding an ordinary workspace", () => {
 		const ws = workspace("same-id");
-		coordinator(ws.id);
+		expect(() => coordinator(ws.id)).toThrow("ambiguous agent entity");
+		expect(
+			db
+				.select()
+				.from(schema.crossRepoOrchestrators)
+				.where(eq(schema.crossRepoOrchestrators.id, ws.id))
+				.get()
+		).toBeUndefined();
 		expect(getWorkspaceCwdOrThrow(ws.id)).toBe(ws.repoPath);
 		rmSync(ws.repoPath, { recursive: true });
 		expectLookupError(ws.id, "WORKSPACE_FOLDER_MISSING", "Workspace folder no longer exists.");
@@ -636,4 +652,198 @@ test("Queue IPC rejects missing identity and invalid intent without inserting ro
 	expect(created).toEqual([]);
 	expect(attached).toEqual([]);
 	expect(db.select().from(schema.terminalSessions).all()).toEqual([]);
+});
+
+describe("owned reading-path terminal attachment", () => {
+	function owned() {
+		const ws = workspace();
+		db.update(schema.workspaces)
+			.set({ type: "review", prProvider: "github", prIdentifier: "owner/repo#1" })
+			.where(eq(schema.workspaces.id, ws.id))
+			.run();
+		const store = new ReviewPathStorage(db);
+		const run = store.begin(
+			{
+				workspaceId: ws.id,
+				provider: "github",
+				owner: "owner",
+				repo: "repo",
+				prNumber: 1,
+				headSha: "a".repeat(40),
+			},
+			{ id: "codex", label: "Codex" },
+			[]
+		);
+		const id = `review-path:${run.id}:${run.version}`;
+		store.attachTerminal(run, id);
+		ensureTerminalSessionRow({ id, workspaceId: ws.id, cwd: ws.repoPath });
+		return { ws, store, run, id };
+	}
+	function failed(result: unknown, code: string) {
+		expect(result).toMatchObject({ error: { code } });
+		expect(created).toEqual([]);
+		expect(attached).toEqual([]);
+		expect(writes).toEqual([]);
+	}
+	test("missing owned PTY never recreates a shell from a durable descriptor", async () => {
+		const { ws, id } = owned();
+		inventoryMissing = true;
+		failed(await create(id, ws.id), "REVIEW_TERMINAL_UNAVAILABLE");
+		expect(db.select().from(schema.terminalSessions).get()?.id).toBe(id);
+		expect(() => terminalFileOwners.target(id, caller)).toThrow("no longer attached");
+	});
+	test("stale local live cache cannot recreate an absent owned PTY", async () => {
+		const { ws, id } = owned();
+		live = true;
+		inventoryMissing = true;
+		failed(await create(id, ws.id), "REVIEW_TERMINAL_UNAVAILABLE");
+	});
+	test("strict daemon inventory attaches an owned PTY even if local cache missed it", async () => {
+		const { ws, id } = owned();
+		expect(await create(id, ws.id)).toEqual({ wasAttached: true });
+		expect(attached).toEqual([{ id, cwd: ws.repoPath }]);
+		expect(created).toEqual([]);
+		expect(writes).toEqual([]);
+	});
+	test.each([false, true])(
+		"Queue attaches owned review PTY without replacing it (cached=%s)",
+		async (cached) => {
+			const { ws, id } = owned();
+			live = cached;
+			expect(
+				await handler("terminal:create")(event, id, ws.repoPath, ws.id, "attach-existing-only")
+			).toEqual({ wasAttached: true });
+			expect(attached).toEqual([{ id, cwd: ws.repoPath, intent: "attach-existing-only" }]);
+			expect(created).toEqual([]);
+			expect(writes).toEqual([]);
+		}
+	);
+	test("Queue does not replace a missing owned review PTY", async () => {
+		const { ws, id } = owned();
+		inventoryMissing = true;
+		failed(
+			await handler("terminal:create")(event, id, ws.repoPath, ws.id, "attach-existing-only"),
+			"REVIEW_TERMINAL_UNAVAILABLE"
+		);
+	});
+	test("Queue rechecks review run ownership after inventory yields", async () => {
+		const { ws, id, store, run } = owned();
+		duringList = () => {
+			store.attachTerminal(run, "replacement");
+		};
+		failed(
+			await handler("terminal:create")(event, id, ws.repoPath, ws.id, "attach-existing-only"),
+			"REVIEW_TERMINAL_OWNERSHIP_MISMATCH"
+		);
+	});
+	test("ended owned runs may expose their surviving terminal without relaunch", async () => {
+		const { ws, id, store, run } = owned();
+		store.fail(run, "Finished fixture");
+		live = true;
+		expect(await create(id, ws.id)).toEqual({ wasAttached: true });
+		expect(created).toEqual([]);
+		expect(writes).toEqual([]);
+	});
+	for (const mismatch of [
+		"unknown run",
+		"version",
+		"binding",
+		"workspace",
+		"provider",
+		"PR",
+		"non-review workspace",
+	]) {
+		test(`rejects durable ownership mismatch: ${mismatch}`, async () => {
+			const { ws, id, store, run } = owned();
+			let requested = id;
+			if (mismatch === "unknown run") requested = "review-path:unknown:1";
+			if (mismatch === "version") requested = `review-path:${run.id}:2`;
+			if (mismatch === "binding") store.attachTerminal(run, "other-terminal");
+			if (mismatch === "workspace") {
+				const document = db.select().from(schema.reviewPathDocuments).get();
+				if (!document) throw new Error("Missing owned run fixture");
+				const payload = JSON.parse(document.payload);
+				payload.runs[0].identity.workspaceId = "another-workspace";
+				db.update(schema.reviewPathDocuments)
+					.set({ payload: JSON.stringify(payload) })
+					.run();
+			}
+			if (mismatch === "provider")
+				db.update(schema.workspaces).set({ prProvider: "bitbucket" }).run();
+			if (mismatch === "PR")
+				db.update(schema.workspaces).set({ prIdentifier: "owner/other#1" }).run();
+			if (mismatch === "non-review workspace")
+				db.update(schema.workspaces).set({ type: "branch" }).run();
+			if (requested !== id)
+				ensureTerminalSessionRow({ id: requested, workspaceId: ws.id, cwd: ws.repoPath });
+			live = true;
+			failed(await create(requested, ws.id), "REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
+		});
+	}
+	test("rechecks durable run binding after daemon inventory yields", async () => {
+		const { ws, id, store, run } = owned();
+		live = true;
+		duringList = () => {
+			store.attachTerminal(run, "replacement");
+		};
+		failed(await create(id, ws.id), "REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
+	});
+	test("reserved owned prefix with malformed identity fails closed", async () => {
+		const ws = workspace();
+		failed(await create("review-path:invalid", ws.id), "REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
+	});
+	test("owned session without its durable terminal row cannot be recreated", async () => {
+		const { ws, id } = owned();
+		db.delete(schema.terminalSessions).run();
+		failed(await create(id, ws.id), "REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
+	});
+	test.each([false, true])(
+		"logical review rejects ordinary shell create/restore (restored=%s)",
+		async (restored) => {
+			const ws = workspace();
+			db.update(schema.workspaces)
+				.set({ type: "review", worktreeId: null })
+				.where(eq(schema.workspaces.id, ws.id))
+				.run();
+			if (restored) {
+				ensureTerminalSessionRow({ id: "shell", workspaceId: ws.id, cwd: ws.repoPath });
+				live = true;
+			}
+			failed(await create("shell", ws.id), "REVIEW_WORKSPACE_NOT_PREPARED");
+		}
+	);
+	test.each([false, true])(
+		"review shell requires a separate registered checkout (isolated=%s)",
+		async (isolated) => {
+			const ws = workspace();
+			const checkout = isolated ? directory("review-checkout") : ws.repoPath;
+			db.insert(schema.worktrees)
+				.values({
+					id: "review-wt",
+					projectId: `project-${ws.id}`,
+					path: checkout,
+					branch: "pr",
+					baseBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			db.update(schema.workspaces)
+				.set({ type: "review", worktreeId: "review-wt" })
+				.where(eq(schema.workspaces.id, ws.id))
+				.run();
+			if (isolated) {
+				expect(await create("shell", ws.id)).toEqual({ wasAttached: false });
+				expect(created).toEqual([{ id: "shell", cwd: checkout }]);
+			} else failed(await create("shell", ws.id), "REVIEW_WORKSPACE_NOT_PREPARED");
+		}
+	);
+	test("ordinary missing terminal retains shell creation behavior", async () => {
+		const ws = workspace();
+		ensureTerminalSessionRow({ id: "ordinary-shell", workspaceId: ws.id, cwd: ws.repoPath });
+		live = true;
+		inventoryMissing = true;
+		expect(await create("ordinary-shell", ws.id)).toEqual({ wasAttached: false });
+		expect(created).toEqual([{ id: "ordinary-shell", cwd: ws.repoPath }]);
+	});
 });

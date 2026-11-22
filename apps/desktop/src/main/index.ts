@@ -27,6 +27,8 @@ import {
 	onPRCommitChanged,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
+import { executeBrowserAgentRequest } from "./browser/agent";
+import { browserRuntime, workspaceBrowser } from "./browser/instance";
 import { type RunningControlPlane, startControlPlane } from "./control-plane";
 import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
 import { attachOrchestratorEventSink, setEventsDir } from "./control-plane/orchestrator-event-sink";
@@ -120,28 +122,43 @@ function createWindow() {
 		trafficLightPosition: { x: 16, y: 18 },
 		webPreferences: {
 			preload: join(__dirname, "../preload/index.cjs"),
+			webviewTag: true,
 			contextIsolation: true,
 			nodeIntegration: false,
 		},
 	});
 	setMainWindow(win);
+	browserRuntime.install(win);
+	log.info("[runtime]", {
+		electron: process.versions.electron,
+		appPath: app.getAppPath(),
+		mainBundle: join(__dirname, "index.js"),
+		pid: process.pid,
+		windowId: win.id,
+	});
 	const rendererURL =
 		process.env["ELECTRON_RENDERER_URL"] ??
 		pathToFileURL(join(__dirname, "../renderer/index.html")).href;
 	rendererTrust.register(win.webContents.id, rendererURL);
 	const rendererId = win.webContents.id;
 	win.webContents.once("destroyed", () => {
+		workspaceBrowser.dispose();
 		rendererTrust.remove(rendererId);
 		terminalFileOwners.invalidateSender(rendererId);
 	});
 	win.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
-		if (isMainFrame && !isInPlace) terminalFileOwners.invalidateSender(rendererId);
+		if (isMainFrame && !isInPlace) {
+			workspaceBrowser.dispose();
+			terminalFileOwners.invalidateSender(rendererId);
+		}
 	});
 
 	win.on("ready-to-show", () => {
 		win.show();
 	});
 
+	win.on("close", () => workspaceBrowser.dispose());
+	win.webContents.on("render-process-gone", () => workspaceBrowser.dispose());
 	win.on("closed", () => {
 		setMainWindow(null);
 	});
@@ -363,6 +380,13 @@ app.whenReady().then(async () => {
 		setEventsDir(join(userData, "events"));
 
 		controlPlane = await startControlPlane({
+			browserRequest: (workspaceId, request) =>
+				executeBrowserAgentRequest(workspaceBrowser, workspaceId, request, (tab) => {
+					const window = getMainWindow();
+					if (!window || window.isDestroyed())
+						throw new Error("Application window is unavailable.");
+					window.webContents.send("browser:open-tab", tab);
+				}),
 			confirm: (r) => requestConfirm(r),
 			spawnFn: defaultSpawnFn,
 		});
@@ -477,6 +501,15 @@ app.whenReady().then(async () => {
 	registerGitProvider(new BitbucketAdapter());
 	registerIssueTracker(new JiraAdapter());
 	registerIssueTracker(new LinearAdapter());
+
+	if (controlPlane) {
+		try {
+			const { initializeReviewPathRuntime } = await import("./review-path/runtime");
+			await initializeReviewPathRuntime();
+		} catch (error) {
+			log.error("[review-path] Runtime initialization failed", error);
+		}
+	}
 
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();

@@ -1,0 +1,23 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-review-migration-merge.test.ts:
+(pass) upgrade from queue branch retains data and installs both schemas [39.29ms]
+(pass) upgrade from main review branch retains data and installs both schemas [28.23ms]
+
+tests/db-startup-migrations.test.ts:
+(pass) startup migration branch compatibility > fresh database uses the canonical migration and records its history [17.58ms]
+(pass) startup migration branch compatibility > newer mixed-branch watermark cannot skip required review-path tables [19.85ms]
+(pass) startup migration branch compatibility > partial schema preserves an existing document and restores preferences [2.76ms]
+(pass) startup migration branch compatibility > partial schema preserves preferences and restores document constraints [2.31ms]
+(pass) startup migration branch compatibility > recorded canonical hash does not conceal missing schema and history stays untouched [2.91ms]
+(pass) startup migration branch compatibility > existing future schema columns and their contents are not replaced [2.00ms]
+(pass) startup migration branch compatibility > repair is atomic when the shipped canonical schema is incomplete [1.68ms]
+(pass) startup migration branch compatibility > healthy databases retain existing review data across repeated startup [3.39ms]
+
+tests/queue-ownership-migration.test.ts:
+(pass) 0067 preserves legacy sessions/messages and enforces polymorphic ownership with foreign keys enabled [31.45ms]
+
+ 11 pass
+ 0 fail
+ 193 expect() calls
+Ran 11 tests across 3 files. [209.00ms]

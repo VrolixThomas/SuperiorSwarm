@@ -247,6 +247,7 @@ async function doPoll(): Promise<void> {
 	// also clear these arrays before continuing or you will fire events for
 	// rolled-back rows.
 	const newPRsToEmit: CachedPR[] = [];
+	const reviewRequestsToReconcile: CachedPR[] = [];
 	const closedPRsToEmit: CachedPR[] = [];
 	const commitChangedToEmit: { pr: CachedPR; previousSha: string }[] = [];
 
@@ -280,6 +281,9 @@ async function doPoll(): Promise<void> {
 		const diffInputFetched = fetched.filter((pr) => !bootstrapSilentProviders.has(pr.provider));
 		const diffInputSuccess = new Set(
 			[...successfulProviders].filter((p) => !bootstrapSilentProviders.has(p))
+		);
+		reviewRequestsToReconcile.push(
+			...diffInputFetched.filter((pr) => pr.state === "open" && pr.role === "reviewer")
 		);
 		const diff = diffTrackedPrs({
 			existingRows,
@@ -340,6 +344,14 @@ async function doPoll(): Promise<void> {
 	}
 
 	// Fire events AFTER the transaction commits.
+	// Recurring mapping uses its durable claim, so restart/failure does not depend on a new-PR edge.
+	const newKeys = new Set(newPRsToEmit.map((pr) => `${pr.provider}:${pr.identifier}`));
+	for (const pr of reviewRequestsToReconcile) {
+		if (newKeys.has(`${pr.provider}:${pr.identifier}`)) continue;
+		void import("./auto-trigger")
+			.then((module) => module.maybeAutoMapReviewRequest(pr))
+			.catch((error) => console.error("[pr-poller] Reading-path auto-map failed", error));
+	}
 	for (const pr of newPRsToEmit) {
 		console.log(`[pr-poller] New PR detected: ${pr.identifier}`);
 		onNewPRHandler?.(pr);

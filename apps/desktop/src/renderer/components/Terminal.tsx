@@ -8,11 +8,13 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
+import { isBrowserURL } from "../../shared/browser";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
 import { terminalCreateErrorCode, terminalCreateErrorMessage } from "../../shared/terminal-create";
 import { TERMINAL_SCROLLBACK_LINES } from "../../shared/terminal-replay";
+import { openBrowserTab } from "../browser/lifecycle";
 import { useTabStore } from "../stores/tab-store";
 import { readTerminalDiagnostics, registerTerminalDiagnostics } from "./terminal-diagnostics";
 import { installTerminalInput } from "./terminal-input";
@@ -118,8 +120,12 @@ export function Terminal({
 	useEffect(() => {
 		if (!ref.current) return;
 
-		const openExternalLink = createTerminalLinkHandler((url) =>
-			window.electron.shell.openExternal(url)
+		const openExternalLink = createTerminalLinkHandler(
+			(url) => window.electron.shell.openExternal(url),
+			(url) => {
+				if (workspaceId && isBrowserURL(url)) openBrowserTab(workspaceId, url);
+				else void window.electron.shell.openExternal(url);
+			}
 		);
 		const term = new XTerm({
 			allowProposedApi: true,

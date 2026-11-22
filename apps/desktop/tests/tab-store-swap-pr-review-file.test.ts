@@ -54,7 +54,12 @@ describe("swapPRReviewFile", () => {
 		expect(usePRReviewSessionStore.getState().sessions.get(sessionKey)?.activeFilePath).toBe(
 			"src/a.ts"
 		);
-		expect(useTabStore.getState().getTabsByWorkspace("ws1")).toHaveLength(0);
+		expect(
+			useTabStore
+				.getState()
+				.getTabsByWorkspace("ws1")
+				.map((tab) => tab.kind)
+		).toEqual(["pr-review"]);
 	});
 
 	test("legacy openPRReviewFile and swapPRReviewFile keep using one Review Mode surface", () => {
@@ -71,6 +76,11 @@ describe("swapPRReviewFile", () => {
 		expect(usePRReviewSessionStore.getState().sessions.get(sessionKey)?.activeFilePath).toBe(
 			"src/b.ts"
 		);
-		expect(useTabStore.getState().getTabsByWorkspace("ws1")).toHaveLength(0);
+		expect(
+			useTabStore
+				.getState()
+				.getTabsByWorkspace("ws1")
+				.map((tab) => tab.kind)
+		).toEqual(["pr-review"]);
 	});
 });

@@ -3,6 +3,7 @@ import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
 import { registerReviewActions } from "./actions/review-actions";
+import { useWorkspaceBrowser } from "./browser/lifecycle";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
@@ -18,12 +19,14 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { MainLayout } from "./components/MainLayout";
 import { NavRail } from "./components/NavRail";
+import { OpenPanelButton } from "./components/OpenPanelButton";
 import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { QueueNavigationRuntime } from "./components/queue/QueueNavigationRuntime";
+import { ReviewAgentJobCoordinator } from "./components/review-mode/useReviewAgentJob";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoordinator";
@@ -110,6 +113,7 @@ export function App() {
 }
 
 function AuthenticatedApp() {
+	useWorkspaceBrowser();
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
@@ -228,6 +232,9 @@ function AuthenticatedApp() {
 
 			paneState.resetCounters(maxPaneId, maxSplitId);
 			resetFileTabCounter(maxFileTabId);
+			const restored = useTabStore.getState();
+			if (restored.activeWorkspaceId)
+				restored.setActiveWorkspace(restored.activeWorkspaceId, restored.activeWorkspaceCwd);
 		}
 	}, [restoreQuery.data]);
 
@@ -502,15 +509,16 @@ function AuthenticatedApp() {
 			<TicketRefreshCoordinator />
 			<WorkspaceQueueSync />
 			<QueueNavigationRuntime />
+			<ReviewAgentJobCoordinator />
 			<NavRail />
-			<div className="ml-[72px] min-w-0">
+			<div className="ml-[72px] h-screen min-w-0">
 				{sidebarView === "settings" ? (
 					<SettingsPage />
 				) : (
 					<>
 						<MainLayout
 							sidebar={(collapsed, onExpand) => (
-								<Sidebar collapsed={collapsed} onExpand={onExpand} />
+								<Sidebar navigationInRail collapsed={collapsed} onExpand={onExpand} />
 							)}
 							diff={<DiffPanel onClose={closeDiffPanel} />}
 						>
@@ -519,26 +527,7 @@ function AuthenticatedApp() {
 						{!rightPanelOpen &&
 							sidebarSegment === "repos" &&
 							!activeWorkspaceId?.startsWith("xro-") && (
-								<button
-									type="button"
-									onClick={openRightPanel}
-									className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-									title="Open panel"
-								>
-									<svg
-										width="8"
-										height="14"
-										viewBox="0 0 8 14"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.5"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										aria-hidden="true"
-									>
-										<path d="M7 1L1 7l6 6" />
-									</svg>
-								</button>
+								<OpenPanelButton onClick={openRightPanel} />
 							)}
 						<AddRepositoryModal />
 						<CreateCrossRepoOrchestratorModal />

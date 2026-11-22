@@ -1,0 +1,57 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/owned-chat-launch.test.ts:
+(pass) claude own chat in worktree: exact cwd/policy/nonce without hijacking dispatch [18.14ms]
+(pass) claude own chat in folder: exact cwd/policy/nonce without hijacking dispatch [10.35ms]
+(pass) claude own chat in orchestrator: exact cwd/policy/nonce without hijacking dispatch [12.37ms]
+(pass) claude own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [14.89ms]
+(pass) codex own chat in worktree: exact cwd/policy/nonce without hijacking dispatch [12.63ms]
+(pass) codex own chat in folder: exact cwd/policy/nonce without hijacking dispatch [16.05ms]
+(pass) codex own chat in orchestrator: exact cwd/policy/nonce without hijacking dispatch [10.39ms]
+(pass) codex own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [12.92ms]
+[workspace-cwd] Cannot resolve directory: {
+  path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-avLxLG",
+  error:  9 | 
+10 | export function canonicalWorkspaceDirectory(path: string): string {
+11 | 	if (!path || !isAbsolute(path) || path.includes("\0") || Buffer.from(path).toString() !== path)
+12 | 		throw new WorkspaceError("WORKSPACE_PATH_INVALID");
+13 | 	try {
+14 | 		const root = realpathSync(path);
+                    ^
+ENOENT: no such file or directory, lstat '/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-avLxLG'
+    path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-avLxLG",
+ syscall: "lstat",
+   errno: -2,
+    code: "ENOENT"
+
+      at canonicalWorkspaceDirectory (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/src/main/agent-launch/workspace-cwd-lookup.ts:14:16)
+      at startOwnedChat (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/src/main/services/owned-chat.ts:23:14)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/tests/owned-chat-launch.test.ts:224:3)
+,
+}
+(pass) deleted workspace and missing folder reject before preparing a launch [4.12ms]
+(pass) the public start API rejects caller-supplied cwd, binary, argv and permission override [4.81ms]
+(pass) failed owned registration removes only the newly prepared terminal [5.17ms]
+(pass) claude explicit ticket prompt is shell-quoted, bounded and reflected in launch descriptor [6.26ms]
+(pass) codex explicit ticket prompt is shell-quoted, bounded and reflected in launch descriptor [5.15ms]
+(pass) whitespace initial prompt stays promptless; leading flag is treated as user text [8.49ms]
+(pass) claude own chat cannot start in an unprepared logical PR root [4.15ms]
+(pass) claude own chat uses the prepared isolated PR checkout [9.41ms]
+(pass) codex own chat cannot start in an unprepared logical PR root [3.89ms]
+(pass) codex own chat uses the prepared isolated PR checkout [5.34ms]
+
+tests/queue-hook-launch.test.ts:
+(pass) claude hook Fix in repo prepares a fresh unmanaged chat without replacing the orchestrator [29.78ms]
+(pass) claude hook Fix in folder prepares a fresh unmanaged chat without replacing the orchestrator [16.73ms]
+(pass) claude hook Fix in orchestrator prepares a fresh unmanaged chat without replacing the orchestrator [17.57ms]
+(pass) codex hook Fix in repo prepares a fresh unmanaged chat without replacing the orchestrator [14.33ms]
+(pass) codex hook Fix in folder prepares a fresh unmanaged chat without replacing the orchestrator [14.29ms]
+(pass) codex hook Fix in orchestrator prepares a fresh unmanaged chat without replacing the orchestrator [17.98ms]
+
+tests/queue-ownership-migration.test.ts:
+(pass) 0067 preserves legacy sessions/messages and enforces polymorphic ownership with foreign keys enabled [39.70ms]
+
+ 25 pass
+ 0 fail
+ 245 expect() calls
+Ran 25 tests across 3 files. [477.00ms]

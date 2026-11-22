@@ -39,7 +39,7 @@ export function NavRail() {
 	return (
 		<nav
 			aria-label="Main navigation"
-			className="fixed inset-y-0 left-0 z-10 flex w-[72px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+			className="fixed inset-y-0 left-0 z-30 flex w-[72px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]"
 		>
 			<div className="app-drag h-[52px] shrink-0" />
 			<div className="flex flex-1 flex-col items-stretch gap-1 px-2 py-2">

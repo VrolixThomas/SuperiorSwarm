@@ -590,7 +590,9 @@ describe("/context.resolve", () => {
 		await fetch(url("/context.resolve?cwd=/x&taskToken=tok-2"), { headers: auth() });
 		const res = await fetch(url("/context.resolve?cwd=/x&taskToken=tok-2"), { headers: auth() });
 		const body = await res.json();
-		expect(body.mode).toBe("none");
+		expect(res.status).toBe(403);
+		expect(body.error).toBe("invalid_task_token");
+		expect(body.mode).toBeUndefined();
 	});
 
 	test("requires auth", async () => {

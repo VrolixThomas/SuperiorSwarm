@@ -6,6 +6,7 @@ import { aiReviewRouter } from "./ai-review";
 import { atlassianRouter } from "./atlassian";
 import { authRouter } from "./auth";
 import { branchesRouter } from "./branches";
+import { browserRouter } from "./browser";
 import { commentSolverRouter } from "./comment-solver";
 import { crossRepoOrchestratorsRouter } from "./cross-repo-orchestrators";
 import { diffRouter } from "./diff";
@@ -24,6 +25,8 @@ import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { reviewRouter } from "./review";
+import { reviewExplanationRouter } from "./review-explanation";
+import { reviewPathRouter } from "./review-path";
 import { settingsRouter } from "./settings";
 import { sharedFilesRouter } from "./shared-files";
 import { systemRouter } from "./system";
@@ -37,6 +40,7 @@ import { workspacesRouter } from "./workspaces";
 export const appRouter = router({
 	activityQueue: activityQueueRouter,
 	queueHooks: queueHooksRouter,
+	browser: browserRouter,
 	auth: authRouter,
 	agentLaunch: agentLaunchRouter,
 	aiReview: aiReviewRouter,
@@ -52,6 +56,8 @@ export const appRouter = router({
 	rebase: rebaseRouter,
 	remote: remoteRouter,
 	review: reviewRouter,
+	reviewExplanation: reviewExplanationRouter,
+	reviewPath: reviewPathRouter,
 	terminalSessions: terminalSessionsRouter,
 	terminalFiles: terminalFilesRouter,
 	atlassian: atlassianRouter,

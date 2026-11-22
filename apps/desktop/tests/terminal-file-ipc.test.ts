@@ -106,6 +106,8 @@ test("terminal:create error classification survives IPC clone and contextBridge 
 		"TERMINAL_WORKSPACE_MISMATCH",
 		"TERMINAL_NOT_RUNNING",
 		"DAEMON_UNAVAILABLE",
+		"REVIEW_TERMINAL_UNAVAILABLE",
+		"REVIEW_TERMINAL_OWNERSHIP_MISMATCH",
 	] as const) {
 		createResult = { error: { code, message: "/private/untrusted/path should not be rendered" } };
 		let received: unknown;

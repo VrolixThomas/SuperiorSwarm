@@ -1,0 +1,87 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/bitbucket-revision-resolution.test.ts:
+13 | 		const [stdout, stderr, code] = await Promise.all([
+14 | 			new Response(child.stdout).text(),
+15 | 			new Response(child.stderr).text(),
+16 | 			child.exited,
+17 | 		]);
+18 | 		if (code !== 0) throw new Error(`${stdout}\n${stderr}`);
+                                 ^
+error: bun test v1.3.9 (cf6cdbbb)
+
+
+tests/bitbucket-revision-resolution.test.ts:
+(pass) resolves abbreviated source and destination hashes in their respective repositories [0.36ms]
+(pass) automatic mapping expands the captured listing hash in the verified fork repository [0.08ms]
+(pass) automatic mapping never substitutes a newer PR head for the captured listing hash [0.07ms]
+(pass) same-prefix replacement cannot certify a different captured commit [0.03ms]
+(pass) auto-map captured resolution fails closed for closed [0.03ms]
+(pass) auto-map captured resolution fails closed for invalid-source
+(pass) auto-map captured resolution fails closed for mismatch
+(pass) auto-map captured resolution fails closed for forbidden
+(pass) complete listing hashes avoid auto-map expansion requests [0.08ms]
+(pass) state polling uses the same exact source revision as detail reads [0.06ms]
+255 | 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
+256 | 	const data = (await res.json()) as BitbucketCompactPR & { source?: BitbucketRevisionSide };
+257 | 	const activity = bitbucketActivity(data, getAuth("bitbucket")?.accountId);
+258 | 	if (!activity.state) throw new Error("Bitbucket PR state missing");
+259 | 	const headSha = await resolveCommitOid(workspace, repoSlug, data.source);
+260 | 	if (!headSha) throw new Error("Bitbucket PR revision unavailable");
+                               ^
+error: Bitbucket PR revision unavailable
+      at getPRState (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/src/main/atlassian/bitbucket.ts:260:26)
+      at async <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/tests/bitbucket-revision-resolution.test.ts:108:17)
+(fail) confirmed MERGED state permits queue cleanup without a source revision [0.17ms]
+255 | 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
+256 | 	const data = (await res.json()) as BitbucketCompactPR & { source?: BitbucketRevisionSide };
+257 | 	const activity = bitbucketActivity(data, getAuth("bitbucket")?.accountId);
+258 | 	if (!activity.state) throw new Error("Bitbucket PR state missing");
+259 | 	const headSha = await resolveCommitOid(workspace, repoSlug, data.source);
+260 | 	if (!headSha) throw new Error("Bitbucket PR revision unavailable");
+                               ^
+error: Bitbucket PR revision unavailable
+      at getPRState (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/src/main/atlassian/bitbucket.ts:260:26)
+      at async <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/tests/bitbucket-revision-resolution.test.ts:108:17)
+(fail) confirmed DECLINED state permits queue cleanup without a source revision [0.04ms]
+255 | 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
+256 | 	const data = (await res.json()) as BitbucketCompactPR & { source?: BitbucketRevisionSide };
+257 | 	const activity = bitbucketActivity(data, getAuth("bitbucket")?.accountId);
+258 | 	if (!activity.state) throw new Error("Bitbucket PR state missing");
+259 | 	const headSha = await resolveCommitOid(workspace, repoSlug, data.source);
+260 | 	if (!headSha) throw new Error("Bitbucket PR revision unavailable");
+                               ^
+error: Bitbucket PR revision unavailable
+      at getPRState (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/src/main/atlassian/bitbucket.ts:260:26)
+      at async <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/tests/bitbucket-revision-resolution.test.ts:108:17)
+(fail) confirmed CLOSED state permits queue cleanup without a source revision
+(pass) open PR state still requires an exact revision [0.03ms]
+(pass) already complete %s-character OIDs require no expansion [0.05ms]
+(pass) already complete %s-character OIDs require no expansion [0.01ms]
+(pass) missing or mutable ref values remain unknown without branch-tip fallback [0.03ms]
+(pass) mismatch lookup result is never exposed as a verified revision [0.05ms]
+(pass) short lookup result is never exposed as a verified revision
+(pass) missing lookup result is never exposed as a verified revision
+(pass) forbidden lookup result is never exposed as a verified revision [0.06ms]
+(pass) uses PR repository only when side repository is absent [0.04ms]
+(pass) file manifest is fenced by expanded revisions (stable) [0.65ms]
+(pass) file manifest is fenced by expanded revisions (head) [0.11ms]
+(pass) file manifest is fenced by expanded revisions (base) [0.04ms]
+(pass) file manifest is fenced by expanded revisions (same-prefix) [0.05ms]
+
+3 tests failed:
+(fail) confirmed MERGED state permits queue cleanup without a source revision [0.17ms]
+(fail) confirmed DECLINED state permits queue cleanup without a source revision [0.04ms]
+(fail) confirmed CLOSED state permits queue cleanup without a source revision
+
+ 23 pass
+ 3 fail
+ 37 expect() calls
+Ran 26 tests across 1 file. [51.00ms]
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/integrate/main-browser-review/apps/desktop/tests/helpers/isolated-file-browser-test.ts:18:29)
+(fail) Bitbucket exact revision resolution [57.44ms]
+
+ 0 pass
+ 1 fail
+Ran 1 test across 1 file. [82.00ms]

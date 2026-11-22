@@ -1,4 +1,5 @@
 import { inArray } from "drizzle-orm";
+import { closeWorkspaceBrowsers } from "../browser/handle";
 import { getDb } from "../db";
 import {
 	agentMessages,
@@ -72,6 +73,7 @@ export async function deleteWorkspaceRecords(input: DeleteWorkspaceRecordsInput)
 		}
 	});
 
+	for (const workspaceId of input.workspaceIds) closeWorkspaceBrowsers(workspaceId);
 	getAgentSessionManager()?.removeSessions(agentTerminalIds);
 	const daemon = getDaemonClient();
 	for (const session of sessions) {

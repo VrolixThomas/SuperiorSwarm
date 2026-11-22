@@ -12,6 +12,8 @@ export interface PRContext {
 }
 
 export interface GitHubReviewComment {
+	/** GitHub database ID or Bitbucket UUID; never a display name. */
+	authorId?: string | null;
 	id: string;
 	body: string;
 	author: string;
@@ -20,6 +22,10 @@ export interface GitHubReviewComment {
 }
 
 export interface GitHubReviewThread {
+	/** False means isResolved is only a legacy placeholder, not a known open state. */
+	resolutionKnown?: boolean;
+	isOutdated?: boolean;
+	originalLine?: number | null;
 	id: string;
 	isResolved: boolean;
 	path: string;
@@ -30,6 +36,13 @@ export interface GitHubReviewThread {
 
 /** An AI draft comment transformed into a thread-like structure for unified rendering */
 export interface AIDraftThread {
+	/** Local draft and immutable revision that own this original anchor. */
+	draftId?: string;
+	commitSha?: string | null;
+	/** Historical or unverified anchors must never be projected onto current code. */
+	isOutdated?: boolean;
+	originalLine?: number | null;
+	category?: string;
 	id: string;
 	isAIDraft: true;
 	draftCommentId: string;
@@ -89,9 +102,13 @@ export interface GitHubPRDetails {
 	reviewThreads: GitHubReviewThread[];
 	conversationComments: GitHubConversationComment[];
 	files: GitHubPRFile[];
+	/** True only after every provider file page was fetched and validated successfully. */
+	filesComplete?: boolean;
 	sourceBranch: string;
 	targetBranch: string;
 	headCommitOid: string;
+	/** Exact target tip supplied by the provider; absent when unavailable. */
+	baseCommitOid?: string;
 }
 
 /** A single item within a file group card — either an AI draft comment or a GitHub thread */

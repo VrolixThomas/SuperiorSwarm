@@ -35,6 +35,7 @@ export function AddRepositoryModal() {
 
 	return (
 		<div
+			data-browser-modal
 			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closeAddModal();

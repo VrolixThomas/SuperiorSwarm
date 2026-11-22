@@ -25,6 +25,12 @@ const CHIP: Record<ThreadBucket, { label: string; className: string }> = {
 };
 
 export function ThreadStatusChip({ thread }: { thread: UnifiedThread }) {
+	if (!thread.isAIDraft && thread.resolutionKnown === false)
+		return (
+			<span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] text-[var(--text-tertiary)]">
+				Resolution unknown
+			</span>
+		);
 	if (thread.isAIDraft && thread.status === "error") {
 		return (
 			<span className="rounded-[4px] bg-[var(--danger-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--color-danger)]">

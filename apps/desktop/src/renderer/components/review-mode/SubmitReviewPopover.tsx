@@ -9,6 +9,7 @@ import {
 import { threadExcerpt } from "../../lib/pr-review-threads";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
+import { useReviewQueueOrigin, useReviewUI } from "./ReviewUIContext";
 
 interface SubmitReviewPopoverProps {
 	prCtx: PRContext;
@@ -42,8 +43,9 @@ export function SubmitReviewPopover({
 	const publication = useQueuePRPublication(prCtx, headSha);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const [verdict, setVerdict] = useState<ReviewVerdict>("COMMENT");
-	const origin = useReviewModeStore((s) => s.queueOrigin);
-	const draftKey = `${origin?.id ?? `${prCtx.provider}:${prCtx.owner}/${prCtx.repo}#${prCtx.number}`}:review`;
+	const origin = useReviewQueueOrigin();
+	const { key: scopeKey } = useReviewUI();
+	const draftKey = `${origin?.id ?? scopeKey ?? `${prCtx.provider}:${prCtx.owner}/${prCtx.repo}#${prCtx.number}`}:review`;
 	const [body, setBody] = useState(() => useReviewModeStore.getState().draftText[draftKey] ?? "");
 	const submissionIdentity = JSON.stringify([
 		origin,
@@ -213,6 +215,7 @@ export function SubmitReviewPopover({
 	return (
 		<div
 			ref={panelRef}
+			data-browser-modal
 			className="absolute right-3 top-11 z-[60] w-[420px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-lg)]"
 		>
 			<div className="border-b border-[var(--border-subtle)] px-4 py-3">

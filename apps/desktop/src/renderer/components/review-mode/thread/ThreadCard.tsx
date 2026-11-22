@@ -7,6 +7,12 @@ import type {
 import { threadAuthor, threadDate } from "../../../lib/pr-review-threads";
 import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { MarkdownRenderer } from "../../MarkdownRenderer";
+import {
+	useReviewDraft,
+	useReviewQueueOrigin,
+	useReviewUI,
+	useReviewUIStore,
+} from "../ReviewUIContext";
 import { ReplyComposer } from "./ReplyComposer";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadStatusChip } from "./ThreadStatusChip";
@@ -29,6 +35,8 @@ interface ThreadCardProps {
 	active?: boolean;
 	callbacks: ThreadCallbacks;
 	contextSlot?: ReactNode;
+	agentNote?: ReactNode;
+	onAsk?: () => void;
 	defaultCollapsed?: boolean;
 	onCollapsedChange?: (collapsed: boolean) => void;
 }
@@ -124,7 +132,9 @@ function FileLineLink({
 	thread: UnifiedThread;
 	onOpenInChanges?: (path: string, threadId: string) => void;
 }) {
-	const label = fileLabel(thread.path, thread.line);
+	const label =
+		fileLabel(thread.path, thread.originalLine ?? thread.line) +
+		(thread.isOutdated ? " · historical anchor" : "");
 
 	if (!onOpenInChanges) {
 		return (
@@ -158,7 +168,9 @@ function CollapsedThread({
 	active: boolean;
 	onExpand: () => void;
 }) {
-	const label = fileLabel(thread.path, thread.line);
+	const label =
+		fileLabel(thread.path, thread.originalLine ?? thread.line) +
+		(thread.isOutdated ? " · historical anchor" : "");
 	const author = threadAuthor(thread);
 
 	return (
@@ -193,6 +205,8 @@ export function ThreadCard({
 	active = false,
 	callbacks,
 	contextSlot,
+	agentNote,
+	onAsk,
 	defaultCollapsed = true,
 	onCollapsedChange,
 }: ThreadCardProps) {
@@ -200,9 +214,10 @@ export function ThreadCard({
 	const isAIDraft = aiThread !== null;
 	const isInlineResolvedGitHub =
 		variant === "inline" && githubThread !== null && githubThread.isResolved;
-	const origin = useReviewModeStore((state) => state.queueOrigin);
-	const replyDraftKey = `${origin?.id ?? "review"}:${thread.id}`;
-	const replyIdentity = JSON.stringify([origin, thread.id]);
+	const origin = useReviewQueueOrigin();
+	const { key: scopeKey } = useReviewUI();
+	const replyDraftKey = `${origin?.id ?? scopeKey ?? "review"}:${thread.id}`;
+	const replyIdentity = JSON.stringify([scopeKey, origin, thread.id]);
 	const latestReplyIdentity = useRef(replyIdentity);
 	latestReplyIdentity.current = replyIdentity;
 	const composerEpoch = useRef(0);
@@ -213,10 +228,15 @@ export function ThreadCard({
 			mounted.current = false;
 		};
 	}, []);
-	const [composer, setComposer] = useState<"reply" | "edit" | null>(null);
+	const [composer, setComposer] = useReviewDraft<"reply" | "edit" | null>(
+		origin ? `thread:${replyDraftKey}:composer` : `thread:${thread.id}:composer`,
+		null
+	);
+	// Preserve draft text saved by the reading workspace before Queue publication was integrated.
+	const [sessionReplyDraft] = useReviewDraft(`composer:${thread.id}:reply`, "");
 	const [collapsed, setCollapsed] = useState(isInlineResolvedGitHub ? defaultCollapsed : false);
-	const intent = useReviewModeStore((state) => state.intent);
-	const clearIntent = useReviewModeStore((state) => state.clearIntent);
+	const intent = useReviewUIStore((state) => state.intent);
+	const clearIntent = useReviewUIStore((state) => state.clearIntent);
 	const paddingClassName = variant === "full" ? "px-4" : "px-3";
 	const bodyPaddingClassName = variant === "full" ? "px-4 py-3" : "px-3 py-2.5";
 	const dateLabel = relativeDate(threadDate(thread));
@@ -244,7 +264,7 @@ export function ThreadCard({
 		}
 
 		clearIntent();
-	}, [clearIntent, intent, isAIDraft, thread.id, updateCollapsed]);
+	}, [clearIntent, intent, isAIDraft, thread.id, updateCollapsed, setComposer]);
 
 	if (collapsed && githubThread !== null) {
 		return (
@@ -343,6 +363,16 @@ export function ThreadCard({
 				</div>
 			)}
 
+			{agentNote}
+			{onAsk && (
+				<button
+					type="button"
+					onClick={onAsk}
+					className="mx-3 mb-2 text-[12px] text-[var(--accent-hover)]"
+				>
+					Ask agent
+				</button>
+			)}
 			{showActions && (
 				<div className={`border-t border-[var(--border-subtle)] py-1.5 ${paddingClassName}`}>
 					<ThreadActions
@@ -362,6 +392,7 @@ export function ThreadCard({
 			{composer === "edit" && aiThread !== null && (
 				<div className={`border-t border-[var(--border-subtle)] pb-3 pt-2 ${paddingClassName}`}>
 					<ReplyComposer
+						draftKey={`${origin ? replyDraftKey : thread.id}:${composer}`}
 						placeholder="Edit comment"
 						ariaLabel="Edit comment"
 						submitLabel="Save"
@@ -379,18 +410,23 @@ export function ThreadCard({
 			{composer === "reply" && githubThread !== null && (
 				<div className={`border-t border-[var(--border-subtle)] pb-3 pt-2 ${paddingClassName}`}>
 					<ReplyComposer
+						draftKey={`${origin ? replyDraftKey : thread.id}:${composer}`}
 						placeholder="Reply..."
 						key={replyIdentity}
-						initialValue={useReviewModeStore.getState().draftText[replyDraftKey] ?? ""}
+						initialValue={
+							useReviewModeStore.getState().draftText[replyDraftKey] ?? sessionReplyDraft
+						}
 						onDraftChange={(body) =>
 							useReviewModeStore.getState().setDraftText(replyDraftKey, body)
 						}
 						ariaLabel="Reply to thread"
 						submitLabel="Reply"
 						autoFocus
-						onSubmit={async (body) => {
+						onSubmit={async (body, rawDraft) => {
 							const submittedKey = replyDraftKey;
-							const submittedDraft = useReviewModeStore.getState().draftText[submittedKey] ?? body;
+							const submittedDraft = rawDraft ?? body;
+							if (useReviewModeStore.getState().draftText[submittedKey] === undefined)
+								useReviewModeStore.getState().setDraftText(submittedKey, submittedDraft);
 							const version = useReviewModeStore.getState().draftVersions[submittedKey];
 							const epoch = composerEpoch.current;
 							await callbacks.onReply?.(githubThread.id, body);

@@ -1,4 +1,5 @@
 import type { LayoutNode } from "../../shared/pane-types";
+import { openBrowserTab } from "../browser/lifecycle";
 import { closePaneWithTerminalCleanup, closeTabWithTerminalCleanup } from "../lib/pane-lifecycle";
 import { useActionStore } from "../stores/action-store";
 import { useActivityQueueStore } from "../stores/activity-queue-store";
@@ -85,6 +86,17 @@ export function registerCoreActions() {
 	const hasWorkspace = () => useTabStore.getState().activeWorkspaceId !== null;
 
 	store.registerMany([
+		{
+			id: "browser.open",
+			label: "Open Browser Tab",
+			category: "General",
+			when: hasWorkspace,
+			keywords: ["web", "preview", "localhost"],
+			execute: () => {
+				const id = useTabStore.getState().activeWorkspaceId;
+				if (id) openBrowserTab(id);
+			},
+		},
 		// ── General ─────────────────────────────────────────────────────────
 		{
 			id: "general.commandPalette",
@@ -435,7 +447,7 @@ export function registerCoreActions() {
 				if (!wsId) return;
 				const paneState = usePaneStore.getState();
 				const focused = paneState.getFocusedPane(wsId);
-				if (focused) paneState.splitPane(wsId, focused.id, "horizontal");
+				if (focused) paneState.splitPaneForCommand(wsId, focused.id, "horizontal");
 			},
 			keywords: ["split", "horizontal", "divide"],
 		},
@@ -450,7 +462,7 @@ export function registerCoreActions() {
 				if (!wsId) return;
 				const paneState = usePaneStore.getState();
 				const focused = paneState.getFocusedPane(wsId);
-				if (focused) paneState.splitPane(wsId, focused.id, "vertical");
+				if (focused) paneState.splitPaneForCommand(wsId, focused.id, "vertical");
 			},
 			keywords: ["split", "vertical", "divide"],
 		},

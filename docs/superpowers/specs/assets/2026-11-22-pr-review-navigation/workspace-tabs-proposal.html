@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR workspace navigation — planning concept</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0b0d;--surface:#171719;--raised:#212124;--border:#303034;--text:#ededf0;--muted:#a4a4ad;--accent:#218cff;--green:#72ce99;--amber:#e7bd72}
+*{box-sizing:border-box}body{margin:0;background:#08090b;color:var(--text);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,sans-serif}button{font:inherit;color:inherit;background:transparent;border:1px solid var(--border);border-radius:6px;padding:7px 12px;cursor:pointer}button:hover{background:#29292e}button:disabled{opacity:.4;cursor:default}button:focus-visible{outline:2px solid #80baff;outline-offset:2px}.primary{background:var(--accent);border-color:var(--accent);color:white}.primary:hover{background:#3e9cff}.muted{color:var(--muted)}.small{font-size:12px}h1,h2,h3,p{margin:0}h1{font-size:20px}h2{font-size:18px}h3{font-size:13px}.demo{max-width:1512px;margin:22px auto 14px;padding:0 12px}.demo p{margin:4px 0 12px;color:var(--muted)}.states{display:flex;flex-wrap:wrap;gap:6px}.states button[aria-pressed=true]{border-color:var(--accent);color:#96c7ff}.frame{max-width:1512px;height:820px;max-height:calc(100vh - 190px);min-height:570px;margin:0 auto 24px;border:1px solid #414146;border-radius:12px;overflow:hidden;display:grid;grid-template-columns:228px 1fr;background:var(--bg)}.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}.brand{height:48px;padding:12px 16px;border-bottom:1px solid var(--border);font-weight:650}.global{padding:12px;display:flex;gap:12px;color:var(--muted);border-bottom:1px solid var(--border)}.global strong{color:var(--text)}.repo{margin:16px 12px 8px;font-weight:600}.pr{margin:2px 8px;padding:10px;border-radius:6px;color:var(--muted);font-size:12px}.pr.selected{background:#16314a;color:#edf6ff;border-left:3px solid var(--accent)}.pr strong{display:block;font-size:13px}.foot{margin-top:auto;padding:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}.workspace{min-width:0;display:flex;flex-direction:column}.context{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:8px 16px;border-bottom:1px solid var(--border)}.context .arrows{display:flex;gap:4px}.context button{padding:3px 9px}.context .title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.context .open{font-size:11px;padding:2px 7px;background:#203029;border-radius:4px;color:var(--green)}.tabs{height:42px;flex:none;display:flex;align-items:center;gap:5px;padding:5px 12px;border-bottom:1px solid var(--border);background:#111113}.tab{height:31px;display:flex;align-items:center;gap:10px;max-width:320px;padding:3px 12px;background:#18181b;border-color:transparent}.tab[aria-selected=true]{background:#28282e;border-bottom:2px solid var(--accent)}.badge{font-size:11px;color:var(--amber);white-space:nowrap}.badge.done{color:var(--green)}.content{flex:1;min-height:0;overflow:auto}.subnav{height:46px;display:flex;gap:7px;align-items:center;padding:7px 18px;border-bottom:1px solid var(--border)}.subnav button{border-color:transparent;font-size:12px;padding:5px 11px}.subnav button[aria-selected=true]{background:#29292f;color:#fff}.subnav .right{margin-left:auto}.overview{padding:28px;max-width:1000px}.overview .intro{margin:8px 0 22px}.card{padding:20px;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-bottom:16px}.card p{margin-top:8px;color:var(--muted)}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.spread{justify-content:space-between}.gap{margin-top:18px}.changes{height:calc(100% - 46px);min-height:350px;display:grid;grid-template-columns:230px 1fr}.files{background:#131315;border-right:1px solid var(--border);padding:12px 8px}.order{display:flex;gap:5px;margin-bottom:12px}.order button{font-size:11px;padding:4px 8px}.file{padding:10px;font-size:12px;color:var(--muted);border-radius:5px}.file.active{background:#2a2a30;color:var(--text)}.code{min-width:0;overflow:auto}.filename{padding:12px 16px;border-bottom:1px solid var(--border);font:12px ui-monospace,monospace}.note{padding:12px 16px;background:#132131;color:#bfd9ed;font-size:12px;border-bottom:1px solid var(--border)}pre{margin:0;padding:22px;font:13px/1.9 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d4d4df;white-space:pre-wrap}.added{display:block;background:#193025;color:#a2dfb8}.line{color:#74747d}.findings{padding:24px;max-width:1000px}.finding{border-left:3px solid var(--amber)}.agent{padding:24px;max-width:1050px}.statusline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 24px}.statuspill{border:1px solid #64533a;color:var(--amber);padding:3px 9px;border-radius:20px;font-size:12px}.timeline{margin:16px 0 0;list-style:none;padding:0;display:grid;gap:10px}.timeline li{display:flex;gap:12px;color:var(--muted)}.timeline li.current{color:var(--text)}.timeline .tick{width:18px;color:var(--green)}.timeline .now{color:var(--amber)}.log{background:#090a0c;border:1px solid var(--border);padding:14px 18px;border-radius:6px;font:12px/1.8 ui-monospace,monospace;color:#bac0c9;white-space:pre-wrap}.notice{padding:12px 14px;background:#292116;border:1px solid #68512f;border-radius:6px;color:#e7d5b3}.summary{margin-top:16px}.illustration{font-size:11px;color:#82828d;margin-top:16px}[hidden]{display:none!important}@media(max-width:900px){.frame{grid-template-columns:180px 1fr;margin:0 8px}.changes{grid-template-columns:180px 1fr}.overview,.agent,.findings{padding:18px}.demo{margin-top:12px}.frame{max-height:none;height:760px}.context .title{font-size:12px}.subnav{padding-left:8px}}
+</style>
+<div class="demo">
+  <h1>PR review as a normal workspace</h1>
+  <p>Planning mock only. Click Review / Codex, the review subviews, and Back / Forward. States, content and durations below are illustrative; no agent is launched.</p>
+  <div class="states" aria-label="Illustrative job state">
+    <button data-state="idle">Before start</button><button data-state="preparing">Preparing</button><button data-state="running">Running</button><button data-state="input">Needs input</button><button data-state="failed">Failed</button><button data-state="completed">Completed</button>
+  </div>
+</div>
+<div class="frame">
+  <aside class="sidebar" aria-label="Persistent app navigation">
+    <div class="brand">SuperiorSwarm</div><div class="global"><span>Projects</span><strong>PRs</strong><span>Agents</span></div>
+    <div class="repo">⌄ portal <span class="muted small">17</span></div>
+    <div class="pr selected"><strong>#12291 · Campaign name fallback</strong><span id="sidebarStatus">Codex · Preparing</span></div>
+    <div class="pr"><strong>#9503 · Reconciliation</strong>Reading path ready · 1 finding</div>
+    <div class="pr"><strong>#12388 · Boosted account</strong>Review complete</div>
+    <div class="repo">› provider-service <span class="muted small">12</span></div>
+    <div class="repo">› backofficeclientportal <span class="muted small">4</span></div>
+    <div class="foot">The sidebar and tab strip stay visible in every state.</div>
+  </aside>
+  <div class="workspace">
+    <header class="context"><div class="arrows"><button id="back" aria-label="Go back">←</button><button id="forward" aria-label="Go forward">→</button></div><div class="title"><span class="muted">portal / </span><strong>PR #12291</strong> · Campaign name fallback</div><span class="open">Open</span></header>
+    <nav class="tabs" role="tablist" aria-label="Workspace tabs"><button id="reviewTab" class="tab" role="tab">▤ Review #12291</button><button id="agentTab" class="tab" role="tab">⌘ Codex <span id="agentBadge" class="badge">Preparing · 18s</span></button></nav>
+    <div id="reviewPanel" class="content" role="tabpanel" aria-labelledby="reviewTab">
+      <nav class="subnav" aria-label="Review subviews"><button data-view="overview">Overview</button><button data-view="changes">Changes <span class="muted">11</span></button><button data-view="findings">Findings <span id="findingsCount" class="muted">0</span></button><button class="right" id="agentAction">Agent activity ↗</button><button id="submit">Submit review…</button></nav>
+      <section class="overview" id="overview">
+        <h2>Campaign name fallback</h2><p class="intro muted">11 changed files · <span style="color:var(--green)">+159</span> −10 · feature → dev</p>
+        <div class="card"><div class="row spread"><div><h3>Review the changes</h3><p>Start with the files. An agent can suggest an order and draft findings.</p></div><button class="primary" data-go="changes">Read changes</button></div></div>
+        <div class="card"><h3>Description</h3><p>Use the supplied campaign name, with a fallback when no description is provided.</p></div>
+        <div class="row gap"><span class="muted">Checks passing</span><span class="muted">2 resolved threads</span></div>
+        <p class="illustration">Representative content. The real overview should use cached provider metadata and load sections independently.</p>
+      </section>
+      <section class="changes" id="changes" hidden>
+        <aside class="files"><div class="order"><button>Files</button><button id="pathOrder">Agent order</button></div><div class="file active">Request.cs</div><div class="file">Handler.cs</div><div class="file">Controller.cs</div><div class="file">CampaignTests.cs</div><div class="file">… 7 more files</div><p class="small muted" style="padding:10px">The known file list stays available while the agent prepares or works.</p></aside>
+        <div class="code"><div class="filename">Request.cs <span class="muted">· selected revision</span></div><div class="note" id="pathNote">Review your selected file while the agent works in the other tab.</div><pre><span class="line">40</span> public string ResolveCampaignName(Request request)
+<span class="line">41</span> {
+<span class="added"><span class="line">42 +</span>   return request.CampaignName ?? defaultName;</span><span class="line">43</span> }
+
+<span class="muted">Illustrative diff. Switching tabs preserves this file,
+selection and scroll position.</span></pre></div>
+      </section>
+      <section class="findings" id="findings" hidden><h2>Findings</h2><p class="muted">Review proposed comments before publishing.</p><p id="findingEmpty" class="gap muted">No agent findings yet. Results appear here when the agent records them.</p><div id="findingCard" class="card finding gap"><h3>Example finding · Request.cs</h3><p>Check the behavior when the supplied name is blank rather than null.</p><div class="row gap"><button class="primary" data-go="changes">Open in changes</button><button>Accept draft</button><button>Dismiss</button></div></div><p class="illustration">This is sample content, not a finding from the recorded PR.</p></section>
+    </div>
+    <section id="agentPanel" class="content" role="tabpanel" aria-labelledby="agentTab" hidden>
+      <div class="agent"><div class="row spread"><h2 id="agentHeading">Preparing review workspace</h2><button id="stop">Cancel preparation</button></div><div class="statusline"><span class="statuspill" id="phase">Fetching missing PR commits</span><span class="small muted" id="elapsed">18s elapsed · updated 1s ago</span></div>
+        <div class="card"><h3>Activity for PR #12291</h3><p id="agentDescription"></p><ol class="timeline"><li><span class="tick">✓</span>Request accepted and linked to this PR</li><li id="revisionStep"><span class="tick">✓</span>PR revision verified</li><li id="fetchStep"><span class="now">●</span>Fetching missing commits</li><li id="checkoutStep"><span>○</span>Prepare isolated checkout</li><li id="launchStep"><span>○</span>Start Codex session</li></ol></div>
+        <div id="inputNotice" class="notice" hidden>Codex needs a decision. Review the prompt in the terminal below; the app does not approve it automatically.</div>
+        <div id="failure" class="notice" hidden>Fetching PR commits timed out. The agent did not start. Previously downloaded objects can be reused if still valid.<div class="row gap"><button id="retry" class="primary">Retry preparation</button><button data-return="review">Continue reviewing files</button></div></div>
+        <div id="result" class="card summary" hidden><h3>Review complete</h3><p>Reading path and findings are saved independently of the terminal.</p><div class="row gap"><button class="primary" data-go="findings">Review findings</button><button data-go="changes">Follow reading path</button></div></div>
+        <div class="log gap" id="terminal" hidden>Codex session output — illustrative
+
+Inspecting the selected revision…
+Reading Request.cs and its tests…
+
+Select the Review tab at any time. This job keeps its own session.</div>
+        <p class="illustration">Example job states and times. In the product, this area reflects backend phases and verified provider/session events.</p>
+      </div>
+    </section>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let job='preparing',locationState={tab:'review',view:'overview'},history=[{tab:'review',view:'overview'}],position=0;
+const states={idle:['No agent started','Not started','Start an agent review when useful. Reading files needs no agent.'],preparing:['Preparing review workspace','Fetching missing PR commits','The job is accepted. You can cancel preparation or keep reviewing in the Review tab.'],running:['Codex session','Session open','Follow activity here and continue reading in the Review tab.'],input:['Codex needs input','Needs input','The session has reported that it needs your response.'],failed:['Agent did not start','Preparation failed','Attempt 1 failed before launch. Its failure stays visible here.'],completed:['Agent review completed','Completed','Saved results remain accessible after the terminal session ends.'],cancelled:['Preparation cancelled','Cancelled','No new agent will be launched for this cancelled attempt.']};
+function go(tab,view=locationState.view){if(tab===locationState.tab&&view===locationState.view)return;locationState={tab,view};history=history.slice(0,position+1);history.push({...locationState});position++;render();}
+function setJob(next){job=next;if(job==='idle'&&locationState.tab==='agent')go('review');render();}
+function render(){
+ const [heading,phase,description]=states[job];
+ $('findingsCount').textContent=job==='completed'?'1':'0';$('findingCard').hidden=job!=='completed';$('findingEmpty').hidden=job==='completed';
+ $('reviewTab').setAttribute('aria-selected',String(locationState.tab==='review'));$('agentTab').setAttribute('aria-selected',String(locationState.tab==='agent'));$('agentTab').hidden=job==='idle';
+ $('reviewPanel').hidden=locationState.tab!=='review';$('agentPanel').hidden=locationState.tab!=='agent';
+ for(const name of ['overview','changes','findings'])$(name).hidden=locationState.view!==name;
+ document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.view===locationState.view)));
+ document.querySelectorAll('[data-state]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===job)));
+ const badge=job==='preparing'?'Preparing · 18s':phase;$('agentBadge').textContent=badge;$('agentBadge').classList.toggle('done',job==='completed');$('sidebarStatus').textContent=job==='idle'?'No agent review':`Codex · ${phase}`;
+ $('agentHeading').textContent=heading;$('phase').textContent=phase;$('agentDescription').textContent=description;$('elapsed').textContent=job==='preparing'?'18s elapsed · updated 1s ago':job==='failed'?'Attempt 1 · timed out':'Example activity state';
+ $('fetchStep').innerHTML=job==='preparing'?'<span class="now">●</span>Fetching missing commits':job==='failed'?'<span class="now">×</span>Fetching commits timed out':job==='cancelled'?'<span>○</span>Acquisition cancelled':'<span class="tick">✓</span>PR commit acquisition';
+ $('checkoutStep').innerHTML=['running','input','completed'].includes(job)?'<span class="tick">✓</span>Isolated checkout ready':'<span>○</span>Prepare isolated checkout';
+ $('launchStep').innerHTML=['running','input','completed'].includes(job)?'<span class="tick">✓</span>Codex session started':'<span>○</span>Start Codex session';
+ $('inputNotice').hidden=job!=='input';$('failure').hidden=job!=='failed';$('result').hidden=job!=='completed';$('terminal').hidden=!['running','input','completed'].includes(job);
+ $('stop').hidden=!['preparing','running','input'].includes(job);$('stop').textContent=job==='preparing'?'Cancel preparation':'Stop agent';
+ $('agentAction').textContent=job==='idle'?'Start agent review':'Agent activity ↗';$('pathOrder').disabled=job!=='completed';$('pathNote').textContent=job==='completed'?'Agent reading order is available. Your selected file stays selected.':'Review your selected file while the agent works in the other tab.';
+ $('back').disabled=position===0;$('forward').disabled=position===history.length-1;
+}
+$('reviewTab').onclick=()=>go('review');$('agentTab').onclick=()=>go('agent');
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>go('review',b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go('review',b.dataset.go));document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>setJob(b.dataset.state));document.querySelectorAll('[data-return]').forEach(b=>b.onclick=()=>go('review','changes'));
+$('agentAction').onclick=()=>{if(job==='idle')setJob('preparing');else go('agent');};$('retry').onclick=()=>setJob('preparing');$('stop').onclick=()=>setJob('cancelled');
+$('back').onclick=()=>{if(position>0){locationState={...history[--position]};render();}};$('forward').onclick=()=>{if(position<history.length-1){locationState={...history[++position]};render();}};
+$('submit').onclick=()=>alert('Planning mock only. In the product this opens the explicit review submission dialog.');render();
+</script>
+</html>

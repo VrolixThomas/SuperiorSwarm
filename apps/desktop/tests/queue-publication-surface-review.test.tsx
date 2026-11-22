@@ -15,6 +15,7 @@ for (const [key, value] of Object.entries({
 	Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
 let direct = 0;
 let prepared = 0;
+let preparedInputs: unknown[] = [];
 let dispatchWait = 5000;
 let deferredDispatch: (() => Promise<unknown>) | undefined;
 const success = {
@@ -55,7 +56,8 @@ mock.module("../src/renderer/trpc/client", () => ({
 	trpcVanilla: {
 		activityQueue: {
 			prPublicationPrepare: {
-				mutate: async () => {
+				mutate: async (input: unknown) => {
+					preparedInputs.push(input);
 					prepared++;
 					return { status: "pending", notBefore: Date.now() + dispatchWait };
 				},
@@ -77,6 +79,9 @@ const { SubmitReviewPopover } = await import(
 	"../src/renderer/components/review-mode/SubmitReviewPopover"
 );
 const { ThreadCard } = await import("../src/renderer/components/review-mode/thread/ThreadCard");
+const { ReviewUIProvider, reviewUIScopeKey } = await import(
+	"../src/renderer/components/review-mode/ReviewUIContext"
+);
 const ctx = {
 	provider: "github" as const,
 	owner: "owner",
@@ -104,6 +109,7 @@ async function click(text: string, last = false) {
 	});
 }
 beforeEach(() => {
+	preparedInputs = [];
 	dispatchWait = 5000;
 	deferredDispatch = undefined;
 	useReviewModeStore.setState({
@@ -369,4 +375,167 @@ test("late summary publication cannot close a new review or clear its draft", as
 	expect(submitted).toBe(0);
 	expect(document.querySelector("textarea")?.value).toBe("New summary");
 	expect(useReviewModeStore.getState().draftText["queue-b:review"]).toBe("New summary");
+});
+
+test("new PR workspace scope retains its own queued submission when global focus points elsewhere", async () => {
+	direct = 0;
+	prepared = 0;
+	const review = { workspaceId: "scope-a", prCtx: ctx };
+	useReviewModeStore.getState().open(review.workspaceId, ctx);
+	useReviewModeStore
+		.getState()
+		.setQueueOrigin({ id: "queue-scoped-a", revision: 3, workspaceId: review.workspaceId });
+	useReviewModeStore.getState().setDraftText("queue-scoped-a:review", "Summary A");
+	useReviewModeStore.getState().open("scope-b", { ...ctx, number: 8 });
+	useReviewModeStore
+		.getState()
+		.setQueueOrigin({ id: "queue-scoped-b", revision: 9, workspaceId: "scope-b" });
+	useReviewModeStore.getState().setDraftText("queue-scoped-b:review", "Summary B");
+	useTabStore.setState({ sidebarSegment: "prs", activeWorkspaceId: review.workspaceId });
+	await mount(
+		<ReviewUIProvider scopeKey={reviewUIScopeKey(review)} review={review}>
+			<SubmitReviewPopover
+				prCtx={ctx}
+				headSha="head"
+				draftId={null}
+				acceptedThreads={[]}
+				pendingCount={0}
+				onClose={() => {}}
+				onSubmitted={() => {}}
+			/>
+		</ReviewUIProvider>
+	);
+	expect(document.querySelector("textarea")?.value).toBe("Summary A");
+	await click("Submit review");
+	expect(direct).toBe(0);
+	expect(prepared).toBe(1);
+	expect(preparedInputs[0]).toMatchObject({
+		origin: { id: "queue-scoped-a", revision: 3 },
+		operation: { kind: "review", body: "Summary A" },
+	});
+});
+
+test("an inactive queued PR pane cannot fall back to immediate publication", async () => {
+	direct = 0;
+	prepared = 0;
+	const review = { workspaceId: "hidden-scope", prCtx: ctx };
+	useReviewModeStore.getState().open(review.workspaceId, ctx);
+	useReviewModeStore
+		.getState()
+		.setQueueOrigin({ id: "queue-hidden", revision: 2, workspaceId: review.workspaceId });
+	await mount(
+		<ReviewUIProvider scopeKey={reviewUIScopeKey(review)} review={review} active={false}>
+			<SubmitReviewPopover
+				prCtx={ctx}
+				headSha="head"
+				draftId={null}
+				acceptedThreads={[]}
+				pendingCount={0}
+				onClose={() => {}}
+				onSubmitted={() => {}}
+			/>
+		</ReviewUIProvider>
+	);
+	await click("Approve");
+	await click("Submit review");
+	expect(direct).toBe(0);
+	expect(prepared).toBe(0);
+	expect(document.body.textContent).toContain("Refresh the queue review before publishing");
+});
+
+test("reading-workspace saved replies survive the merge and do not revive after submission", async () => {
+	const { usePRReviewSessionStore } = await import(
+		"../src/renderer/stores/pr-review-session-store"
+	);
+	const review = { workspaceId: "saved-main", prCtx: ctx };
+	const key = reviewUIScopeKey(review);
+	const thread = {
+		id: "saved-thread",
+		isAIDraft: false as const,
+		isResolved: false,
+		path: "a.ts",
+		line: 1,
+		diffSide: "RIGHT" as const,
+		comments: [
+			{
+				id: "comment",
+				body: "Feedback",
+				author: "Reviewer",
+				authorAvatarUrl: "",
+				createdAt: "2026-11-22T00:00:00Z",
+			},
+		],
+	};
+	usePRReviewSessionStore.getState().setDraft(key, "thread:saved-thread:composer", "reply");
+	usePRReviewSessionStore
+		.getState()
+		.setDraft(key, "composer:saved-thread:reply", "Unsent before merge");
+	let sent = "";
+	await mount(
+		<ReviewUIProvider scopeKey={key} review={review}>
+			<ThreadCard
+				thread={thread}
+				variant="full"
+				callbacks={{
+					onReply: async (_, body) => {
+						sent = body;
+					},
+				}}
+			/>
+		</ReviewUIProvider>
+	);
+	expect(document.querySelector("textarea")?.value).toBe("Unsent before merge");
+	await click("Reply", true);
+	expect(sent).toBe("Unsent before merge");
+	expect(document.querySelector("textarea")).toBeNull();
+	await click("Reply");
+	expect(document.querySelector("textarea")?.value).toBe("");
+});
+
+test("sending one pane's older reply cannot erase another pane's newer stored text", async () => {
+	const thread = {
+		id: "pane-thread",
+		isAIDraft: false as const,
+		isResolved: false,
+		path: "a.ts",
+		line: 1,
+		diffSide: "RIGHT" as const,
+		comments: [
+			{
+				id: "comment",
+				body: "Feedback",
+				author: "Reviewer",
+				authorAvatarUrl: "",
+				createdAt: "2026-11-22T00:00:00Z",
+			},
+		],
+	};
+	useReviewModeStore.getState().open("workspace", ctx);
+	useReviewModeStore
+		.getState()
+		.setQueueOrigin({ id: "queue-pane", revision: 3, workspaceId: "workspace" });
+	useReviewModeStore.getState().setDraftText("queue-pane:pane-thread", "Older visible reply");
+	let sent = "";
+	await mount(
+		<ThreadCard
+			thread={thread}
+			variant="full"
+			callbacks={{
+				onReply: async (_, body) => {
+					sent = body;
+				},
+			}}
+		/>
+	);
+	await click("Reply");
+	await act(() =>
+		useReviewModeStore
+			.getState()
+			.setDraftText("queue-pane:pane-thread", "Newer text in another pane")
+	);
+	await click("Reply", true);
+	expect(sent).toBe("Older visible reply");
+	expect(useReviewModeStore.getState().draftText["queue-pane:pane-thread"]).toBe(
+		"Newer text in another pane"
+	);
 });

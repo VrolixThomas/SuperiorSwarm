@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { registerBrowserTools } from "./browser-tools.mjs";
 import { resolveContext } from "./context.mjs";
 import {
 	handleHermesSessionAdmission,
@@ -15,6 +16,7 @@ import {
 } from "./hermes-session-admission.mjs";
 import { handleHermesReusableTagTool, handleHermesSessionTagTool } from "./hermes-session-tags.mjs";
 import { createReporterAdmission } from "./reporter-admission.mjs";
+import { registerReviewPathTools } from "./review-path.mjs";
 import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
@@ -925,6 +927,8 @@ if (isQuickActionMode) {
 	);
 }
 
+registerReviewPathTools(server, { context: ctx, discovery });
+
 if (isWorkspaceAgentOrCrossRepo) {
 	// Wrap every tool registered in this mode so its handler appends ROLE_REMINDER
 	// to the result content. Scoped to workspace-agent and cross-repo-orchestrator — review/solve modes are
@@ -1056,6 +1060,13 @@ if (isWorkspaceAgentOrCrossRepo) {
 					isError: true,
 				};
 			}
+			if (
+				path === "/browser.execute" &&
+				typeof parsed.image === "string" &&
+				parsed.mimeType === "image/png"
+			) {
+				return { content: [{ type: "image", data: parsed.image, mimeType: "image/png" }] };
+			}
 			return controlPlaneToolResult(parsed);
 		} catch (err) {
 			return {
@@ -1069,6 +1080,8 @@ if (isWorkspaceAgentOrCrossRepo) {
 			};
 		}
 	}
+
+	if (!isCrossRepoMode) registerBrowserTools(server, call);
 
 	if (isExternalManagerMode) {
 		server.tool(

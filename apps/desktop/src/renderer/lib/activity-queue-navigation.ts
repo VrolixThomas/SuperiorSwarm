@@ -1,10 +1,11 @@
 import type { ActivityQueueTarget } from "../../shared/activity-queue";
+import { isReviewPathTerminal } from "../../shared/terminal-create";
 import type { DaemonAPI } from "../../shared/types";
-import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
 import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpcVanilla } from "../trpc/client";
+import { openPRReview } from "./open-pr-review";
 
 // Dependency injection exercises the real navigation with a read/mutation API fixture.
 export interface QueueNavigationApi {
@@ -77,19 +78,32 @@ function activateWorkspace(workspace: Awaited<ReturnType<typeof resolveWorkspace
 		type: workspace.type,
 		prProvider: workspace.prProvider ?? undefined,
 		prIdentifier: workspace.prIdentifier ?? undefined,
+		...(workspace.type === "review"
+			? { reviewWorktreePath: workspace.reviewWorktreePath ?? undefined }
+			: {}),
 	});
 	store.navigateToWorkspace(workspace.id, workspace.path, "attach-existing-only");
 	useProjectStore.getState().closeSettings();
 }
 
 function requireOpenChat(workspaceId: string, terminalId: string, reviewWorkspace: boolean) {
-	const pane = usePaneStore.getState().findPaneForTab(workspaceId, terminalId);
-	const tab = pane?.tabs.find((t) => t.id === terminalId && t.kind === "terminal");
+	const matches = useTabStore
+		.getState()
+		.getTabsByWorkspace(workspaceId)
+		.filter(
+			(tab) =>
+				(tab.kind === "terminal" && tab.id === terminalId) ||
+				(tab.kind === "review-agent" && tab.terminalId === terminalId)
+		);
+	if (matches.length > 1)
+		throw new Error(
+			"This conversation has ambiguous open views. Open its workspace to inspect them."
+		);
+	const tab = matches[0];
 	const review = useReviewModeStore.getState().terminals[workspaceId];
-	if (!tab && review?.tabId !== terminalId)
+	if (!tab && (!reviewWorkspace || review?.tabId !== terminalId))
 		throw new Error("This terminal is no longer open. Queue will not create a replacement shell.");
-	if (reviewWorkspace && review?.tabId !== terminalId)
-		throw new Error("This terminal is not attached to the review drawer.");
+	return tab;
 }
 
 async function requireMatchingSession(
@@ -161,30 +175,26 @@ export async function openQueueTarget(
 			const targetBranch = target.targetBranch || details?.targetBranch;
 			if (!sourceBranch || !targetBranch)
 				throw new Error("PR branch details are unavailable. Retry when the provider is available.");
-			const workspace = await api.workspaces.getOrCreateReview.mutate({
-				projectId: project.id,
-				prProvider: target.provider,
-				prIdentifier: identifier,
-				prTitle: target.title ?? details?.title ?? identifier,
-				sourceBranch,
-				targetBranch,
-			});
-			const cwd = workspace.worktreePath ?? project.repoPath;
-			await requireExistingTerminals(workspace.id, true, api);
-			useTabStore.getState().activateReviewWorkspace(
-				workspace.id,
-				cwd,
+			const workspace = await openPRReview(
 				{
-					provider: target.provider,
-					owner: target.owner,
-					repo: target.repo,
-					number: target.number,
-					title: target.title ?? details?.title ?? identifier,
-					sourceBranch,
-					targetBranch,
-					repoPath: cwd,
+					projectId: project.id,
+					prCtx: {
+						provider: target.provider,
+						owner: target.owner,
+						repo: target.repo,
+						number: target.number,
+						title: target.title ?? details?.title ?? identifier,
+						sourceBranch,
+						targetBranch,
+						repoPath: project.repoPath,
+					},
 				},
-				"attach-existing-only"
+				async (input) => {
+					const record = await api.workspaces.getOrCreateReview.mutate(input);
+					await requireExistingTerminals(record.id, true, api);
+					return record;
+				},
+				{ terminalIntent: "attach-existing-only" }
 			);
 			useProjectStore.getState().closeSettings();
 			return { workspaceId: workspace.id };
@@ -227,16 +237,41 @@ export async function openQueueTarget(
 	};
 	if (target.type === "terminal") {
 		await requireMatchingSession(target, api);
-		requireOpenChat(target.workspaceId, target.terminalId, isReview);
+		const initialTab = requireOpenChat(target.workspaceId, target.terminalId, isReview);
 		await requireExistingTerminals(entityId, isReview, api, target.terminalId);
 		await requireMatchingSession(target, api);
-		// The user may close the reporter while the inventory request is pending.
-		requireOpenChat(target.workspaceId, target.terminalId, isReview);
+		// Closing/replacing the exact view during inventory cannot reopen a legacy fallback.
+		let chatTab = requireOpenChat(target.workspaceId, target.terminalId, isReview);
+		if (initialTab && chatTab?.id !== initialTab.id)
+			throw new Error(
+				"This terminal is no longer open. Queue will not create a replacement shell."
+			);
+		const legacy = useReviewModeStore.getState().terminals[target.workspaceId];
+		if (!chatTab && !isReviewPathTerminal(target.terminalId) && !workspace?.reviewWorktreePath)
+			throw new Error("The existing review terminal's isolated worktree could not be verified.");
 		activate();
-		if (isReview) {
-			const reviewStore = useReviewModeStore.getState();
-			if (reviewStore.view !== "terminal") reviewStore.setDrawerOpen(true);
-		} else useTabStore.getState().setActiveTab(target.terminalId);
+		const tabs = useTabStore.getState();
+		if (!chatTab) {
+			// Materialize only the view of the already verified live terminal, never a PTY.
+			const id = isReviewPathTerminal(target.terminalId)
+				? tabs.ensureReviewAgentTab({
+						id: `legacy:${/^review-path:(.+):\d+$/.exec(target.terminalId)?.[1] ?? target.terminalId}`,
+						identity: { workspaceId: target.workspaceId },
+						agent: { label: target.provider },
+						terminalId: target.terminalId,
+						cwd: legacy?.cwd,
+					})
+				: tabs.addTerminalTab(
+						target.workspaceId,
+						workspace?.reviewWorktreePath ?? "",
+						"Existing review agent",
+						target.terminalId
+					);
+			chatTab = tabs.getTabsByWorkspace(target.workspaceId).find((tab) => tab.id === id);
+		}
+		if (!chatTab) throw new Error("The existing review terminal view could not be opened.");
+		tabs.setActiveTab(chatTab.id);
+		if (isReview) useReviewModeStore.getState().setDrawerOpen(false);
 		return { workspaceId: target.workspaceId, terminalId: target.terminalId };
 	}
 	await requireExistingTerminals(entityId, isReview, api);

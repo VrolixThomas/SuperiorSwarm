@@ -1,6 +1,7 @@
 import { realpathSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { eq } from "drizzle-orm";
+import { TerminalCreateError } from "../../shared/terminal-create";
 import { WorkspaceError } from "../../shared/workspace-errors";
 import { getDb } from "../db";
 import { crossRepoOrchestrators, projects, workspaces, worktrees } from "../db/schema";
@@ -46,6 +47,8 @@ export function getWorkspaceCwdOrThrow(workspaceId: string): string {
 	if (ws.worktreeId && !wt) throw new WorkspaceError("WORKSPACE_WORKTREE_MISSING");
 	const project = db.select().from(projects).where(eq(projects.id, ws.projectId)).get();
 	if (!project) throw new WorkspaceError("WORKSPACE_PROJECT_MISSING");
+
+	if (ws.type === "review" && !wt) throw new TerminalCreateError("REVIEW_WORKSPACE_NOT_PREPARED");
 	const cwd = resolveWorkspaceCwd({
 		worktreePath: wt?.path ?? null,
 		folderPath: ws.folderPath,

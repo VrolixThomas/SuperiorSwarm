@@ -2,30 +2,18 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
-import { useQueuePRPublication } from "../../hooks/useQueuePRPublication";
-import {
-	type ThreadFilter,
-	draftStatusAfterEdit,
-	fileCommentCounts,
-	matchesReviewFilter,
-} from "../../lib/pr-review-threads";
-import { openThreadInChanges, openThreadInComments } from "../../lib/review-mode-nav";
 import { useReviewModeStore } from "../../stores/review-mode-store";
-import { useTabStore } from "../../stores/tab-store";
-import { trpc } from "../../trpc/client";
 import { AgentStatusChip } from "./AgentStatusChip";
 import { ReviewHeader } from "./ReviewHeader";
+import { ReviewWorkspace } from "./ReviewWorkspace";
 import { SubmitReviewPopover } from "./SubmitReviewPopover";
 import { TerminalDrawer, TerminalTab } from "./TerminalDrawer";
 import { useReviewKeymap } from "./hooks/useReviewKeymap";
 import { ReviewNavigator } from "./navigator/ReviewNavigator";
-import type { ThreadCallbacks } from "./thread/ThreadCard";
-import { useReviewAgentActions } from "./useReviewAgentActions";
-import { useReviewData } from "./useReviewData";
+import { useReviewWorkspaceData } from "./useReviewWorkspaceData";
 import { ChangesView } from "./views/ChangesView";
 import { CommentsView } from "./views/CommentsView";
 import { OverviewView } from "./views/OverviewView";
@@ -39,28 +27,22 @@ export function ReviewModeShell() {
 
 	const { workspaceId, prCtx } = active;
 	const reviewIdentity = `${workspaceId}:${prCtx.provider}:${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
-	return <ActiveReviewModeShell key={reviewIdentity} active={active} />;
+	return <ReviewWorkspace key={reviewIdentity} active={active} />;
 }
 
-function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
+export function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const { workspaceId, prCtx } = active;
 	const view = useReviewModeStore((s) => s.view);
 	const setView = useReviewModeStore((s) => s.setView);
-	const setCommentFilter = useReviewModeStore((s) => s.setCommentFilter);
 	const setDrawerOpen = useReviewModeStore((s) => s.setDrawerOpen);
-	const closeReview = useReviewModeStore((s) => s.close);
 	const navigatorCollapsed = useReviewModeStore((s) => s.navigatorCollapsed);
 	const terminal = useReviewModeStore((s) => s.terminals[workspaceId] ?? null);
-	const [submitOpen, setSubmitOpen] = useState(false);
 	const [navigatorWidth, setNavigatorWidth] = useState(280);
 	const shellRef = useRef<HTMLDivElement>(null);
 	const navRef = useRef<HTMLElement>(null);
-	const utils = trpc.useUtils();
 	const {
 		details,
 		isLoading,
-		matchingDraft,
-		activeDraft,
 		aiDraft,
 		allThreads,
 		acceptedThreads,
@@ -68,166 +50,20 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		counts,
 		sessionKey,
 		fileOrder,
-	} = useReviewData(workspaceId, prCtx);
-	const isOpen = details?.state === "OPEN";
-	const canSubmitReview = isOpen;
-	const commentCount = (counts.pending ?? 0) + (counts.open ?? 0);
-	const commentCountByFile = useMemo(() => fileCommentCounts(allThreads), [allThreads]);
-	const reviewChainId =
-		activeDraft?.reviewChainId ??
-		aiDraft?.reviewChainId ??
-		matchingDraft?.reviewChainId ??
-		matchingDraft?.id ??
-		null;
-	const agentActions = useReviewAgentActions({
-		prCtx,
-		matchingDraft: activeDraft ?? matchingDraft,
-		reviewChainId,
-		enabled: isOpen,
-	});
-
-	const publication = useQueuePRPublication(prCtx, details?.headCommitOid);
-	const [publicationError, setPublicationError] = useState<string | null>(null);
-	const invalidateDrafts = useCallback(() => {
-		void utils.aiReview.getReviewDrafts.invalidate();
-		void utils.aiReview.getReviewDraft.invalidate();
-	}, [utils]);
-
-	const invalidateDetails = useCallback(() => {
-		void utils.projects.getPRDetails.invalidate({
-			provider: prCtx.provider,
-			owner: prCtx.owner,
-			repo: prCtx.repo,
-			number: prCtx.number,
-		});
-	}, [prCtx.number, prCtx.owner, prCtx.provider, prCtx.repo, utils]);
-
-	const { mutate: updateDraftComment } = trpc.aiReview.updateDraftComment.useMutation({
-		onSuccess: invalidateDrafts,
-	});
-	const { mutate: deleteDraftComment } = trpc.aiReview.deleteDraftComment.useMutation({
-		onSuccess: invalidateDrafts,
-	});
-	const { mutate: addReviewComment } = trpc.github.addReviewComment.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const { mutate: resolveThread } = trpc.github.resolveThread.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const { mutate: replyToPRComment } = trpc.atlassian.replyToPRComment.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const { mutate: resolvePRComment } = trpc.atlassian.resolvePRComment.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const cleanupReviewWorkspace = trpc.workspaces.cleanupReviewWorkspace.useMutation({
-		onSuccess: () => useTabStore.getState().cleanupWorkspace(workspaceId),
-	});
-
-	const handleClose = useCallback(() => {
-		closeReview();
-		if (details && details.state !== "OPEN") {
-			cleanupReviewWorkspace.mutate({ workspaceId });
-		}
-	}, [cleanupReviewWorkspace, closeReview, details, workspaceId]);
-
-	const callbacks = useMemo<ThreadCallbacks>(() => {
-		const navigation: ThreadCallbacks = {
-			onOpenInChanges: (path, threadId) => openThreadInChanges(workspaceId, prCtx, path, threadId),
-			onOpenInComments: (path, threadId) => {
-				const thread = allThreads.find((candidate) => candidate.id === threadId);
-				const filter = useReviewModeStore.getState().commentFilter;
-				if (thread && !matchesReviewFilter(thread, filter)) setCommentFilter("all");
-				openThreadInComments(workspaceId, prCtx, path, threadId);
-			},
-		};
-		if (!isOpen) return navigation;
-
-		return {
-			...navigation,
-			onAccept: (commentId) => updateDraftComment({ commentId, status: "user-pending" }),
-			onDecline: (commentId) => updateDraftComment({ commentId, status: "rejected" }),
-			onDelete: (commentId) => deleteDraftComment({ commentId }),
-			onSaveEdit: (commentId, body, status) =>
-				updateDraftComment({
-					commentId,
-					status: draftStatusAfterEdit(status),
-					userEdit: body,
-				}),
-			onReplyCancel: publication.cancel,
-			onReply: async (threadId, body) => {
-				if (publication.applicable) {
-					await publication.submit({ kind: "reply", commentId: threadId, body });
-					invalidateDetails();
-					return;
-				}
-				if (prCtx.provider === "github") {
-					addReviewComment({ threadId, body });
-					return;
-				}
-
-				replyToPRComment({
-					workspace: prCtx.owner,
-					repoSlug: prCtx.repo,
-					prId: prCtx.number,
-					parentCommentId: Number.parseInt(threadId, 10),
-					body,
-				});
-			},
-			onResolve: (threadId) => {
-				if (publication.applicable) {
-					setPublicationError(null);
-					void publication
-						.submit({ kind: "resolve", commentId: threadId })
-						.then(() => invalidateDetails())
-						.catch((error) => setPublicationError(String(error)));
-					return;
-				}
-				if (prCtx.provider === "github") {
-					resolveThread({ threadId });
-					return;
-				}
-
-				resolvePRComment({
-					workspace: prCtx.owner,
-					repoSlug: prCtx.repo,
-					prId: prCtx.number,
-					commentId: Number.parseInt(threadId, 10),
-					resolved: true,
-				});
-			},
-		};
-	}, [
-		publication,
-		invalidateDetails,
-		addReviewComment,
-		allThreads,
-		deleteDraftComment,
 		isOpen,
-		prCtx,
-		replyToPRComment,
-		resolvePRComment,
-		resolveThread,
-		setCommentFilter,
-		updateDraftComment,
-		workspaceId,
-	]);
-
-	const jumpToComments = useCallback(
-		(filter: ThreadFilter) => {
-			setCommentFilter(filter);
-			setView("comments");
-		},
-		[setCommentFilter, setView]
-	);
-
-	const handleSubmitted = useCallback(() => {
-		setSubmitOpen(false);
-		invalidateDrafts();
-		invalidateDetails();
-		void utils.github.getMyPRs.invalidate();
-		void utils.atlassian.getReviewRequests.invalidate();
-	}, [invalidateDetails, invalidateDrafts, utils]);
+		canSubmitReview,
+		commentCount,
+		commentCountByFile,
+		agentActions,
+		callbacks,
+		handleClose,
+		handleSubmitted,
+		submitOpen,
+		setSubmitOpen,
+		jumpToComments,
+		publicationNotice,
+		publicationError,
+	} = useReviewWorkspaceData(workspaceId, prCtx);
 
 	useEffect(() => {
 		shellRef.current?.focus();
@@ -282,11 +118,10 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	return (
 		<div
 			ref={shellRef}
-			data-queue-workspace={workspaceId}
 			tabIndex={-1}
-			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
+			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none"
 		>
-			{publication.notice}
+			{publicationNotice}
 			{publicationError && <div role="alert">{publicationError}</div>}
 			<ReviewHeader
 				prCtx={prCtx}

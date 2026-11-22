@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePaneStore } from "../stores/pane-store";
-import { shouldShowReviewMode, useReviewModeStore } from "../stores/review-mode-store";
+import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChip } from "./BranchChip";
@@ -12,7 +12,7 @@ import { LayoutRenderer } from "./panes/LayoutRenderer";
 import { QueueBar } from "./queue/QueueBar";
 import { QueueView } from "./queue/QueueView";
 import { QueueWorkspaceHeader } from "./queue/QueueWorkspaceHeader";
-import { ReviewModeShell } from "./review-mode/ReviewModeShell";
+import { PRReviewWorkspace } from "./review-mode/PRReviewWorkspace";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
 interface ContextMenuState {
@@ -77,39 +77,34 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	if (sidebarSegment === "hermes") {
 		return <HermesSessionView />;
 	}
-
 	if (sidebarSegment === "prs") {
-		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview)) {
+		if (activeReview && activeReview.workspaceId === activeWorkspaceId) {
 			return (
 				<div className="flex h-full min-h-0 flex-col">
 					<QueueBar entity={queueEntity} />
-					{queueEntity && (
-						<div className="shrink-0">
-							<QueueWorkspaceHeader
-								key={`${queueEntity.kind}:${queueEntity.id}`}
-								entity={queueEntity}
-								title={wsQuery.data?.name ?? coordinatorQuery.data?.name ?? "Workspace"}
-								projectName={projectQuery.data?.name}
-							/>
-						</div>
-					)}
 					<div className="min-h-0 flex-1">
-						<ReviewModeShell />
+						<PRReviewWorkspace
+							active={activeReview}
+							layout={layout}
+							savedScrollback={savedScrollback}
+							workspaceHeader={
+								queueEntity ? (
+									<QueueWorkspaceHeader
+										key={`${queueEntity.kind}:${queueEntity.id}`}
+										entity={queueEntity}
+										title={wsQuery.data?.name ?? coordinatorQuery.data?.name ?? "Workspace"}
+										projectName={projectQuery.data?.name}
+									/>
+								) : undefined
+							}
+						/>
 					</div>
 				</div>
 			);
 		}
-
 		return (
-			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
-				<div className="max-w-[320px] px-6 text-center">
-					<div className="text-[13px] font-medium text-[var(--text-secondary)]">
-						Select a pull request
-					</div>
-					<div className="mt-1 text-[12px] leading-5 text-[var(--text-quaternary)]">
-						Open PRs stay available in the sidebar while you review.
-					</div>
-				</div>
+			<main className="flex h-full items-center justify-center text-[13px] text-[var(--text-secondary)]">
+				Select a pull request from the sidebar.
 			</main>
 		);
 	}

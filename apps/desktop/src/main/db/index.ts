@@ -3,10 +3,10 @@ import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
 import { eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { app } from "electron";
 import { parseRemoteUrl } from "../git/operations";
 import * as schema from "./schema";
+import { migrateDatabase } from "./startup-migrations";
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let _rawSqlite: Database.Database | null = null;
@@ -38,7 +38,7 @@ export function getDb() {
 export function initializeDatabase(): void {
 	const db = getDb();
 	const migrationsFolder = join(__dirname, "db/migrations");
-	migrate(db, { migrationsFolder });
+	migrateDatabase(db, migrationsFolder);
 }
 
 export async function backfillRemoteHosts(): Promise<void> {

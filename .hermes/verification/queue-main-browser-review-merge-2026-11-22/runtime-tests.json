@@ -1,0 +1,47 @@
+[
+  {
+    "file": "terminal-workspace.test.ts",
+    "exit": 0,
+    "pass": 71
+  },
+  {
+    "file": "terminal-owned-attach.test.ts",
+    "exit": 0,
+    "pass": 2
+  },
+  {
+    "file": "workspace-browser-control-plane.test.ts",
+    "exit": 0,
+    "pass": 3
+  },
+  {
+    "file": "queue-reporter-admission.test.ts",
+    "exit": 0,
+    "pass": 4
+  },
+  {
+    "file": "review-path-task-authority.test.ts",
+    "exit": 0,
+    "pass": 1
+  },
+  {
+    "file": "control-plane-auth.test.ts",
+    "exit": 0,
+    "pass": 6
+  },
+  {
+    "file": "control-plane.test.ts",
+    "exit": 0,
+    "pass": 28
+  },
+  {
+    "file": "queue-mcp-first-admission.test.ts",
+    "exit": 0,
+    "pass": 2
+  },
+  {
+    "file": "terminal-attach-only-pty.test.ts",
+    "exit": 0,
+    "pass": 1
+  }
+]

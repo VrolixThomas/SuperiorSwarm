@@ -1,0 +1,35 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/daemon-built-startup.test.ts:
+(pass) Vite-built daemon starts in Electron and creates a snapshot-capable terminal [693.10ms]
+
+tests/queue-mcp-first-admission.test.ts:
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-YxbGAL 200 request_id=e17a0520-682b-43dd-8667-27996f692435 latency=4ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-YxbGAL 200 request_id=ad36701b-81dc-4a3e-96a0-b517b9bf155e latency=1ms
+[control-plane] POST /context.admit 202 request_id=fa358422-2496-4e27-bd6a-822295692fda latency=2ms
+[control-plane] POST /context.admit 202 request_id=b0b004be-3d8a-4194-a1c5-2bd8990cb3ff latency=1ms
+[control-plane] POST /context.admit 200 request_id=4fec2afe-8312-4f0b-ac61-6435c072ccde latency=2ms
+[control-plane] POST /context.admit 200 request_id=0753382f-21f3-4d28-acee-bcc4041285d7 latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=b2d262d1-7db1-4b15-841a-37f576931856 latency=5ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-YxbGAL 200 request_id=4a6b18f7-eb2b-4b9a-973c-86ba01fb1f0f latency=2ms
+[control-plane] POST /workspaces.set_status 200 request_id=c228cdc2-9d3e-43f3-86ce-bdc04b608032 latency=3ms
+[control-plane] POST /workspaces.set_status 401 request_id=ede82f29-2572-4f4f-a9b0-cdc07503ffd0 latency=1ms
+[control-plane] POST /workspaces.set_status 401 request_id=a23dd6d7-dfba-4c58-b757-2e42bca3fb39 latency=1ms
+(pass) MCP-before-hook claude: first generation admits without restart and both pending/pinned processes reject replacement [473.86ms]
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-w57LOJ 200 request_id=083b646c-38a7-4d41-87fa-d52d3b4e7ec1 latency=2ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-w57LOJ 200 request_id=3b75fd3a-3bd0-4f5a-8ca5-66010e020ac6 latency=0ms
+[control-plane] POST /context.admit 202 request_id=2534c3a1-9c05-4e10-82d9-606cf1f08865 latency=0ms
+[control-plane] POST /context.admit 202 request_id=c1ef1b98-6ac4-43cf-9ead-5bdb89d09296 latency=0ms
+[control-plane] POST /context.admit 200 request_id=4220f0bf-b420-47a9-91e9-3ce8dd68bb83 latency=1ms
+[control-plane] POST /context.admit 200 request_id=f1b3bb6d-c60c-4f75-a4a2-0941f6a00eb5 latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=eb48614a-3417-48d1-ab71-b5de6a1fffdd latency=3ms
+[control-plane] GET /context.resolve?cwd=%2Fprivate%2Fvar%2Ffolders%2Fxh%2Fnhz9_pd13qnd40l0y88b51c80000gp%2FT%2Fqueue-postpatch-bootstrap-w57LOJ 200 request_id=3b5d5bc9-0390-49df-9859-4e268c759267 latency=1ms
+[control-plane] POST /workspaces.set_status 200 request_id=488ed123-4614-4bb0-a0a1-b2f775900fb0 latency=4ms
+[control-plane] POST /workspaces.set_status 401 request_id=7333b5c4-2844-474c-a227-2775dbe7cee3 latency=1ms
+[control-plane] POST /workspaces.set_status 401 request_id=59764512-c895-4f6e-8a1f-e618fa3c9452 latency=2ms
+(pass) MCP-before-hook codex: first generation admits without restart and both pending/pinned processes reject replacement [365.83ms]
+
+ 3 pass
+ 0 fail
+ 30 expect() calls
+Ran 3 tests across 2 files. [1.85s]

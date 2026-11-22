@@ -1,0 +1,1653 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/review-workspace-native.test.ts:
+Native evidence: /var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-review-ui-pSe3pg
+{
+  "results": [
+    {
+      "name": "live adapter loads overview",
+      "pass": true
+    },
+    {
+      "name": "mapping update preserves selected file",
+      "pass": true
+    },
+    {
+      "name": "immutable head content in real Monaco",
+      "pass": true,
+      "detail": "// head alpha\nconst valid = true;\nexport const value = 1;\n// end\n"
+    },
+    {
+      "name": "native diff key t",
+      "pass": true,
+      "detail": {
+        "panel": "threads",
+        "railMode": null
+      }
+    },
+    {
+      "name": "native diff key f",
+      "pass": true,
+      "detail": {
+        "panel": null,
+        "railMode": "files"
+      }
+    },
+    {
+      "name": "native diff key v",
+      "pass": true,
+      "detail": {
+        "panel": null,
+        "railMode": "files"
+      }
+    },
+    {
+      "name": "native diff key n",
+      "pass": true,
+      "detail": {
+        "panel": null,
+        "railMode": "files"
+      }
+    },
+    {
+      "name": "native diff key p",
+      "pass": true,
+      "detail": {
+        "panel": null,
+        "railMode": "files"
+      }
+    },
+    {
+      "name": "native diff key /",
+      "pass": true,
+      "detail": {
+        "panel": "ask",
+        "railMode": "files"
+      }
+    },
+    {
+      "name": "native diff j changes selected item",
+      "pass": true,
+      "detail": {
+        "before": "src/alpha.ts",
+        "after": "src/beta.ts"
+      }
+    },
+    {
+      "name": "native diff k returns to prior file",
+      "pass": true
+    },
+    {
+      "name": "native diff Cmd period collapses rail",
+      "pass": true
+    },
+    {
+      "name": "right selection exposes actions",
+      "pass": true
+    },
+    {
+      "name": "right selection Ask anchor",
+      "pass": true,
+      "detail": {
+        "path": "src/alpha.ts",
+        "side": "RIGHT",
+        "startLine": 2,
+        "endLine": 3
+      }
+    },
+    {
+      "name": "typed Ask draft survives refetch",
+      "pass": true
+    },
+    {
+      "name": "pending Ask disables duplicate send",
+      "pass": true
+    },
+    {
+      "name": "Ask cancellation shown",
+      "pass": true
+    },
+    {
+      "name": "failed Ask exposes retry",
+      "pass": true
+    },
+    {
+      "name": "retry answer appears",
+      "pass": true
+    },
+    {
+      "name": "answer reference opens target model",
+      "pass": true,
+      "detail": {
+        "selected": "src/beta.ts",
+        "position": {
+          "lineNumber": 3,
+          "column": 1
+        }
+      }
+    },
+    {
+      "name": "Add as comment opens original anchor file",
+      "pass": true
+    },
+    {
+      "name": "Add as comment prefills actual inline composer",
+      "pass": true
+    },
+    {
+      "name": "Add as comment saves correct side/end line",
+      "pass": true
+    },
+    {
+      "name": "left selection exposes Ask and Comment actions",
+      "pass": true
+    },
+    {
+      "name": "left selected-line Ask retains side and range",
+      "pass": true,
+      "detail": {
+        "path": "src/alpha.ts",
+        "side": "LEFT",
+        "startLine": 2,
+        "endLine": 3
+      }
+    },
+    {
+      "name": "left c places composer in original editor",
+      "pass": true,
+      "detail": {
+        "left": 1,
+        "right": 0
+      }
+    },
+    {
+      "name": "edit persists local body",
+      "pass": true
+    },
+    {
+      "name": "dismiss stays local",
+      "pass": true
+    },
+    {
+      "name": "Accept updates local draft status",
+      "pass": true
+    },
+    {
+      "name": "explicit submit payload reaches inert backend",
+      "pass": true
+    },
+    {
+      "name": "large manifest virtualizes rail",
+      "pass": true,
+      "detail": {
+        "rendered": 24
+      }
+    },
+    {
+      "name": "last >100 file renders exact content",
+      "pass": true,
+      "detail": "// head 101\n"
+    },
+    {
+      "name": "model count bounded after navigation",
+      "pass": true,
+      "detail": {
+        "initialModels": 2,
+        "now": 2
+      }
+    },
+    {
+      "name": "unchanged test never marked viewed",
+      "pass": true
+    },
+    {
+      "name": "context snapshot rendered",
+      "pass": true
+    },
+    {
+      "name": "saved context never marked viewed",
+      "pass": true
+    },
+    {
+      "name": "native context t opens threads",
+      "pass": true
+    },
+    {
+      "name": "returning from context retains available diff",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Mine uses stable identity",
+      "pass": true
+    },
+    {
+      "name": "Mine updates after account switch",
+      "pass": true
+    },
+    {
+      "name": "unknown resolution visibly identified",
+      "pass": true
+    },
+    {
+      "name": "outdated thread preserved",
+      "pass": true
+    },
+    {
+      "name": "overlay preserves diff width",
+      "pass": true,
+      "detail": {
+        "width": 1224,
+        "closedWidth": 1224
+      }
+    },
+    {
+      "name": "rail keyboard resize",
+      "pass": true,
+      "detail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 308,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 308,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "name": "native pointer rail resize clamps to 360",
+      "pass": true
+    },
+    {
+      "name": "shell Cmd period collapses rail",
+      "pass": true
+    },
+    {
+      "name": "binary.dat handled without stale alpha text",
+      "pass": true,
+      "detail": {
+        "text": "ngs\nReview options\nReading path\nFiles\nCodex · 1 entry points\n1 of 106 viewed\nRequest flow\nalpha.ts\n3\nunchanged.test.ts\ncontext.ts\nadded by you\n2\nbeta.ts\nOther files\n104\nbinary.dat\nempty.txt\nfile-000.ts\nfile-001.ts\nfile-002.ts\nfile-003.ts\nfile-004.ts\nfile-005.ts\nfile-006.ts\nfile-007.ts\nfile-008.ts\nfile-009.ts\nfile-010.ts\nfile-011.ts\nfile-012.ts\nFile\nbinary.dat\n+2 −2\nViewed\nv\n1\n1\nBinary file — no text preview available.\nj k next / previous file\nv viewed\nSelect lines to ask or comment\nUnified\nSplit",
+        "editors": 2
+      }
+    },
+    {
+      "name": "empty.txt handled without stale alpha text",
+      "pass": true,
+      "detail": {
+        "text": " for findings\nReview options\nReading path\nFiles\nCodex · 1 entry points\n1 of 106 viewed\nRequest flow\nalpha.ts\n3\nunchanged.test.ts\ncontext.ts\nadded by you\n2\nbeta.ts\nOther files\n104\nbinary.dat\nempty.txt\nfile-000.ts\nfile-001.ts\nfile-002.ts\nfile-003.ts\nfile-004.ts\nfile-005.ts\nfile-006.ts\nfile-007.ts\nfile-008.ts\nfile-009.ts\nfile-010.ts\nfile-011.ts\nfile-012.ts\nFile\nempty.txt\n+2 −2\nViewed\nv\n1\n1\nFile is empty at this revision.\nj k next / previous file\nv viewed\nSelect lines to ask or comment\nUnified\nSplit",
+        "editors": 2
+      }
+    },
+    {
+      "name": "transport error remains exposed after poll",
+      "pass": true,
+      "detail": "\nfile-001.ts\nfile-002.ts\nfile-003.ts\nfile-004.ts\nfile-005.ts\nfile-006.ts\nfile-007.ts\nfile-008.ts\nfile-009.ts\nfile-010.ts\nfile-011.ts\nfile-012.ts\nStep 1 of 2\nsrc/alpha.ts\n+2 −2\nViewed\nv\n\nValidate the request before handling it.\n\nTested by\nunchanged.test.ts\n1 comment on an earlier version · Show\n1\n2\n3\n4\nsame-name\nsrc/alpha.ts:2\nOpen\n\nLeft-side reviewer thread\n\nAsk agent\nReply\nResolve\nView in comments\n// base alpha\nconst valid = false;\nexport const value = 0;\n// end\n1\n2\n3\n4\nAI\nsrc/alpha.ts:3\nAccepted\n1m ago\n\nEdited native finding\n\nAsk agent\nEdit\nDecline\nView in comments\nsame-name\nsrc/alpha.ts:3\nOpen\n\nRight-side reviewer thread\n\nAsk agent\nReply\nResolve\nView in comments\nother\nsrc/alpha.ts:4\nResolution unknown\n\nUnknown resolution thread\n\nAsk agent\nReply\nView in comments\n// head alpha\nconst valid = true;\nexport const value = 1;\n// end\nj k next / previous file\nv viewed\nSelect lines to ask or comment\nn / p threads\nUnified\nSplit\nThreads · 3\nAsk agent\n×\nalpha.ts · 1–1\nControlled provider unavailable\n\nUnsaved follow-up survives refetch\n\nWhy this validation?\n\nWhy this validation?\n\nThe check rejects invalid input.\n\nbeta.ts:3\nAdd as comment\nCopy\nQuestion cancelled\nControlled agent failure\nRetry\n↑"
+    },
+    {
+      "name": "transport error retains question or retry",
+      "pass": true
+    },
+    {
+      "name": "head refresh clears selected Ask anchor",
+      "pass": true
+    },
+    {
+      "name": "unknown commit renders unavailable instead of stale content",
+      "pass": true,
+      "detail": {
+        "notice": "Review revision acquisition is unavailable",
+        "modelLengths": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "nine categories captured in both themes",
+      "pass": true
+    },
+    {
+      "name": "1512x945 no body horizontal overflow",
+      "pass": true,
+      "detail": [
+        {
+          "category": "01-start-no-path",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 162.75,
+            "width": 1224,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 162.75,
+            "width": 288,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "01-start-no-path",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 162.75,
+            "width": 1224,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 162.75,
+            "width": 288,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "02-mapping-live",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 162.75,
+            "width": 1224,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 162.75,
+            "width": 288,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "02-mapping-live",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 162.75,
+            "width": 1224,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 162.75,
+            "width": 288,
+            "height": 782.25,
+            "top": 162.75,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "03-reading-step",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "03-reading-step",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "04-ask-and-comment",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "04-ask-and-comment",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "05-agent-findings",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "05-agent-findings",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "06-all-prs-next-pr",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "06-all-prs-next-pr",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "07-files-view",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "07-files-view",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "08-context-files",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "08-context-files",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "09-comments-from-others",
+          "theme": "dark",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        },
+        {
+          "category": "09-comments-from-others",
+          "theme": "light",
+          "width": 1512,
+          "height": 945,
+          "bodyScroll": 1512,
+          "main": {
+            "x": 288,
+            "y": 125.25,
+            "width": 1224,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 1512,
+            "bottom": 945,
+            "left": 288
+          },
+          "rail": {
+            "x": 0,
+            "y": 125.25,
+            "width": 288,
+            "height": 819.75,
+            "top": 125.25,
+            "right": 288,
+            "bottom": 945,
+            "left": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "shell Cmd Down opens next PR through workspace mutation",
+      "pass": true,
+      "detail": [
+        {
+          "path": "workspaces.getOrCreateReview",
+          "input": {
+            "projectId": "project",
+            "prProvider": "github",
+            "prIdentifier": "fixture/repo#2",
+            "prTitle": "Disposable PR 2",
+            "sourceBranch": "change",
+            "targetBranch": "main"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shell Cmd Up returns to previous PR",
+      "pass": true
+    },
+    {
+      "name": "no unrequested provider posting or terminal writes",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "metrics": [
+    {
+      "category": "01-start-no-path",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 162.75,
+        "width": 1224,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 162.75,
+        "width": 288,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "01-start-no-path",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 162.75,
+        "width": 1224,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 162.75,
+        "width": 288,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "02-mapping-live",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 162.75,
+        "width": 1224,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 162.75,
+        "width": 288,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "02-mapping-live",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 162.75,
+        "width": 1224,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 162.75,
+        "width": 288,
+        "height": 782.25,
+        "top": 162.75,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "03-reading-step",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "03-reading-step",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "04-ask-and-comment",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "04-ask-and-comment",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "05-agent-findings",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "05-agent-findings",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "06-all-prs-next-pr",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "06-all-prs-next-pr",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "07-files-view",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "07-files-view",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "08-context-files",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "08-context-files",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "09-comments-from-others",
+      "theme": "dark",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    },
+    {
+      "category": "09-comments-from-others",
+      "theme": "light",
+      "width": 1512,
+      "height": 945,
+      "bodyScroll": 1512,
+      "main": {
+        "x": 288,
+        "y": 125.25,
+        "width": 1224,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 1512,
+        "bottom": 945,
+        "left": 288
+      },
+      "rail": {
+        "x": 0,
+        "y": 125.25,
+        "width": 288,
+        "height": 819.75,
+        "top": 125.25,
+        "right": 288,
+        "bottom": 945,
+        "left": 0
+      }
+    }
+  ],
+  "queryErrors": [
+    {
+      "error": "TRPCClientError: Review commit objects are unavailable locally. Acquire the revision before retrying",
+      "key": [
+        [
+          "reviewExplanation",
+          "resolveSnapshot"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "targetTipOid": "a11ffac2eb392c7cc56171ce0da4e227b8ae69fb",
+            "headOid": "ffffffffffffffffffffffffffffffffffffffff",
+            "review": {
+              "provider": "github",
+              "owner": "fixture",
+              "repo": "repo",
+              "number": 1
+            }
+          },
+          "type": "query"
+        }
+      ]
+    },
+    {
+      "error": "TRPCClientError: Review commit objects are unavailable locally. Acquire the revision before retrying",
+      "key": [
+        [
+          "reviewExplanation",
+          "resolveSnapshot"
+        ],
+        {
+          "input": {
+            "workspaceId": "registered",
+            "targetTipOid": "a11ffac2eb392c7cc56171ce0da4e227b8ae69fb",
+            "headOid": "ffffffffffffffffffffffffffffffffffffffff",
+            "review": {
+              "provider": "github",
+              "owner": "fixture",
+              "repo": "repo",
+              "number": 1
+            }
+          },
+          "type": "query"
+        }
+      ]
+    }
+  ]
+}
+(pass) full legacy ReviewWorkspace with native Monaco and production snapshot IPC [27563.26ms]
+Native evidence: /var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-review-ui-DKB0eP
+{
+  "results": [
+    {
+      "name": "stable navigation rail is 72px",
+      "pass": true
+    },
+    {
+      "name": "no fictional agent tab before acceptance",
+      "pass": true
+    },
+    {
+      "name": "preparing tab exists without stealing review focus",
+      "pass": true
+    },
+    {
+      "name": "preparing job precedes reading path",
+      "pass": true
+    },
+    {
+      "name": "provider reading works during preparation",
+      "pass": true
+    },
+    {
+      "name": "split starts at 60 percent",
+      "pass": true
+    },
+    {
+      "name": "real Monaco unified in narrow review pane",
+      "pass": true
+    },
+    {
+      "name": "wide diff preference remains split",
+      "pass": true
+    },
+    {
+      "name": "Ask fits review pane",
+      "pass": true
+    },
+    {
+      "name": "sidebar is 288px beside split panes",
+      "pass": true
+    },
+    {
+      "name": "authored section uses actual author-role data",
+      "pass": true
+    },
+    {
+      "name": "search filters review requests and authored rows",
+      "pass": true
+    },
+    {
+      "name": "Ask remains usable with sidebar and split",
+      "pass": true
+    },
+    {
+      "name": "sidebar preserves selected diff and unsent draft",
+      "pass": true
+    },
+    {
+      "name": "closing sidebar preserves selection and Ask draft",
+      "pass": true
+    },
+    {
+      "name": "failed job exposes retry",
+      "pass": true
+    },
+    {
+      "name": "retry keeps stable job tab",
+      "pass": true
+    },
+    {
+      "name": "cancel acknowledged",
+      "pass": true
+    },
+    {
+      "name": "completed job inspectable without relaunch",
+      "pass": true
+    },
+    {
+      "name": "agent results opens actual inline finding, not provider Threads",
+      "pass": true
+    },
+    {
+      "name": "summary return works",
+      "pass": true
+    },
+    {
+      "name": "draft survives split parent remount",
+      "pass": true
+    },
+    {
+      "name": "wide restores split diff",
+      "pass": true
+    },
+    {
+      "name": "narrow collapses navigator with visible affordance",
+      "pass": true
+    },
+    {
+      "name": "no provider or PTY writes",
+      "pass": true
+    },
+    {
+      "name": "no body horizontal overflow",
+      "pass": true,
+      "detail": [
+        {
+          "name": "tabs-01-no-job",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-02-preparing-reading",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-03-split",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-04-ask",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-04b-sidebar-split-ask",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-05-failed",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-06-stopped",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-07-ended",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-08-summary",
+          "width": 1512,
+          "height": 945,
+          "scrollWidth": 1512
+        },
+        {
+          "name": "tabs-09-narrow",
+          "width": 700,
+          "height": 800,
+          "scrollWidth": 700
+        }
+      ]
+    },
+    {
+      "name": "long path labels wrap without clipping at 236px",
+      "pass": true
+    },
+    {
+      "name": "path group title fully visible at 236px",
+      "pass": true
+    },
+    {
+      "name": "wrapped virtual list selects distant row at 236px",
+      "pass": true
+    },
+    {
+      "name": "manual scrolling stays put at 236px",
+      "pass": true
+    },
+    {
+      "name": "long path labels wrap without clipping at 288px",
+      "pass": true
+    },
+    {
+      "name": "path group title fully visible at 288px",
+      "pass": true
+    },
+    {
+      "name": "wrapped virtual list selects distant row at 288px",
+      "pass": true
+    },
+    {
+      "name": "manual scrolling stays put at 288px",
+      "pass": true
+    },
+    {
+      "name": "long path labels wrap without clipping at 360px",
+      "pass": true
+    },
+    {
+      "name": "path group title fully visible at 360px",
+      "pass": true
+    },
+    {
+      "name": "wrapped virtual list selects distant row at 360px",
+      "pass": true
+    },
+    {
+      "name": "manual scrolling stays put at 360px",
+      "pass": true
+    }
+  ],
+  "metrics": [
+    {
+      "name": "tabs-01-no-job",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-02-preparing-reading",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-03-split",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-04-ask",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-04b-sidebar-split-ask",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-05-failed",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-06-stopped",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-07-ended",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-08-summary",
+      "width": 1512,
+      "height": 945,
+      "scrollWidth": 1512
+    },
+    {
+      "name": "tabs-09-narrow",
+      "width": 700,
+      "height": 800,
+      "scrollWidth": 700
+    }
+  ]
+}
+(pass) full tabs ReviewWorkspace with native Monaco and production snapshot IPC [14997.84ms]
+
+ 2 pass
+ 0 fail
+ 6 expect() calls
+Ran 2 tests across 1 file. [42.58s]

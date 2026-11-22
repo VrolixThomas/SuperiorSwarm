@@ -92,6 +92,7 @@ function apiFixture(type = "worktree") {
 		name: "Target",
 		path: "/target",
 		worktreePath: "/target",
+		reviewWorktreePath: type === "review" ? "/target" : undefined,
 		prProvider: type === "review" ? "github" : null,
 		prIdentifier: type === "review" ? "owner/repo#7" : null,
 	};
@@ -184,13 +185,10 @@ describe("Queue source targeting", () => {
 		store.addTerminalTab("target", "/target", "First", "terminal-1");
 		const pane = usePaneStore.getState().getFocusedPane("target");
 		if (!pane) throw new Error("Missing target pane");
-		usePaneStore.getState().splitPane("target", pane.id, "horizontal", {
-			kind: "terminal",
-			id: "terminal-2",
-			workspaceId: "target",
-			cwd: "/target",
-			title: "Second",
-		});
+		store.addTerminalTab("target", "/target", "Second", "terminal-2");
+		const second = store.getTabsByWorkspace("target").find((tab) => tab.id === "terminal-2");
+		if (!second) throw new Error("Missing second terminal");
+		usePaneStore.getState().splitPane("target", pane.id, "horizontal", second);
 		store.setActiveWorkspace("previous", "/previous");
 		const { api } = apiFixture();
 		const destination = await openQueueTarget(terminalTarget, api);
@@ -213,7 +211,7 @@ describe("Queue source targeting", () => {
 				.sort()
 		).toEqual(["terminal-1", "terminal-2"]);
 	});
-	test("reopens the exact review drawer without creating a pane terminal", async () => {
+	test("reveals the exact verified legacy review terminal in a real tab without creating a PTY", async () => {
 		const { api } = apiFixture("review");
 		useReviewModeStore
 			.getState()
@@ -221,9 +219,15 @@ describe("Queue source targeting", () => {
 		await openQueueTarget(terminalTarget, api);
 		expect(useTabStore.getState().sidebarSegment).toBe("prs");
 		expect(useReviewModeStore.getState().active?.workspaceId).toBe("target");
-		expect(useReviewModeStore.getState().drawerOpen).toBe(true);
+		expect(useReviewModeStore.getState().drawerOpen).toBe(false);
 		expect(useTabStore.getState().terminalCreateIntents["terminal-2"]).toBe("attach-existing-only");
-		expect(useTabStore.getState().getTabsByWorkspace("target")).toHaveLength(0);
+		expect(
+			useTabStore
+				.getState()
+				.getTabsByWorkspace("target")
+				.map((tab) => tab.kind)
+		).toEqual(["pr-review", "terminal"]);
+		expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe("terminal-2");
 	});
 	test("missing terminal and changed provider session preserve active work", async () => {
 		const { api } = apiFixture();
@@ -255,7 +259,12 @@ describe("Queue source targeting", () => {
 			expect.objectContaining({ prProvider: "github", prIdentifier: "owner/repo#7" })
 		);
 		expect(useReviewModeStore.getState().active?.prCtx.repoPath).toBe("/review");
-		expect(useTabStore.getState().getTabsByWorkspace("review")).toHaveLength(0);
+		expect(
+			useTabStore
+				.getState()
+				.getTabsByWorkspace("review")
+				.map((tab) => tab.kind)
+		).toEqual(["pr-review"]);
 	});
 	test("PR failure leaves current workspace and unlocks retry", async () => {
 		const { api, review } = apiFixture();
@@ -449,4 +458,75 @@ test("conversation replacement during inventory is rejected before switching wor
 	});
 	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("no longer matches");
 	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+});
+
+test("Queue opens the exact review-agent tab while preserving sibling job and browser views", async () => {
+	const { api } = apiFixture("review");
+	const store = useTabStore.getState();
+	store.ensureReviewAgentTab({
+		id: "selected",
+		identity: { workspaceId: "target" },
+		agent: { label: "Codex" },
+		terminalId: "terminal-2",
+		cwd: "/target",
+		state: "running",
+	});
+	store.ensureReviewAgentTab({
+		id: "sibling",
+		identity: { workspaceId: "target" },
+		agent: { label: "Claude" },
+		terminalId: "terminal-1",
+		cwd: "/target",
+		state: "running",
+	});
+	store.addTab({
+		kind: "browser",
+		id: "browser",
+		workspaceId: "target",
+		title: "Docs",
+		url: "https://example.com",
+		viewport: "desktop",
+	});
+	store.setActiveWorkspace("current", "/current");
+	await openQueueTarget(terminalTarget, api);
+	expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe(
+		"review-agent:selected"
+	);
+	expect(
+		store.getTabsByWorkspace("target").filter((tab) => tab.kind === "review-agent")
+	).toHaveLength(2);
+	expect(store.getTabsByWorkspace("target").filter((tab) => tab.kind === "terminal")).toHaveLength(
+		0
+	);
+	expect(useTabStore.getState().terminalCreateIntents["terminal-2"]).toBe("attach-existing-only");
+	expect(useTabStore.getState().terminalCreateIntents["terminal-1"]).toBe("attach-existing-only");
+	expect(useTabStore.getState().terminalCreateIntents["browser"]).toBeUndefined();
+});
+
+test("closing a review-agent view during preflight cannot resurrect its legacy drawer record", async () => {
+	const { api, raw } = apiFixture("review");
+	const store = useTabStore.getState();
+	const tabId = store.ensureReviewAgentTab({
+		id: "selected",
+		identity: { workspaceId: "target" },
+		agent: { label: "Codex" },
+		terminalId: "terminal-2",
+		cwd: "/target",
+	});
+	useReviewModeStore
+		.getState()
+		.setTerminal({ workspaceId: "target", tabId: "terminal-2", cwd: "/target" });
+	store.setActiveWorkspace("current", "/current");
+	raw.daemon.listSessions.mockImplementationOnce(async () => {
+		const pane = usePaneStore.getState().findPaneForTab("target", tabId);
+		if (pane) usePaneStore.getState().removeTabFromPane("target", pane.id, tabId);
+		return {
+			daemonSessions: [{ id: "terminal-2", cwd: "/target", pid: 2 }],
+			liveSessions: [],
+			callbackIds: [],
+		};
+	});
+	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("no longer open");
+	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+	expect(store.getTabsByWorkspace("target")).toHaveLength(0);
 });

@@ -132,7 +132,8 @@ export function QuickActionPopover({
 	}
 
 	return (
-		<div className="fixed inset-0 z-50" onClick={onClose}>
+		<div data-browser-modal
+			className="fixed inset-0 z-50" onClick={onClose}>
 			<div
 				className="absolute right-4 top-12 w-[320px] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] shadow-xl"
 				onClick={(e) => e.stopPropagation()}

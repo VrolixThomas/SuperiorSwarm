@@ -21,7 +21,7 @@ export function setupTRPCIPC(appRouter: AnyRouter): void {
 			const label = `trpc:${path}`;
 			try {
 				let fileCaller: FileCaller | undefined;
-				if (path.startsWith("terminalFiles.")) {
+				if (path.startsWith("terminalFiles.") || path.startsWith("browser.")) {
 					fileCaller = rendererTrust.authorize({
 						id: event.sender.id,
 						url: event.senderFrame?.url ?? "",
@@ -34,7 +34,7 @@ export function setupTRPCIPC(appRouter: AnyRouter): void {
 					router: appRouter,
 					path,
 					getRawInput: async () => input,
-					ctx: { fileCaller },
+					ctx: { fileCaller, browserCaller: path.startsWith("browser.") ? fileCaller : undefined },
 					type: type as "query" | "mutation",
 					signal: undefined,
 					batchIndex: 0,

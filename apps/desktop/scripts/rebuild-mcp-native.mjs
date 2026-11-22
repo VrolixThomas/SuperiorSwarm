@@ -18,6 +18,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rebuild } from "@electron/rebuild";
+import { electronRuntimeABI } from "./electron-runtime-abi.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
@@ -50,6 +51,7 @@ console.log(
 await rebuild({
 	buildPath: mcpDir,
 	electronVersion,
+	forceABI: electronRuntimeABI().abi,
 	onlyModules: ["better-sqlite3"],
 	force: true,
 });

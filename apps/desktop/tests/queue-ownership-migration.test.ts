@@ -15,7 +15,9 @@ test("0067 preserves legacy sessions/messages and enforces polymorphic ownership
 	try {
 		mkdirSync(join(root, "meta"));
 		const journal = JSON.parse(readFileSync(join(migrations, "meta/_journal.json"), "utf8"));
-		journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 67);
+		journal.entries = journal.entries.filter(
+			(entry: { tag: string }) => Number.parseInt(entry.tag, 10) < 67
+		);
 		writeFileSync(join(root, "meta/_journal.json"), JSON.stringify(journal));
 		for (const entry of journal.entries)
 			symlinkSync(join(migrations, `${entry.tag}.sql`), join(root, `${entry.tag}.sql`));
@@ -48,6 +50,7 @@ test("0067 preserves legacy sessions/messages and enforces polymorphic ownership
 		expect(sql.prepare("SELECT * FROM agent_sessions").get()).toEqual({
 			...(session as object),
 			entity_kind: "workspace",
+			queue_launch_known: 0,
 		});
 		expect(sql.prepare("SELECT * FROM agent_messages").get()).toMatchObject({
 			id: "q",

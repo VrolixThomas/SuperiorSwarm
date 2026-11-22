@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPREnriched, PRContext } from "../../shared/github-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
+import { openPRReview } from "../lib/open-pr-review";
 import { launchReviewTerminal } from "../lib/review-launch";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useReviewModeStore } from "../stores/review-mode-store";
@@ -10,6 +11,7 @@ import { ConnectBanner } from "./ConnectBanner";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { PullRequestGroup } from "./PullRequestGroup";
 import type { MergedPR } from "./PullRequestItem";
+import { ReviewPRSidebar } from "./ReviewPRSidebar";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
@@ -66,7 +68,11 @@ function PRContextMenu({
 
 // ── Main Tab ─────────────────────────────────────────────────────────────────
 
-export function PullRequestsTab() {
+export function PullRequestsTab({ navigationInRail = false }: { navigationInRail?: boolean } = {}) {
+	return navigationInRail ? <ReviewPRSidebar /> : <LegacyPullRequestsTab />;
+}
+
+function LegacyPullRequestsTab() {
 	const utils = trpc.useUtils();
 	const [openModalPR, setOpenModalPR] = useState<LinkablePR | null>(null);
 	const [linkError, setLinkError] = useState<string | null>(null);
@@ -597,31 +603,16 @@ export function PullRequestsTab() {
 			repoPath: string,
 			prCtx: PRContext
 		) => {
-			if (openingPRRef.current === prIdentifier) return;
-			openingPRRef.current = prIdentifier;
+			const openingKey = `${prProvider}:${prIdentifier}`;
+			if (openingPRRef.current === openingKey) return;
+			openingPRRef.current = openingKey;
 
 			try {
-				// getOrCreateReview creates workspace + worktree atomically.
-				// For existing worktrees the git fetch runs in the background on the
-				// main process side, so this resolves quickly.
-				const ws = await getOrCreateReviewMutation.mutateAsync({
-					projectId,
-					prProvider,
-					prIdentifier,
-					prTitle: prCtx.title,
-					sourceBranch: prCtx.sourceBranch,
-					targetBranch: prCtx.targetBranch,
-				});
-
-				// Track workspace ID for dismiss/cleanup lookups
+				const ws = await openPRReview(
+					{ projectId, prCtx: { ...prCtx, repoPath } },
+					getOrCreateReviewMutation.mutateAsync
+				);
 				workspaceIdMapRef.current.set(prIdentifier, ws.id);
-
-				const cwd = ws.worktreePath ?? repoPath;
-				// Update prCtx.repoPath to the worktree path so git queries
-				// (getCommitsAhead, getBranchDiff) run in the correct directory
-				const resolvedPrCtx = { ...prCtx, repoPath: cwd };
-				const tabStore = useTabStore.getState();
-				tabStore.activateReviewWorkspace(ws.id, cwd, resolvedPrCtx);
 			} finally {
 				openingPRRef.current = null;
 			}
