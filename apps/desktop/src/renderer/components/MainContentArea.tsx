@@ -24,6 +24,11 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	const cwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const layout = usePaneStore((s) => (activeWorkspaceId ? s.layouts[activeWorkspaceId] : null));
 	const activeReview = useReviewModeStore((s) => s.active);
+	const reviewView = useReviewModeStore((s) => s.view);
+	const reviewTabsOpen =
+		sidebarSegment === "prs" &&
+		activeReview?.workspaceId === activeWorkspaceId &&
+		reviewView === "terminal";
 
 	const [showQuickActionPopover, setShowQuickActionPopover] = useState(false);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -64,8 +69,8 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		return <HermesSessionView />;
 	}
 
-	if (sidebarSegment === "prs") {
-		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview)) {
+	if (sidebarSegment === "prs" && !reviewTabsOpen) {
+		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview, reviewView)) {
 			return <ReviewModeShell />;
 		}
 
@@ -95,6 +100,20 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	return (
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
+			{reviewTabsOpen && (
+				<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
+					<button
+						type="button"
+						onClick={() => useReviewModeStore.getState().setView("changes")}
+						className="shrink-0 rounded-md px-2 py-1 text-[12px] text-[var(--accent-hover)] hover:bg-[var(--bg-overlay)]"
+					>
+						← Back to PR review
+					</button>
+					<span className="truncate text-[12px] text-[var(--text-secondary)]">
+						#{activeReview?.prCtx.number} · {activeReview?.prCtx.title}
+					</span>
+				</div>
+			)}
 			{/* Branch indicator bar */}
 			{projectId && !isFolderProject && (
 				<div className="app-drag flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">

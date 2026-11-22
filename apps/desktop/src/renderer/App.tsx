@@ -452,7 +452,13 @@ function AuthenticatedApp() {
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const activeReview = useReviewModeStore((s) => s.active);
-	const showReviewWorkspace = shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview);
+	const reviewView = useReviewModeStore((s) => s.view);
+	const showReviewWorkspace = shouldShowReviewMode(
+		sidebarSegment,
+		activeWorkspaceId,
+		activeReview,
+		reviewView
+	);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({

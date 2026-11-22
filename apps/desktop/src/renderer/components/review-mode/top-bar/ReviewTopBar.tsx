@@ -90,6 +90,7 @@ export function ReviewTopBar({
 					<button
 						type="button"
 						onClick={onOpenTerminal}
+						title="Open the agent in a workspace tab"
 						className="rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
 					>
 						Agent terminal

@@ -9,7 +9,6 @@ import type { ReviewPathSource } from "../../lib/review-path-source";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { HintBar } from "./HintBar";
 import type { ActiveReview } from "./ReviewWorkspace";
-import { TerminalTab } from "./TerminalDrawer";
 import type { useReadingNavigation } from "./hooks/useReadingNavigation";
 import { ContextFileView } from "./step/ContextFileView";
 import { StepDiff } from "./step/StepDiff";
@@ -46,7 +45,6 @@ export function ReviewReadingPane({
 	onDiffEditor,
 	onCodeEditor,
 }: ReadingPaneProps) {
-	const view = useReviewModeStore((s) => s.view);
 	const { selected } = nav;
 	const path = source.path;
 	const index = nav.items.findIndex((item) => item.path === nav.selectedPath);
@@ -86,9 +84,7 @@ export function ReviewReadingPane({
 	return (
 		<>
 			<div className="min-h-0 flex-1 overflow-hidden">
-				{view === "terminal" ? (
-					<TerminalTab />
-				) : data.isLoading ? (
+				{data.isLoading ? (
 					<div className="p-6 text-[13px] text-[var(--text-tertiary)]">Loading review…</div>
 				) : !data.details ? (
 					<div role="alert" className="p-6 text-[13px] text-[var(--text-secondary)]">

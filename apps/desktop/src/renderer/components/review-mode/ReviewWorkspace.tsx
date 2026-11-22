@@ -6,7 +6,6 @@ import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
 import { ReviewReadingPane } from "./ReviewReadingPane";
 import { ReviewWorkspaceTopBar } from "./ReviewWorkspaceTopBar";
-import { TerminalDrawer } from "./TerminalDrawer";
 import { useReadingNavigation } from "./hooks/useReadingNavigation";
 import { useReadingThreads } from "./hooks/useReadingThreads";
 import { useReviewConnections } from "./hooks/useReviewConnections";
@@ -29,8 +28,12 @@ export function ReviewWorkspace({
 }: { active: ActiveReview; fixture?: boolean }) {
 	const { workspaceId, prCtx } = active;
 	const data = useReviewWorkspaceData(workspaceId, prCtx, { manageFileOrder: false });
-	const { source, askAgent, reviewer, attachmentError, openTerminal, terminal } =
-		useReviewConnections(workspaceId, prCtx, data.details, fixture);
+	const { source, askAgent, reviewer, attachmentError, openTerminal } = useReviewConnections(
+		workspaceId,
+		prCtx,
+		data.details,
+		fixture
+	);
 	const queue = useReviewQueue(prCtx);
 	const panel = useReviewModeStore((s) => s.panel);
 	const commentFilter = useReviewModeStore((s) => s.commentFilter);
@@ -273,7 +276,6 @@ export function ReviewWorkspace({
 					)}
 				</main>
 			</div>
-			<TerminalDrawer terminal={terminal ?? null} />
 			{queueOpen && (
 				<AllPRsDrawer
 					queue={queue.queue}

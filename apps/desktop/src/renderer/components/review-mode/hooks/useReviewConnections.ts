@@ -11,6 +11,7 @@ import {
 	useReviewPath,
 } from "../../../lib/review-path-source";
 import { rememberReviewPath } from "../../../lib/review-path-status-cache";
+import { openReviewTerminalTab } from "../../../lib/review-terminal-tab";
 import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { trpcVanilla } from "../../../trpc/client";
 import { trpc } from "../../../trpc/client";
@@ -117,13 +118,15 @@ export function useReviewConnections(
 			)
 				throw new Error("The agent terminal did not match this review workspace.");
 			// Recovery is read-only: the durable run/session already owns this descriptor.
-			useReviewModeStore.getState().setTerminal({
+			const recovered = {
 				workspaceId,
 				tabId: descriptor.terminalId,
 				cwd: descriptor.worktreePath,
 				reviewScopeKey: scopeKey,
-			});
+			};
+			useReviewModeStore.getState().setTerminal(recovered);
 			setAttachmentError(undefined);
+			return recovered;
 		} catch (error) {
 			if (isCurrent())
 				setAttachmentError(
@@ -145,9 +148,9 @@ export function useReviewConnections(
 	}, [scopeKey, ownedRun?.terminalId, terminal?.tabId, recover]);
 	const openTerminal =
 		terminal || ownedRun?.terminalId
-			? () => {
-					useReviewModeStore.getState().setDrawerOpen(true);
-					if (!terminal) void recover();
+			? async () => {
+					const target = terminal ?? (await recover());
+					if (target && currentScope.current === scopeKey) openReviewTerminalTab(target);
 				}
 			: undefined;
 	const pathSource = useReviewPath(prCtx, details, { fixture, identity, onLaunch });

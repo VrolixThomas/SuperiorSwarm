@@ -20,14 +20,11 @@ if (
 			</div>
 		),
 	}));
-	mock.module("../src/renderer/components/review-mode/TerminalDrawer", () => ({
-		TerminalDrawer: () => null,
-		TerminalTab: () => null,
-	}));
 	const { ReviewWorkspace } = await import(
 		"../src/renderer/components/review-mode/ReviewWorkspace"
 	);
 	const { useReviewModeStore } = await import("../src/renderer/stores/review-mode-store");
+	const { useTabStore } = await import("../src/renderer/stores/tab-store");
 	const { usePRReviewSessionStore } = await import(
 		"../src/renderer/stores/pr-review-session-store"
 	);
@@ -174,6 +171,41 @@ if (
 			);
 			expect(h.container.querySelector("[data-diff]")).not.toBeNull();
 			expect(h.calls.filter((call) => call.path === "github.markFileViewed")).toHaveLength(0);
+		} finally {
+			await h.cleanup();
+		}
+	});
+	test("agent action opens a workspace tab even when a legacy drawer was left open", async () => {
+		reset();
+		useTabStore.setState({ activeWorkspaceId: "workspace", sidebarSegment: "prs" });
+		useReviewModeStore
+			.getState()
+			.setTerminal({ workspaceId: "workspace", tabId: "review-path:existing:1", cwd: "/fixture" });
+		useReviewModeStore.getState().setDrawerOpen(true);
+		const h = await renderBrowserTest(
+			<ReviewWorkspace active={{ workspaceId: "workspace", prCtx }} />,
+			[],
+			false,
+			{ request }
+		);
+		try {
+			await h.settle();
+			expect(h.container.textContent).not.toContain("AI review terminal");
+			expect(h.container.querySelector('[aria-label="Resize AI review terminal"]')).toBeNull();
+			await act(async () =>
+				Array.from(h.container.querySelectorAll("button"))
+					.find((button) => button.textContent === "Agent terminal")
+					?.click()
+			);
+			expect(useReviewModeStore.getState().view).toBe("terminal");
+			expect(useReviewModeStore.getState().drawerOpen).toBe(false);
+			expect(
+				useTabStore
+					.getState()
+					.getTabsByWorkspace("workspace")
+					.some((tab) => tab.id === "review-path:existing:1" && tab.kind === "terminal")
+			).toBe(true);
+			expect(h.calls.some((call) => call.path === "reviewPath.start")).toBe(false);
 		} finally {
 			await h.cleanup();
 		}

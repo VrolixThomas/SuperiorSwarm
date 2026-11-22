@@ -59,10 +59,12 @@ export interface ReviewModeStore {
 export function shouldShowReviewMode(
 	sidebarSegment: SidebarSegment,
 	activeWorkspaceId: string | null,
-	active: ReviewModeStore["active"]
+	active: ReviewModeStore["active"],
+	view?: ReviewView
 ): boolean {
 	return (
 		sidebarSegment === "prs" &&
+		view !== "terminal" &&
 		activeWorkspaceId !== null &&
 		active?.workspaceId === activeWorkspaceId
 	);
