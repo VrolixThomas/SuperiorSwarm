@@ -1,6 +1,10 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { TicketIteration, TicketNavigationTarget, TicketScope } from "../../../shared/tickets";
+import {
+	recordTicketQueueLink,
+	ticketQueueAccountCurrent,
+} from "../../activity-queue/ticket-runtime";
 import { getAuth as getJiraAuth } from "../../atlassian/auth";
 import {
 	getProjectIssuesWithDone,
@@ -450,9 +454,22 @@ export const ticketsRouter = router({
 				provider: z.enum(["linear", "jira"]),
 				ticketId: z.string(),
 				workspaceId: z.string(),
+				queueAccount: z
+					.object({
+						provider: z.enum(["linear", "jira"]),
+						accountId: z.string(),
+						siteId: z.string(),
+					})
+					.optional(),
 			})
 		)
 		.mutation(({ input }) => {
+			if (
+				input.queueAccount &&
+				(input.queueAccount.provider !== input.provider ||
+					!ticketQueueAccountCurrent(input.queueAccount))
+			)
+				throw new Error("Ticket account changed. Refresh the queue.");
 			const db = getDb();
 			db.insert(ticketBranchLinks)
 				.values({
@@ -464,6 +481,8 @@ export const ticketsRouter = router({
 				})
 				.onConflictDoNothing()
 				.run();
+			if (input.queueAccount)
+				recordTicketQueueLink(input.queueAccount, input.ticketId, input.workspaceId);
 		}),
 
 	getLinkedTickets: publicProcedure.query(() => {

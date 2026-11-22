@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import { prepareTicketQueueAction } from "../../activity-queue/ticket-runtime";
 import { getDb } from "../../db";
 import {
 	githubBranchPrs,
@@ -69,9 +70,11 @@ export const workspacesRouter = router({
 				projectId: z.string(),
 				branch: z.string().min(1),
 				baseBranch: z.string().optional(),
+				queueTicket: z.object({ id: z.string(), revision: z.number().int().positive() }).optional(),
 			})
 		)
 		.mutation(async ({ input }) => {
+			if (input.queueTicket) prepareTicketQueueAction({ ...input.queueTicket, action: "start" });
 			const { createWorkspace } = await import("../../services/workspace-service");
 			const created = await createWorkspace({
 				projectId: input.projectId,
