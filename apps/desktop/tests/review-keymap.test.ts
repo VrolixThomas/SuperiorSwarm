@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mapReviewKey } from "../src/renderer/lib/review-keymap";
+import { escapeTarget, mapReviewKey } from "../src/renderer/lib/review-keymap";
 
 const ev = (
 	key: string,
@@ -42,4 +42,25 @@ describe("mapReviewKey", () => {
 		expect(mapReviewKey(ev("Escape"), "overview")).toBe("escape");
 		expect(mapReviewKey(ev("j", { metaKey: true }), "changes")).toBeNull();
 	});
+});
+
+test("path layout owns its shortcuts and retires numbered views", () => {
+	const event = (key: string, metaKey = false) => ({ key, metaKey, ctrlKey: false, altKey: false });
+	expect(mapReviewKey(event("f"), "changes", { layout: "path" })).toBe("toggle-rail-mode");
+	expect(mapReviewKey(event("/"), "changes", { layout: "path" })).toBe("ask-agent");
+	expect(mapReviewKey(event("t"), "changes", { layout: "path" })).toBe("open-threads");
+	expect(mapReviewKey(event("ArrowDown", true), "changes", { layout: "path" })).toBe("next-pr");
+	expect(mapReviewKey(event("ArrowUp", true), "changes", { layout: "path" })).toBe("prev-pr");
+	expect(mapReviewKey(event("1"), "changes", { layout: "path" })).toBeNull();
+	expect(mapReviewKey(event("f"), "changes")).toBeNull();
+});
+
+test("Escape closes only the deepest review layer", () => {
+	expect(
+		escapeTarget({ composerOpen: true, panel: "ask", queueOpen: true, overviewOpen: true })
+	).toBe("composer");
+	expect(escapeTarget({ panel: "threads", queueOpen: true, overviewOpen: true })).toBe("panel");
+	expect(escapeTarget({ queueOpen: true, overviewOpen: true })).toBe("queue");
+	expect(escapeTarget({ overviewOpen: true })).toBe("overview");
+	expect(escapeTarget({})).toBe("leave");
 });

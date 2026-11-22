@@ -1,7 +1,7 @@
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import type { SessionSaveData } from "../shared/types";
 import { useEditorSettingsStore } from "./stores/editor-settings";
-import { usePaneStore } from "./stores/pane-store";
+import { normalizeReviewLayout, usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import { type TabItem, serializeHermesSessionSelection, useTabStore } from "./stores/tab-store";
 
@@ -18,6 +18,7 @@ function serializeLayout(node: LayoutNode): SerializedLayoutNode {
 				tab.kind === "file" ? { ...tab, initialPosition: undefined } : tab
 			),
 			activeTabId: node.activeTabId,
+			recentTabIds: node.recentTabIds,
 		};
 	}
 	return {
@@ -34,10 +35,21 @@ export function deserializeLayout(
 	terminalMap: Map<string, TabItem>
 ): LayoutNode | null {
 	if (node.type === "pane") {
+		const aliases = new Map<string, string>();
 		const paneTabs = node.tabs
 			.map((saved): TabItem | null => {
 				if (saved.kind === "terminal") {
-					const terminal = terminalMap.get(saved.id);
+					const terminal =
+						terminalMap.get(saved.id) ??
+						[...terminalMap.values()].find(
+							(t) => t.kind === "review-agent" && t.terminalId === saved.id
+						);
+					if (terminal?.kind === "review-agent" && terminal.workspaceId === saved.workspaceId) {
+						aliases.set(saved.id, terminal.id);
+						return terminal;
+					}
+					// Old attached views stay inspectable even if the daemon no longer has a PTY.
+					if (saved.id.startsWith("review-path:") && !terminal) return saved;
 					if (terminal?.kind !== "terminal" || terminal.workspaceId !== saved.workspaceId)
 						return null;
 					// The backend owns session identity and cwd; the layout owns UI metadata.
@@ -64,12 +76,20 @@ export function deserializeLayout(
 			})
 			.filter((t): t is TabItem => t != null);
 		if (paneTabs.length === 0) return null;
-		return {
-			type: "pane",
-			id: node.id,
-			tabs: paneTabs,
-			activeTabId: paneTabs.find((t) => t.id === node.activeTabId)?.id ?? paneTabs[0]?.id ?? null,
-		};
+		return normalizeReviewLayout(
+			{
+				type: "pane",
+				id: node.id,
+				tabs: paneTabs,
+				recentTabIds: node.recentTabIds,
+				activeTabId:
+					paneTabs.find((t) => t.id === (aliases.get(node.activeTabId ?? "") ?? node.activeTabId))
+						?.id ??
+					paneTabs[0]?.id ??
+					null,
+			},
+			paneTabs[0]?.workspaceId ?? ""
+		);
 	}
 	const first = deserializeLayout(node.children[0], terminalMap);
 	const second = deserializeLayout(node.children[1], terminalMap);
@@ -89,12 +109,16 @@ export function collectSessionSnapshot(): SessionSnapshot {
 	const tabs = store.getAllTabs();
 	const activeTabId = store.getActiveTabId();
 
-	const terminalTabs = tabs.filter((tab) => tab.kind === "terminal" && tab.workspaceId);
+	const terminalTabs = tabs.filter(
+		(tab) =>
+			(tab.kind === "terminal" || (tab.kind === "review-agent" && tab.terminalId && tab.cwd)) &&
+			tab.workspaceId
+	);
 	const sessions = terminalTabs.map((tab, index) => ({
-		id: tab.id,
+		id: tab.kind === "review-agent" ? (tab.terminalId ?? "") : tab.id,
 		workspaceId: tab.workspaceId,
 		title: tab.title,
-		cwd: tab.kind === "terminal" ? tab.cwd : "",
+		cwd: tab.kind === "terminal" || tab.kind === "review-agent" ? (tab.cwd ?? "") : "",
 		// scrollback omitted — daemon owns that column
 		sortOrder: index,
 	}));

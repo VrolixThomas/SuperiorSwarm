@@ -6,6 +6,7 @@ import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import {
 	TerminalCreateError,
 	type TerminalCreateResult,
+	isReviewPathTerminal,
 	terminalCreateFailure,
 } from "../../shared/terminal-create";
 import { WorkspaceError } from "../../shared/workspace-errors";
@@ -15,7 +16,7 @@ import {
 	getWorkspaceCwdOrThrow,
 } from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
-import { terminalSessions, workspaces } from "../db/schema";
+import { projects, terminalSessions, workspaces, worktrees } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import {
 	type AgentSessionManager,
@@ -25,6 +26,7 @@ import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 import { registerTerminalInputIPC } from "./input-ipc";
 import { rendererTrust } from "./renderer-trust";
+import { reviewTerminalOwnership } from "./review-terminal-ownership";
 import { type FileCaller, terminalFileOwners } from "./terminal-files";
 import { TerminalViewSessions } from "./view-sessions";
 
@@ -70,6 +72,32 @@ export function setupTerminalIPC(
 					typeof workspaceId === "string" && workspaceId.length > 0 ? workspaceId : undefined;
 				const db = getDb();
 				const row = db.select().from(terminalSessions).where(eq(terminalSessions.id, id)).get();
+				const ownedReview = isReviewPathTerminal(id);
+				if (ownedReview && (!row || row.workspaceId !== wsId))
+					throw new TerminalCreateError("REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
+				const reviewOwner = ownedReview ? reviewTerminalOwnership(db, id, wsId) : undefined;
+				const requirePreparedShell = () => {
+					if (!wsId || ownedReview) return;
+					const workspace = db.select().from(workspaces).where(eq(workspaces.id, wsId)).get();
+					if (workspace?.type !== "review") return;
+					const worktree = workspace.worktreeId
+						? db.select().from(worktrees).where(eq(worktrees.id, workspace.worktreeId)).get()
+						: undefined;
+					const project = db
+						.select()
+						.from(projects)
+						.where(eq(projects.id, workspace.projectId))
+						.get();
+					if (
+						!worktree ||
+						!project ||
+						worktree.projectId !== workspace.projectId ||
+						canonicalWorkspaceDirectory(worktree.path) ===
+							canonicalWorkspaceDirectory(project.repoPath)
+					)
+						throw new TerminalCreateError("REVIEW_WORKSPACE_NOT_PREPARED");
+				};
+				requirePreparedShell();
 				let wasAttached = daemonClient.hasLiveSession(id);
 				if ((row && row.workspaceId !== wsId) || (wasAttached && !row))
 					throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
@@ -80,16 +108,20 @@ export function setupTerminalIPC(
 				if (wsId) {
 					owner = terminalFileOwners.attach(id, caller, wsId, cwd);
 				}
-				if (wasAttached) {
+				if (wasAttached || ownedReview) {
 					const sessions = await daemonClient.listSessionsStrict();
 					const live = sessions.find((session) => session.id === id);
 					if (live && canonicalWorkspaceDirectory(live.cwd) !== cwd)
 						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 					wasAttached = Boolean(live);
+					if (ownedReview && !live) throw new TerminalCreateError("REVIEW_TERMINAL_UNAVAILABLE");
 				}
+				if (ownedReview && reviewTerminalOwnership(db, id, wsId) !== reviewOwner)
+					throw new TerminalCreateError("REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
 				// The daemon inventory query yields. Recheck both record identity and
 				// the directory inode before handing the bound root to the daemon.
 				if (wsId && owner) {
+					requirePreparedShell();
 					if (getWorkspaceCwdOrThrow(wsId) !== cwd)
 						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 					try {

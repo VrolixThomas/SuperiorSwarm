@@ -1,9 +1,19 @@
 import { WorkspaceError, workspaceErrorMessages } from "./workspace-errors";
 
+export function isReviewPathTerminal(id: string): boolean {
+	return id.startsWith("review-path:");
+}
+
 const messages = {
+	REVIEW_WORKSPACE_NOT_PREPARED:
+		"Start an agent to prepare this PR workspace before opening a shell.",
 	...workspaceErrorMessages,
 	TERMINAL_WORKSPACE_MISMATCH:
 		"Terminal workspace mismatch. Reopen the terminal from its workspace.",
+	REVIEW_TERMINAL_UNAVAILABLE:
+		"Reading-path terminal is no longer available. Start a new run from the review workspace.",
+	REVIEW_TERMINAL_OWNERSHIP_MISMATCH:
+		"Reading-path terminal ownership could not be verified. Reopen it from its review workspace.",
 	TERMINAL_NOT_AUTHORIZED: "This terminal is not authorized for this window.",
 	DAEMON_UNAVAILABLE: "The background terminal daemon could not be reached.",
 	TERMINAL_CREATE_FAILED:
@@ -63,6 +73,8 @@ export function terminalCreateErrorMessage(error: unknown): string {
 	const code = terminalCreateErrorCode(error);
 	if (code === "DAEMON_UNAVAILABLE")
 		return `\r\n\x1b[31m[Terminal daemon is unavailable]\x1b[0m\r\n\x1b[90m${messages[code]}\r\nReconnection will be attempted automatically.\x1b[0m\r\n`;
+	if (code.startsWith("REVIEW_TERMINAL_"))
+		return `\r\n\x1b[31m[Reading-path terminal unavailable]\x1b[0m\r\n\x1b[90m${messages[code]}\x1b[0m\r\n`;
 	const workspace = code.startsWith("WORKSPACE_") || code === "TERMINAL_WORKSPACE_MISMATCH";
 	return `\r\n\x1b[31m[${workspace ? "Workspace unavailable" : "Terminal could not start"}]\x1b[0m\r\n\x1b[90m${messages[code]}\r\n${workspace ? "Check the workspace and its folder, then retry or close this tab." : "Retry the terminal when the problem is resolved."}\x1b[0m\r\n`;
 }

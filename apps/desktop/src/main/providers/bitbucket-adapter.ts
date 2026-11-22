@@ -1,4 +1,9 @@
-import type { GitHubPRDetails, GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
+import type {
+	GitHubPRDetails,
+	GitHubPREnriched,
+	GitHubReviewThread,
+	GitHubReviewer,
+} from "../../shared/github-types";
 import { atlassianFetch, getAuth } from "../atlassian/auth";
 import {
 	type BitbucketComment,
@@ -67,9 +72,62 @@ export function mapBitbucketComment(comment: BitbucketComment): NormalizedCommen
 		author: comment.author,
 		filePath: comment.filePath,
 		lineNumber: comment.lineNumber,
-		side: null,
+		side: comment.diffSide ?? null,
 		createdAt: comment.createdAt,
 	};
+}
+
+/** A reply inherits only its proved root's location/resolution, never its own stale inline copy. */
+function groupBitbucketComments(comments: BitbucketComment[]) {
+	const byId = new Map(comments.map((comment) => [comment.id, comment]));
+	const groups = new Map<number, BitbucketComment[]>();
+	const conversationComments: GitHubPRDetails["conversationComments"] = [];
+	const asComment = (comment: BitbucketComment) => ({
+		id: String(comment.id),
+		body: comment.body,
+		author: comment.author,
+		authorId: comment.authorId ?? null,
+		authorAvatarUrl: "",
+		createdAt: comment.createdAt,
+	});
+	for (const comment of comments) {
+		let root: BitbucketComment | undefined = comment;
+		const visited = new Set<number>();
+		while (root?.parentId != null) {
+			if (visited.has(root.id)) {
+				root = undefined;
+				break;
+			}
+			visited.add(root.id);
+			root = byId.get(root.parentId);
+		}
+		if (!root?.filePath) {
+			// Orphans/cycles have no proved thread anchor. Keep their text in the conversation.
+			conversationComments.push(asComment(comment));
+			continue;
+		}
+		const members = groups.get(root.id) ?? [];
+		members.push(comment);
+		groups.set(root.id, members);
+	}
+	const reviewThreads: GitHubReviewThread[] = [];
+	for (const [rootId, members] of groups) {
+		const root = byId.get(rootId);
+		if (!root?.filePath) continue;
+		reviewThreads.push({
+			id: String(root.id),
+			path: root.filePath,
+			isResolved: root.isResolved ?? false,
+			resolutionKnown: typeof root.isResolved === "boolean",
+			line: root.isOutdated ? null : root.lineNumber,
+			originalLine: root.originalLine,
+			isOutdated: root.isOutdated,
+			// File-level comments have no side; RIGHT is an inert legacy placeholder with line:null.
+			diffSide: root.diffSide ?? "RIGHT",
+			comments: [root, ...members.filter((comment) => comment.id !== root.id)].map(asComment),
+		});
+	}
+	return { reviewThreads, conversationComments };
 }
 
 // ── Enrichment types ──────────────────────────────────────────────────────────
@@ -165,6 +223,9 @@ export function dedupBitbucketPRs(
 
 export class BitbucketAdapter implements GitProvider {
 	readonly name = "bitbucket" as const;
+	// Cloud's PR comment endpoint accepts inline from/to/path, but no revision pin.
+	// A separate head read cannot prevent a push racing the comment POST.
+	readonly supportsPinnedInlineComments = false;
 
 	isConnected(): boolean {
 		return getAuth("bitbucket") !== null;
@@ -219,13 +280,17 @@ export class BitbucketAdapter implements GitProvider {
 	}
 
 	async createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }> {
+		if (params.filePath && params.commitId != null) {
+			throw new Error("Bitbucket Cloud does not support revision-pinned inline comments");
+		}
 		const { id } = await createPRComment(
 			params.owner,
 			params.repo,
 			params.prNumber,
 			params.body,
 			params.filePath,
-			params.line
+			params.line,
+			params.side
 		);
 		return { id: String(id) };
 	}
@@ -290,98 +355,117 @@ export class BitbucketAdapter implements GitProvider {
 
 	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
 		const files: NormalizedPRFile[] = [];
-		let url: string | null =
-			`${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${prNumber}/diffstat?pagelen=500`;
-
+		const repoUrl = `${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/`;
+		let url: string | null = `${repoUrl}pullrequests/${prNumber}/diffstat?pagelen=500`;
+		const pages = new Set<string>();
+		const paths = new Set<string>();
+		let expectedSize: number | undefined;
 		while (url) {
+			const parsed = new URL(url);
+			if (
+				parsed.origin !== new URL(BITBUCKET_API_BASE).origin ||
+				!parsed.pathname.startsWith(new URL(repoUrl).pathname) ||
+				parsed.username ||
+				parsed.password ||
+				pages.has(parsed.href)
+			) {
+				throw new Error("Bitbucket file pagination left the repository or repeated a page");
+			}
+			pages.add(parsed.href);
 			const res = await atlassianFetch("bitbucket", url);
-			if (!res.ok) return files;
+			if (!res.ok) throw new Error(`Bitbucket file page failed: ${res.status}`);
 			const data = (await res.json()) as {
 				values?: Array<{
-					new?: { path: string };
-					old?: { path: string };
+					new?: { path?: string } | null;
+					old?: { path?: string } | null;
 					status: string;
 					lines_added?: number;
 					lines_removed?: number;
 				}>;
-				next?: string;
+				next?: string | null;
+				size?: number;
 			};
-			for (const f of data.values ?? []) {
+			if (
+				!data ||
+				!Array.isArray(data.values) ||
+				(data.next != null && (typeof data.next !== "string" || !data.next)) ||
+				(data.next && data.values.length === 0)
+			)
+				throw new Error("Bitbucket file page is incomplete");
+			if (data.size !== undefined) {
+				if (
+					!Number.isSafeInteger(data.size) ||
+					data.size < 0 ||
+					(expectedSize !== undefined && data.size !== expectedSize)
+				)
+					throw new Error("Bitbucket file count changed");
+				expectedSize = data.size;
+			}
+			for (const file of data.values) {
+				const path = file?.new?.path ?? file?.old?.path;
+				if (
+					typeof path !== "string" ||
+					!path ||
+					paths.has(path) ||
+					typeof file.status !== "string"
+				) {
+					throw new Error("Bitbucket file manifest contains an invalid or duplicate file");
+				}
+				paths.add(path);
 				files.push({
-					path: f.new?.path ?? f.old?.path ?? "",
+					path,
 					status:
-						f.status === "added"
-							? ("added" as const)
-							: f.status === "removed"
-								? ("removed" as const)
-								: f.status === "renamed"
-									? ("renamed" as const)
-									: ("modified" as const),
-					previousPath: f.status === "renamed" ? f.old?.path : undefined,
-					additions: f.lines_added ?? 0,
-					deletions: f.lines_removed ?? 0,
+						file.status === "added"
+							? "added"
+							: file.status === "removed"
+								? "removed"
+								: file.status === "renamed"
+									? "renamed"
+									: "modified",
+					previousPath: file.status === "renamed" ? file.old?.path : undefined,
+					additions: file.lines_added ?? 0,
+					deletions: file.lines_removed ?? 0,
 				});
 			}
 			url = data.next ?? null;
 		}
-
+		if (expectedSize !== undefined && files.length !== expectedSize)
+			throw new Error("Bitbucket file manifest is truncated");
 		return files;
 	}
 
 	async getReviewThreads(): Promise<NormalizedReviewThread[]> {
-		// Bitbucket comments don't have thread resolution state via API.
+		// Polling reconciliation does not yet consume the optional Bitbucket resolution metadata.
 		return [];
 	}
 
 	// ── Bitbucket-specific extras ─────────────────────────────────────────────
 
 	async getPRDetails(owner: string, repo: string, prNumber: number): Promise<GitHubPRDetails> {
-		const [prData, statuses, comments, files, prState] = await Promise.all([
-			getBitbucketPRDetails(owner, repo, prNumber),
+		const prData = await getBitbucketPRDetails(owner, repo, prNumber);
+		const [statuses, comments, files] = await Promise.all([
 			getBitbucketPRStatuses(owner, repo, prNumber),
 			getBitbucketPRComments(owner, repo, prNumber),
 			this.getPRFiles(owner, repo, prNumber),
-			this.getPRState(owner, repo, prNumber),
 		]);
+
+		// PR diffstat pages are mutable; do not certify files under a different revision.
+		const current = await getBitbucketPRDetails(owner, repo, prNumber);
+		if (
+			!prData.headCommitOid ||
+			!prData.baseCommitOid ||
+			current.headCommitOid !== prData.headCommitOid ||
+			current.baseCommitOid !== prData.baseCommitOid
+		) {
+			throw new Error("Bitbucket PR revision unavailable or changed while listing files");
+		}
 
 		const reviewerParticipants = prData.participants.filter((p) => p.role === "REVIEWER");
 		const reviewers = reviewerParticipants.map(mapParticipantToReviewer);
 		const ciState = aggregateCIState(statuses);
 		const reviewDecision = deriveReviewDecision(reviewers);
 
-		// Map comments with file paths to review threads
-		const reviewThreads = comments.flatMap((c) => {
-			if (!c.filePath) return [];
-			return [
-				{
-					id: String(c.id),
-					isResolved: false,
-					path: c.filePath,
-					line: c.lineNumber,
-					diffSide: "RIGHT" as const,
-					comments: [
-						{
-							id: String(c.id),
-							author: c.author,
-							body: c.body,
-							authorAvatarUrl: "",
-							createdAt: c.createdAt,
-						},
-					],
-				},
-			];
-		});
-
-		// Map comments without file paths to conversation comments
-		const conversationComments = comments
-			.filter((c) => !c.filePath)
-			.map((c) => ({
-				id: String(c.id),
-				body: c.body,
-				author: c.author,
-				authorAvatarUrl: "",
-				createdAt: c.createdAt,
-			}));
+		const { reviewThreads, conversationComments } = groupBitbucketComments(comments);
 
 		const bbState = normalizeBBState(prData.state);
 
@@ -403,6 +487,7 @@ export class BitbucketAdapter implements GitProvider {
 			reviewers,
 			reviewThreads,
 			conversationComments,
+			filesComplete: true,
 			files: files.map((f) => ({
 				path: f.path,
 				additions: f.additions ?? 0,
@@ -418,7 +503,8 @@ export class BitbucketAdapter implements GitProvider {
 			})),
 			sourceBranch: prData.sourceBranch,
 			targetBranch: prData.targetBranch,
-			headCommitOid: prState.headSha,
+			headCommitOid: prData.headCommitOid,
+			baseCommitOid: prData.baseCommitOid,
 		};
 	}
 

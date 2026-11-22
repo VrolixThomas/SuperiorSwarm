@@ -1,0 +1,163 @@
+{
+  "baseline": "0e79fa3dde6a48700846a4768e45389067fe9c20",
+  "nativeChecks": [
+    {
+      "name": "native registered appRouter reachable",
+      "passed": true
+    },
+    {
+      "name": "disk reopen fences surviving mapping and missing question and revokes capability",
+      "passed": true
+    },
+    {
+      "name": "durable auto claim survives disk reopen",
+      "passed": true
+    },
+    {
+      "name": "manual retry after restart creates new owned run",
+      "passed": true
+    },
+    {
+      "name": "explicit settings survive legacy import",
+      "passed": true
+    },
+    {
+      "name": "real PTY executed disposable CLI",
+      "passed": true
+    },
+    {
+      "name": "duplicate durable auto claim does not relaunch",
+      "passed": true
+    },
+    {
+      "name": "Map without review creates no draft",
+      "passed": true
+    },
+    {
+      "name": "streaming partial placement visible through IPC",
+      "passed": true
+    },
+    {
+      "name": "complete coverage rejects missing changed file",
+      "passed": true
+    },
+    {
+      "name": "complete coverage ready and rendered",
+      "passed": true
+    },
+    {
+      "name": "findings and summary local draft ready",
+      "passed": true
+    },
+    {
+      "name": "out-of-order answers retain question identity",
+      "passed": true
+    },
+    {
+      "name": "current conversation inherits each answer's anchor",
+      "passed": true
+    },
+    {
+      "name": "remap hides historical answers from current conversation",
+      "passed": true
+    },
+    {
+      "name": "native terminal attachment reuses owned PTY without second launch",
+      "passed": true,
+      "actual": {
+        "wasAttached": true
+      }
+    },
+    {
+      "name": "terminal attachment cannot hide agent exit",
+      "passed": true
+    },
+    {
+      "name": "daemon disconnect alone does not invent agent failure",
+      "passed": true
+    },
+    {
+      "name": "native daemon reconnect reattaches without relaunch",
+      "passed": true,
+      "actual": {
+        "wasAttached": true
+      }
+    },
+    {
+      "name": "cancel during native inventory rejects late launch and leaves no active draft",
+      "passed": true
+    },
+    {
+      "name": "cancel during provider rejects launch without late prompt or active draft",
+      "passed": true
+    },
+    {
+      "name": "cancel during create rejects launch without late prompt or active draft",
+      "passed": true
+    },
+    {
+      "name": "simultaneous Map and Ask both deliver terminal attachment descriptors",
+      "passed": false,
+      "actual": {
+        "mapDelivered": false,
+        "askDelivered": true
+      }
+    },
+    {
+      "name": "simultaneous mapping and question both survive durably",
+      "passed": true
+    },
+    {
+      "name": "provider failure is truthful and produces no run",
+      "passed": true
+    },
+    {
+      "name": "provider reconnect restores availability",
+      "passed": true
+    },
+    {
+      "name": "scope isolation w2",
+      "passed": true
+    },
+    {
+      "name": "scope isolation bb",
+      "passed": true
+    },
+    {
+      "name": "unlinked review workspace rejected",
+      "passed": true
+    },
+    {
+      "name": "closed provider PR allows local Map and Ask",
+      "passed": true
+    },
+    {
+      "name": "observed head change during inventory prevents late prompt and active draft",
+      "passed": true
+    },
+    {
+      "name": "observed head change fences authenticated old MCP callback",
+      "passed": true
+    },
+    {
+      "name": "late provider read preserves newer native mapping",
+      "passed": false,
+      "actual": {
+        "newerStillActive": false
+      }
+    }
+  ],
+  "passed": 31,
+  "failed": 2,
+  "rpcRoutes": [
+    "reviewPath.ask",
+    "reviewPath.cancel",
+    "reviewPath.get",
+    "reviewPath.getSettings",
+    "reviewPath.importLegacySettings",
+    "reviewPath.start",
+    "reviewPath.updateSettings"
+  ],
+  "provider": "disposable in-process adapter double",
+  "cli": "fake executable on real isolated PTY"
+}

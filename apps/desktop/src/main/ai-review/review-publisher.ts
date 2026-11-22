@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
-import type { NormalizedPRFile } from "../providers/types";
 import { parsePrIdentifier } from "./pr-identifier";
 
 export interface PublishResult {
@@ -15,53 +14,6 @@ export interface PublishResult {
 }
 
 const ACCEPTED_COMMENT_STATUSES = new Set(["approved", "user-pending"]);
-
-/**
- * Build a map of valid file paths and a rename map (old → new) from PR files.
- * Used to validate and remap comment paths before publishing.
- */
-function buildPathMaps(files: NormalizedPRFile[]): {
-	validPaths: Set<string>;
-	renameMap: Map<string, string>;
-} {
-	const validPaths = new Set<string>();
-	const renameMap = new Map<string, string>();
-
-	for (const f of files) {
-		if (f.status !== "removed") {
-			validPaths.add(f.path);
-		}
-		if (f.status === "renamed" && f.previousPath) {
-			renameMap.set(f.previousPath, f.path);
-		}
-	}
-
-	return { validPaths, renameMap };
-}
-
-/**
- * Resolve a comment's file path against the current PR diff.
- * Returns the resolved path, or null if the file no longer exists.
- */
-function resolveCommentPath(
-	filePath: string,
-	validPaths: Set<string>,
-	renameMap: Map<string, string>
-): { path: string; renamed: boolean; originalPath?: string } | null {
-	// Path exists in current diff — use as-is
-	if (validPaths.has(filePath)) {
-		return { path: filePath, renamed: false };
-	}
-
-	// Check if file was renamed
-	const newPath = renameMap.get(filePath);
-	if (newPath) {
-		return { path: newPath, renamed: true, originalPath: filePath };
-	}
-
-	// File no longer exists in PR diff
-	return null;
-}
 
 /** Publish approved draft comments to GitHub or Bitbucket */
 export async function publishReview(
@@ -100,28 +52,55 @@ export async function publishReview(
 	const { owner, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
 	const errors: string[] = [];
 	let postedCount = 0;
-	let skippedCount = 0;
+	const skippedCount = 0;
 	let failedCount = 0;
 	let verdictSubmitted = false;
 
 	const git = getGitProvider(draft.prProvider);
 
-	// Fetch PR files for path validation
-	let commitId = draft.commitSha ?? undefined;
-	let validPaths = new Set<string>();
-	let renameMap = new Map<string, string>();
-
+	// Preflight the entire accepted submission before the first external mutation.
+	// Line/side provenance is tied to the stored revision, never today's branch tip.
+	const commitId = draft.commitSha ?? undefined;
 	try {
-		const [prState, prFiles] = await Promise.all([
-			git.getPRState(owner, repo, prNumber),
-			git.getPRFiles(owner, repo, prNumber),
-		]);
-		commitId = prState.headSha;
-		const maps = buildPathMaps(prFiles);
-		validPaths = maps.validPaths;
-		renameMap = maps.renameMap;
-	} catch (err) {
-		console.error("[review-publisher] Failed to fetch PR state/files, using stored commit:", err);
+		if (comments.length > 0 && !commitId)
+			throw new Error(
+				"Inline comments have no verified revision; recreate them against the current diff"
+			);
+		if (comments.length > 0 && git.supportsPinnedInlineComments === false)
+			throw new Error(`${git.name} does not support revision-pinned inline comments`);
+		const prState = await git.getPRState(owner, repo, prNumber);
+		if (commitId && prState.headSha !== commitId)
+			throw new Error(
+				"PR head changed since this draft was created; review the current diff before submitting"
+			);
+		if (prState.state !== "open")
+			throw new Error("Cannot submit a review to a closed pull request");
+		if (comments.length > 0) {
+			const files = await git.getPRFiles(owner, repo, prNumber);
+			for (const comment of comments) {
+				const exists = files.some(
+					(file) =>
+						(file.path === comment.filePath &&
+							(comment.side === "LEFT" || file.status !== "removed")) ||
+						(comment.side === "LEFT" && file.previousPath === comment.filePath)
+				);
+				if (!exists) throw new Error(`Comment path is not in the pinned diff: ${comment.filePath}`);
+			}
+			const verified = await git.getPRState(owner, repo, prNumber);
+			if (verified.headSha !== commitId || verified.state !== "open")
+				throw new Error(
+					"PR changed while validating this draft; review the current diff before submitting"
+				);
+		}
+	} catch (error) {
+		return {
+			success: false,
+			postedCount: 0,
+			skippedCount: 0,
+			failedCount: Math.max(1, comments.length),
+			errors: [error instanceof Error ? error.message : String(error)],
+			verdictSubmitted: false,
+		};
 	}
 
 	// Post comments
@@ -129,30 +108,12 @@ export async function publishReview(
 		try {
 			const body = comment.userEdit ?? comment.body;
 
-			let filePath = comment.filePath;
-			if (validPaths.size > 0) {
-				const resolved = resolveCommentPath(filePath, validPaths, renameMap);
-				if (!resolved) {
-					skippedCount++;
-					errors.push(
-						`Skipped comment on ${filePath}${comment.lineNumber ? `:${comment.lineNumber}` : ""} — file no longer exists in PR`
-					);
-					continue;
-				}
-				filePath = resolved.path;
-			}
-
-			const commentBody =
-				filePath !== comment.filePath
-					? `*(File was renamed from \`${comment.filePath}\`)*\n\n${body}`
-					: body;
-
 			const result = await git.createInlineComment({
 				owner,
 				repo,
 				prNumber,
-				body: commentBody,
-				filePath,
+				body,
+				filePath: comment.filePath,
 				...(commitId ? { commitId } : {}),
 				...(comment.lineNumber
 					? { line: comment.lineNumber, side: (comment.side as "LEFT" | "RIGHT") ?? "RIGHT" }

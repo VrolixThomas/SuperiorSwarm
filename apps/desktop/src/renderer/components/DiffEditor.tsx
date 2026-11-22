@@ -1,10 +1,12 @@
 import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 
 interface DiffEditorProps {
+	modelKey?: string;
+	hideUnchangedRegions?: boolean;
 	original: string;
 	modified: string;
 	language: string;
@@ -15,6 +17,8 @@ interface DiffEditorProps {
 }
 
 export function DiffEditor({
+	modelKey,
+	hideUnchangedRegions = false,
 	original,
 	modified,
 	language,
@@ -50,7 +54,8 @@ export function DiffEditor({
 			renderSideBySide,
 			useInlineViewWhenSpaceIsLimited: false,
 			theme,
-			fontSize: 13,
+			fontSize: hideUnchangedRegions ? 12 : 13,
+			lineHeight: hideUnchangedRegions ? 20 : undefined,
 			fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
 			minimap: { enabled: false },
 			scrollBeyondLastLine: false,
@@ -72,16 +77,11 @@ export function DiffEditor({
 		};
 	}, []);
 
-	// Recreate models when content or language changes
-	useEffect(() => {
+	// Recreate models when content, language, or file identity changes.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modelKey changes file identity even if content matches
+	useLayoutEffect(() => {
 		const editor = editorRef.current;
 		if (!editor) return;
-
-		const prev = editor.getModel();
-		if (prev) {
-			prev.original.dispose();
-			prev.modified.dispose();
-		}
 
 		const origModel = monaco.editor.createModel(original, language);
 		const modModel = monaco.editor.createModel(modified, language);
@@ -93,10 +93,17 @@ export function DiffEditor({
 
 		return () => {
 			sub.dispose();
+			editor.setModel(null);
 			origModel.dispose();
 			modModel.dispose();
 		};
-	}, [original, modified, language]);
+	}, [original, modified, language, modelKey, editorReady]);
+
+	useEffect(() => {
+		editorRef.current?.updateOptions({
+			hideUnchangedRegions: { enabled: hideUnchangedRegions, contextLineCount: 12 },
+		});
+	}, [hideUnchangedRegions]);
 
 	// Update split/inline mode without recreating the editor
 	useEffect(() => {

@@ -15,6 +15,7 @@ import {
 	withAutomaticHermesSessionAdmission,
 } from "./hermes-session-admission.mjs";
 import { handleHermesReusableTagTool, handleHermesSessionTagTool } from "./hermes-session-tags.mjs";
+import { registerReviewPathTools } from "./review-path.mjs";
 import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
@@ -923,6 +924,8 @@ if (isQuickActionMode) {
 		}
 	);
 }
+
+registerReviewPathTools(server, { context: ctx, discovery });
 
 if (isWorkspaceAgentOrCrossRepo) {
 	// Wrap every tool registered in this mode so its handler appends ROLE_REMINDER

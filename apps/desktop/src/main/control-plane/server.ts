@@ -55,6 +55,8 @@ import {
 	updateHermesTagDefinition,
 	upsertHermesTagDefinition,
 } from "../hermes/hermes-session-metadata";
+import { authorizeReviewPathTask, executeReviewPathTool } from "../review-path/control";
+import { getReviewPathStorage } from "../review-path/service";
 import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-policy";
 import {
 	type CallerContext,
@@ -553,6 +555,26 @@ async function handleRequest(
 
 	try {
 		switch (route) {
+			case "POST /review-path.tool": {
+				const capability = req.headers["x-review-path-capability"];
+				if (typeof capability !== "string") {
+					respond(res, 403, requestId, { error: "missing_review_path_capability" });
+					return;
+				}
+				try {
+					const snapshot = executeReviewPathTool(
+						getReviewPathStorage(),
+						capability,
+						await readJson(req)
+					);
+					respond(res, 200, requestId, { snapshot });
+				} catch (error) {
+					respond(res, 400, requestId, {
+						error: error instanceof Error ? error.message : "invalid_review_path_update",
+					});
+				}
+				return;
+			}
 			case "POST /browser.execute": {
 				const caller = resolveCaller(req, null);
 				if ("error" in caller || caller.kind !== "workspace") {
@@ -583,12 +605,28 @@ async function handleRequest(
 				// launch that inherits SUPERIORSWARM_MANAGER_TOKEN from its
 				// environment must still resolve as its task, not as the manager.
 				const taskToken = url.searchParams.get("taskToken");
-				if (taskToken) {
+				if (taskToken !== null) {
 					const reg = deps.taskRegistry.consume(taskToken);
 					if (reg) {
+						if (reg.mode === "review-path") {
+							try {
+								reg.modeContext["reviewPathCapability"] = authorizeReviewPathTask(
+									getReviewPathStorage(),
+									reg
+								);
+							} catch {
+								respond(res, 403, requestId, { error: "invalid_review_path_task" });
+								return;
+							}
+						}
 						respond(res, 200, requestId, reg);
 						return;
 					}
+					// A supplied task credential is an authority boundary, including on
+					// reconnect. Never upgrade an expired/consumed/unknown task via cwd
+					// or inherited workspace/manager credentials.
+					respond(res, 403, requestId, { error: "invalid_task_token" });
+					return;
 				}
 				// External manager bootstrap: identity comes from the token, not cwd.
 				// Header only, never a query param — req.url is logged on every

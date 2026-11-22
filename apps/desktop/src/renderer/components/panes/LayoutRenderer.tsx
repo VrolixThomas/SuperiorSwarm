@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { useCallback, useEffect } from "react";
+import { Group, type Layout, Panel, Separator, useGroupRef } from "react-resizable-panels";
 import type { LayoutNode } from "../../../shared/pane-types";
+import { ratioFromPanelLayout } from "../../lib/pane-layout-ratio";
 import { usePaneStore } from "../../stores/pane-store";
 import { PaneContainer } from "./PaneContainer";
-
-const RATIO_DEBOUNCE_MS = 200;
 
 function SplitRenderer({
 	node,
@@ -20,44 +19,25 @@ function SplitRenderer({
 	const secondSize = (1 - node.ratio) * 100;
 	const setPaneRatio = usePaneStore((s) => s.setPaneRatio);
 
-	// Debounce ratio commits: track latest sizes in a ref and only write to
-	// the store after dragging settles (RATIO_DEBOUNCE_MS of inactivity).
-	const latestRatioRef = useRef<number | null>(null);
-	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	const commitRatio = useCallback(() => {
-		const ratio = latestRatioRef.current;
-		if (ratio !== null) {
-			setPaneRatio(workspaceId, node.id, ratio);
-			latestRatioRef.current = null;
-		}
-	}, [setPaneRatio, workspaceId, node.id]);
-
-	// Cleanup debounce timer on unmount
-	useEffect(() => {
-		return () => {
-			if (debounceTimerRef.current !== null) {
-				clearTimeout(debounceTimerRef.current);
-			}
-		};
-	}, []);
-
+	const groupRef = useGroupRef();
 	const handleLayoutChanged = useCallback(
-		(sizes: Record<string, number>) => {
-			const first = sizes[`${node.id}-first`];
-			if (first !== undefined) {
-				latestRatioRef.current = first / 100;
-				if (debounceTimerRef.current !== null) {
-					clearTimeout(debounceTimerRef.current);
-				}
-				debounceTimerRef.current = setTimeout(commitRatio, RATIO_DEBOUNCE_MS);
-			}
+		(layout: Layout) => {
+			const ratio = ratioFromPanelLayout(node.id, layout);
+			if (ratio !== null) setPaneRatio(workspaceId, node.id, ratio);
 		},
-		[commitRatio, node.id]
+		[node.id, workspaceId, setPaneRatio]
 	);
+	// Also apply explicit "Open beside Review" ratio changes to an already mounted split.
+	useEffect(() => {
+		const group = groupRef.current;
+		if (!group) return;
+		const ratio = ratioFromPanelLayout(node.id, group.getLayout());
+		if (ratio !== null && Math.abs(ratio - node.ratio) > 0.0001)
+			group.setLayout({ [`${node.id}-first`]: firstSize, [`${node.id}-second`]: secondSize });
+	}, [groupRef, node.id, node.ratio, firstSize, secondSize]);
 
 	return (
-		<Group orientation={orientation} onLayoutChanged={handleLayoutChanged}>
+		<Group groupRef={groupRef} orientation={orientation} onLayoutChanged={handleLayoutChanged}>
 			<Panel id={`${node.id}-first`} defaultSize={`${firstSize}%`}>
 				<LayoutRenderer
 					node={node.children[0]}

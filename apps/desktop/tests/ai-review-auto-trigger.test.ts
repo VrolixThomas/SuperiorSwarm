@@ -158,6 +158,7 @@ describe("auto-trigger decision", () => {
 		const result = await maybeAutoTriggerReview({
 			pr: basePr,
 			deps: {
+				autoMap: async () => false,
 				getSettings: () => ({ autoReviewEnabled: 0 }),
 				getReviewDrafts: () => [],
 				getProjectIdByRepo: () => basePr.projectId,
@@ -210,6 +211,7 @@ describe("auto-trigger decision", () => {
 		const result = await maybeAutoTriggerReview({
 			pr: basePr,
 			deps: {
+				autoMap: async () => false,
 				getSettings: () => ({ autoReviewEnabled: 1 }),
 				getReviewDrafts: () => [],
 				getProjectIdByRepo: () => basePr.projectId,

@@ -23,6 +23,8 @@ import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { reviewRouter } from "./review";
+import { reviewExplanationRouter } from "./review-explanation";
+import { reviewPathRouter } from "./review-path";
 import { settingsRouter } from "./settings";
 import { sharedFilesRouter } from "./shared-files";
 import { systemRouter } from "./system";
@@ -50,6 +52,8 @@ export const appRouter = router({
 	rebase: rebaseRouter,
 	remote: remoteRouter,
 	review: reviewRouter,
+	reviewExplanation: reviewExplanationRouter,
+	reviewPath: reviewPathRouter,
 	terminalSessions: terminalSessionsRouter,
 	terminalFiles: terminalFilesRouter,
 	atlassian: atlassianRouter,

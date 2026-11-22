@@ -472,6 +472,15 @@ app.whenReady().then(async () => {
 	registerIssueTracker(new JiraAdapter());
 	registerIssueTracker(new LinearAdapter());
 
+	if (controlPlane) {
+		try {
+			const { initializeReviewPathRuntime } = await import("./review-path/runtime");
+			await initializeReviewPathRuntime();
+		} catch (error) {
+			log.error("[review-path] Runtime initialization failed", error);
+		}
+	}
+
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();
 	startPolling();

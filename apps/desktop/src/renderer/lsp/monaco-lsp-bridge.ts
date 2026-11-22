@@ -9,6 +9,7 @@ import type {
 	PublishDiagnosticsParams,
 } from "vscode-languageserver-protocol";
 import { detectLanguage } from "../../shared/diff-types";
+import type { CodeReference } from "../../shared/review-path-types";
 import { isSensitiveDocumentUri } from "../../shared/sensitive-file-path";
 import { useTabStore } from "../stores/tab-store";
 import {
@@ -374,5 +375,44 @@ export function disposeAllProviders(): void {
 	if (diagnosticsCleanup) {
 		diagnosticsCleanup();
 		diagnosticsCleanup = null;
+	}
+}
+
+/** Resolve review navigation through an existing LSP server; never open a working-tree tab. */
+export async function requestReviewDefinition(
+	repoPath: string,
+	filePath: string,
+	languageId: string,
+	position: monaco.IPosition
+): Promise<CodeReference | null> {
+	const uri = monaco.Uri.file(`${repoPath}/${filePath}`).toString();
+	if (isSensitiveDocumentUri(uri)) return null;
+	try {
+		const response = await window.electron.lsp.sendRequest({
+			repoPath,
+			languageId,
+			method: "textDocument/definition",
+			params: {
+				textDocument: { uri },
+				position: { line: position.lineNumber - 1, character: position.column - 1 },
+			},
+		});
+		if (response.error) return null;
+		const target = convertLocations(response.result)?.[0];
+		const prefix = `${repoPath.replace(/\/$/, "")}/`;
+		if (
+			!target ||
+			target.uri.scheme !== "file" ||
+			!target.uri.fsPath.startsWith(prefix) ||
+			target.uri.fsPath.slice(prefix.length).split("/").includes("..")
+		)
+			return null;
+		return {
+			path: target.uri.fsPath.slice(prefix.length),
+			line: target.range.startLineNumber,
+			description: "Definition",
+		};
+	} catch {
+		return null;
 	}
 }

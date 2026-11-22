@@ -417,7 +417,7 @@ export function registerCoreActions() {
 				if (!wsId) return;
 				const paneState = usePaneStore.getState();
 				const focused = paneState.getFocusedPane(wsId);
-				if (focused) paneState.splitPane(wsId, focused.id, "horizontal");
+				if (focused) paneState.splitPaneForCommand(wsId, focused.id, "horizontal");
 			},
 			keywords: ["split", "horizontal", "divide"],
 		},
@@ -432,7 +432,7 @@ export function registerCoreActions() {
 				if (!wsId) return;
 				const paneState = usePaneStore.getState();
 				const focused = paneState.getFocusedPane(wsId);
-				if (focused) paneState.splitPane(wsId, focused.id, "vertical");
+				if (focused) paneState.splitPaneForCommand(wsId, focused.id, "vertical");
 			},
 			keywords: ["split", "vertical", "divide"],
 		},

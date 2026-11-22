@@ -162,7 +162,80 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 	return allPRs;
 }
 
-/** Get the current state and head SHA of a Bitbucket pull request */
+interface BitbucketRevisionSide {
+	branch?: { name?: string };
+	commit?: { hash?: string };
+	repository?: { full_name?: string } | null;
+}
+
+const FULL_COMMIT_OID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+
+/** Expand the captured commit hash, never a branch that could have advanced. */
+async function resolveCommitOid(
+	workspace: string,
+	repoSlug: string,
+	side: BitbucketRevisionSide | undefined
+): Promise<string | undefined> {
+	const hash = side?.commit?.hash;
+	if (typeof hash !== "string") return undefined;
+	if (FULL_COMMIT_OID.test(hash)) return hash.toLowerCase();
+	if (!/^[a-f0-9]{4,63}$/i.test(hash)) return undefined;
+	// Fork heads belong to the source repository. Do not follow provider-supplied URLs.
+	const fullName = side?.repository?.full_name;
+	if (side?.repository && typeof fullName !== "string") return undefined;
+	const parts = fullName === undefined ? [workspace, repoSlug] : fullName.split("/");
+	if (parts.length !== 2 || parts.some((part) => !part || part === "." || part === ".."))
+		return undefined;
+	const repository = parts.map(encodeURIComponent).join("/");
+	// https://developer.atlassian.com/cloud/bitbucket/rest/api-group-commits/#api-repositories-workspace-repo-slug-commit-commit-get
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${repository}/commit/${hash}`
+	);
+	if (!res.ok) return undefined;
+	const data = (await res.json()) as { hash?: unknown };
+	const resolved = data.hash;
+	return typeof resolved === "string" &&
+		FULL_COMMIT_OID.test(resolved) &&
+		resolved.toLowerCase().startsWith(hash.toLowerCase())
+		? resolved.toLowerCase()
+		: undefined;
+}
+
+/** Resolve a listing's captured revision in its verified source repository, including forks. */
+export async function resolveCapturedPRHeadOid(
+	workspace: string,
+	repoSlug: string,
+	prId: number,
+	capturedHash: string
+): Promise<string | undefined> {
+	if (FULL_COMMIT_OID.test(capturedHash)) return capturedHash.toLowerCase();
+	if (!/^[a-f0-9]{4,63}$/i.test(capturedHash) || !Number.isSafeInteger(prId) || prId < 1)
+		return undefined;
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${encodeURIComponent(workspace)}/${encodeURIComponent(repoSlug)}/pullrequests/${prId}`
+	);
+	if (!res.ok) return undefined;
+	const data = (await res.json()) as { source?: BitbucketRevisionSide; state?: string };
+	const observedHash = data.source?.commit?.hash;
+	if (
+		data.state !== "OPEN" ||
+		typeof observedHash !== "string" ||
+		!/^[a-f0-9]{4,64}$/i.test(observedHash)
+	)
+		return undefined;
+	const captured = capturedHash.toLowerCase();
+	const observed = observedHash.toLowerCase();
+	if (!observed.startsWith(captured) && !captured.startsWith(observed)) return undefined;
+	const resolved = await resolveCommitOid(workspace, repoSlug, {
+		...data.source,
+		commit: { hash: captured },
+	});
+	return resolved?.startsWith(observed) ? resolved : undefined;
+}
+
+/** Get the current state and exact head SHA of a Bitbucket pull request. */
 export async function getPRState(
 	workspace: string,
 	repoSlug: string,
@@ -174,10 +247,12 @@ export async function getPRState(
 	);
 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
 	const data = (await res.json()) as {
-		source: { commit: { hash: string } };
+		source?: BitbucketRevisionSide;
 		state: string;
 	};
-	return { headSha: data.source.commit.hash, state: data.state };
+	const headSha = await resolveCommitOid(workspace, repoSlug, data.source);
+	if (!headSha) throw new Error("Bitbucket PR revision unavailable");
+	return { headSha, state: data.state };
 }
 
 /** Post a comment on a Bitbucket pull request */
@@ -187,7 +262,8 @@ export async function createPRComment(
 	prId: number,
 	body: string,
 	filePath?: string,
-	line?: number
+	line?: number,
+	side: "LEFT" | "RIGHT" = "RIGHT"
 ): Promise<{ id: number }> {
 	const payload: Record<string, unknown> = {
 		content: { raw: body },
@@ -196,7 +272,7 @@ export async function createPRComment(
 	if (filePath) {
 		const inline: Record<string, unknown> = { path: filePath };
 		if (line) {
-			inline["to"] = line;
+			inline[side === "LEFT" ? "from" : "to"] = line;
 		}
 		payload["inline"] = inline;
 	}
@@ -261,6 +337,13 @@ export async function resolvePRComment(
 }
 
 export interface BitbucketComment {
+	parentId?: number | null;
+	diffSide?: "LEFT" | "RIGHT" | null;
+	isOutdated?: boolean;
+	originalLine?: number | null;
+	/** Absent when the provider did not supply a resolution object or explicit null. */
+	isResolved?: boolean;
+	authorId?: string | null;
 	id: number;
 	body: string;
 	author: string;
@@ -270,20 +353,81 @@ export interface BitbucketComment {
 }
 
 /**
- * Bitbucket occasionally exposes editor layout attribute lines in the raw
- * description. They are meaningful to Atlassian's renderer but render as
- * visible noise in standard Markdown.
+ * Remove known Atlassian editor annotations outside Markdown code. Keep the
+ * original text/whitespace elsewhere, including examples of these annotations.
  */
 export function normalizeBitbucketDescription(description: string): string {
-	return description
-		.split("\n")
-		.filter(
-			(line) =>
-				!/^\s*\{\s*:?\s*data-layout\s*=\s*(['"])(?:center|wide|full-width)\1\s*\}\s*$/i.test(line)
-		)
-		.join("\n")
-		.replace(/\n{3,}/g, "\n\n")
-		.trim();
+	const marker =
+		/^\{[ \t]*:[ \t]*(?:data-layout[ \t]*=[ \t]*(?:"(?:center|wide|full-width)"|'(?:center|wide|full-width)')|data-inline-card[ \t]*=[ \t]*(?:""|''))[ \t]*\}/i;
+	const legacyLine =
+		/^[ \t]*\{[ \t]*data-layout[ \t]*=[ \t]*(['"])(?:center|wide|full-width)\1[ \t]*\}[ \t]*$/i;
+	let fence: { character: string; length: number } | undefined;
+	let inlineTicks = 0;
+	const lines: string[] = [];
+	for (const line of description.split("\n")) {
+		// Container prefixes do not make quoted/list-nested code examples into prose.
+		const containerLine = line.replace(/^(?: {0,3}>[ \t]?)+/, "");
+		const fencedLine = containerLine.replace(/^ {0,3}(?:[-+*]|\d+[.)])[ \t]+/, "");
+		const delimiter = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(fencedLine);
+		if (fence) {
+			if (
+				delimiter?.[1]?.[0] === fence.character &&
+				delimiter[1].length >= fence.length &&
+				!delimiter[2]?.trim()
+			)
+				fence = undefined;
+			lines.push(line);
+			continue;
+		}
+		if (
+			!inlineTicks &&
+			delimiter?.[1] &&
+			!(delimiter[1][0] === "`" && delimiter[2]?.includes("`"))
+		) {
+			fence = { character: delimiter[1][0] ?? "`", length: delimiter[1].length };
+			lines.push(line);
+			continue;
+		}
+		if (!inlineTicks && /^(?: {4}|\t)/.test(containerLine)) {
+			lines.push(line);
+			continue;
+		}
+		if (!inlineTicks && legacyLine.test(line)) continue;
+		let output = "";
+		let removed = false;
+		for (let index = 0; index < line.length; ) {
+			if (!inlineTicks && line[index] === "\\") {
+				output += line.slice(index, index + 2);
+				index += 2;
+				continue;
+			}
+			if (line[index] === "`") {
+				const start = index;
+				while (line[index] === "`") index++;
+				const length = index - start;
+				if (!inlineTicks) inlineTicks = length;
+				else if (inlineTicks === length) inlineTicks = 0;
+				output += line.slice(start, index);
+				continue;
+			}
+			const annotation =
+				!inlineTicks && line[index] === "{" ? marker.exec(line.slice(index))?.[0] : undefined;
+			if (annotation) {
+				removed = true;
+				index += annotation.length;
+				if (/^[ \t]*$/.test(line.slice(index))) {
+					output = output.replace(/[ \t]+$/, "");
+					break;
+				}
+				if (!output || /[ \t]$/.test(output)) while (/[ \t]/.test(line[index] ?? "")) index++;
+				continue;
+			}
+			output += line[index++];
+		}
+		if (!line.trim()) inlineTicks = 0;
+		if (!removed || output.trim()) lines.push(output);
+	}
+	return lines.join("\n");
 }
 
 /** Fetch all comments on a Bitbucket pull request (follows pagination) */
@@ -293,29 +437,80 @@ export async function getBitbucketPRComments(
 	prId: number
 ): Promise<BitbucketComment[]> {
 	const comments: BitbucketComment[] = [];
+	const pages = new Set<string>();
+	const ids = new Set<number>();
+	const repoUrl = new URL(`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/`);
 	let url: string | null =
 		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`;
 
 	while (url) {
+		const parsed = new URL(url);
+		if (
+			parsed.origin !== repoUrl.origin ||
+			!parsed.pathname.startsWith(repoUrl.pathname) ||
+			parsed.username ||
+			parsed.password ||
+			pages.has(parsed.href)
+		) {
+			throw new Error("Bitbucket comment pagination left the repository or repeated a page");
+		}
+		pages.add(parsed.href);
 		const res = await atlassianFetch("bitbucket", url);
 		if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
 		const data = (await res.json()) as {
 			values: Array<{
 				id: number;
-				content: { raw: string };
-				user?: { display_name?: string; nickname?: string } | null;
+				content?: { raw?: string } | null;
+				deleted?: boolean;
+				parent?: { id: number } | null;
+				resolution?: object | null;
+				user?: { display_name?: string; nickname?: string; uuid?: string } | null;
 				created_on: string;
-				inline?: { path?: string; to?: number };
+				inline?: {
+					path?: string;
+					to?: number | null;
+					from?: number | null;
+					outdated?: boolean;
+				} | null;
 			}>;
 			next?: string;
 		};
+		if (
+			!data ||
+			!Array.isArray(data.values) ||
+			(data.next != null && (typeof data.next !== "string" || !data.next)) ||
+			(data.next && data.values.length === 0)
+		)
+			throw new Error("Bitbucket comment page is incomplete");
 		for (const c of data.values) {
+			if (!c || !Number.isSafeInteger(c.id) || ids.has(c.id)) {
+				throw new Error("Bitbucket comment page contains an invalid or duplicate ID");
+			}
+			ids.add(c.id);
+			const to =
+				Number.isSafeInteger(c.inline?.to) && (c.inline?.to ?? 0) > 0 ? c.inline?.to : null;
+			const from =
+				Number.isSafeInteger(c.inline?.from) && (c.inline?.from ?? 0) > 0 ? c.inline?.from : null;
+			const anchor = to ?? from ?? null;
+			const isOutdated = typeof c.inline?.outdated === "boolean" ? c.inline.outdated : undefined;
+			const isResolved =
+				c.resolution === null
+					? false
+					: c.resolution && typeof c.resolution === "object" && !Array.isArray(c.resolution)
+						? true
+						: undefined;
 			comments.push({
 				id: c.id,
-				body: c.content.raw,
+				body: c.deleted ? "[Deleted comment]" : (c.content?.raw ?? ""),
 				author: c.user?.display_name ?? c.user?.nickname ?? "Unknown",
+				authorId: c.user?.uuid || null,
 				filePath: c.inline?.path ?? null,
-				lineNumber: c.inline?.to ?? null,
+				lineNumber: isOutdated ? null : anchor,
+				diffSide: to != null ? "RIGHT" : from != null ? "LEFT" : null,
+				isOutdated,
+				originalLine: isOutdated ? anchor : undefined,
+				isResolved,
+				parentId: c.parent?.id ?? null,
 				createdAt: c.created_on,
 			});
 		}
@@ -337,6 +532,10 @@ export async function getBitbucketPRDetails(
 	authorAvatarUrl: string;
 	sourceBranch: string;
 	targetBranch: string;
+	headCommitOid: string;
+	baseCommitOid?: string;
+	sourceRepoFullName?: string;
+	targetRepoFullName?: string;
 	participants: Array<{
 		user?: { display_name?: string } | null;
 		role: string;
@@ -353,14 +552,20 @@ export async function getBitbucketPRDetails(
 		description?: string;
 		state?: string;
 		author?: { display_name?: string; links?: { avatar?: { href?: string } } } | null;
-		source?: { branch?: { name?: string } };
-		destination?: { branch?: { name?: string } };
+		source?: BitbucketRevisionSide;
+		destination?: BitbucketRevisionSide;
 		participants?: Array<{
 			user?: { display_name?: string } | null;
 			role: string;
 			state?: string | null;
 		}>;
 	};
+	// Both selectors came from this metadata response. The adapter rechecks the
+	// expanded pair after loading mutable PR files before certifying its manifest.
+	const [headCommitOid, baseCommitOid] = await Promise.all([
+		resolveCommitOid(workspace, repoSlug, data.source),
+		resolveCommitOid(workspace, repoSlug, data.destination),
+	]);
 	return {
 		title: data.title ?? "",
 		description: normalizeBitbucketDescription(data.description ?? ""),
@@ -369,6 +574,10 @@ export async function getBitbucketPRDetails(
 		authorAvatarUrl: data.author?.links?.avatar?.href ?? "",
 		sourceBranch: data.source?.branch?.name ?? "",
 		targetBranch: data.destination?.branch?.name ?? "",
+		headCommitOid: headCommitOid ?? "",
+		baseCommitOid,
+		sourceRepoFullName: data.source?.repository?.full_name,
+		targetRepoFullName: data.destination?.repository?.full_name,
 		participants: data.participants ?? [],
 	};
 }

@@ -13,10 +13,11 @@ import {
 	type ThreadFilter,
 	hasActiveReviewDraft,
 	mapDraftComment,
-	pickActiveDraft,
 	pickLatestDraft,
 	threadCounts,
 } from "../../lib/pr-review-threads";
+import { observeReviewMapping, useReviewDraftBinding } from "../../lib/review-draft-binding";
+import { reviewPathIdentityKey, useLiveReviewPath } from "../../lib/review-path-source";
 import { prReviewSessionKey, usePRReviewSessionStore } from "../../stores/pr-review-session-store";
 import { trpc } from "../../trpc/client";
 
@@ -29,6 +30,9 @@ type ReviewDraftComment = ReviewDraftWithComments["comments"][number];
 interface ReviewData {
 	details: GitHubPRDetails | undefined;
 	isLoading: boolean;
+	draftPending: boolean;
+	findingsLoading: boolean;
+	findingsError: boolean;
 	matchingDraft: ReviewDraft | undefined;
 	activeDraft: ReviewDraft | undefined;
 	aiDraft: ReviewDraftWithComments | undefined;
@@ -64,7 +68,11 @@ function toDraftCommentLike(comment: ReviewDraftComment): DraftCommentLike {
 	};
 }
 
-export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData {
+export function useReviewData(
+	workspaceId: string,
+	prCtx: PRContext,
+	options: { manageFileOrder?: boolean } = {}
+): ReviewData {
 	const setFileOrder = usePRReviewSessionStore((s) => s.setFileOrder);
 	const prIdentifier = formatPrIdentifier(prCtx);
 	const sessionKey = prReviewSessionKey(workspaceId, prIdentifier);
@@ -84,38 +92,132 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 		refetchInterval: (query) => (hasActiveReviewDraft(query.state.data) ? 5_000 : false),
 	});
 
-	const matchingDraft = useMemo(
-		() => pickLatestDraft(reviewDraftsQuery.data, prIdentifier),
-		[reviewDraftsQuery.data, prIdentifier]
+	const identity = useMemo(
+		() =>
+			detailsQuery.data?.headCommitOid
+				? {
+						workspaceId,
+						provider: prCtx.provider,
+						owner: prCtx.owner,
+						repo: prCtx.repo,
+						prNumber: prCtx.number,
+						headSha: detailsQuery.data.headCommitOid,
+					}
+				: undefined,
+		[
+			workspaceId,
+			prCtx.provider,
+			prCtx.owner,
+			prCtx.repo,
+			prCtx.number,
+			detailsQuery.data?.headCommitOid,
+		]
 	);
-	const activeDraft = useMemo(
-		() => pickActiveDraft(reviewDraftsQuery.data, prIdentifier),
-		[reviewDraftsQuery.data, prIdentifier]
-	);
-
-	const draftActive = matchingDraft?.status === "queued" || matchingDraft?.status === "in_progress";
+	const { state: pathState } = useLiveReviewPath(identity, { observeOnly: true });
+	const localBinding = useReviewDraftBinding(identity);
+	const projection = trpc.reviewPath.status.useQuery(identity!, {
+		enabled: !!identity,
+		refetchInterval: 1500,
+	});
+	const mapping = pathState.snapshot?.runs
+		.filter(
+			(run) =>
+				run.kind === "mapping" &&
+				identity &&
+				reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity)
+		)
+		.sort((a, b) => b.version - a.version)[0];
+	useEffect(() => {
+		if (identity && pathState.snapshot) observeReviewMapping(identity, mapping?.id);
+	}, [identity, mapping?.id, pathState.snapshot]);
+	const projectedDraftId =
+		identity &&
+		projection.data?.identity &&
+		reviewPathIdentityKey(projection.data.identity) === reviewPathIdentityKey(identity)
+			? projection.data.reviewDraftId
+			: undefined;
+	const mappingBindingPending =
+		mapping?.state === "running" &&
+		mapping.alsoReview !== false &&
+		!mapping.reviewDraftId &&
+		!localBinding;
+	// A completed/submitted binding is historical once a new manual draft exists.
+	// Unknown rows remain authoritative while their direct detail query is loading.
+	const usableBinding = (id: string | undefined) => {
+		if (!id) return undefined;
+		const row = reviewDraftsQuery.data?.find((draft) => draft.id === id);
+		return row && !["ready", "queued", "in_progress"].includes(row.status) ? undefined : id;
+	};
+	const boundId =
+		usableBinding(localBinding?.draftId) ??
+		usableBinding(mapping?.reviewDraftId) ??
+		(mappingBindingPending ? undefined : usableBinding(projectedDraftId));
+	const matchingDraft = useMemo(() => {
+		if (mappingBindingPending) return undefined;
+		const candidates = reviewDraftsQuery.data?.filter(
+			(draft) => draft.prProvider === prCtx.provider && draft.prIdentifier === prIdentifier
+		);
+		if (boundId)
+			return candidates?.find(
+				(draft) => draft.id === boundId && draft.commitSha === identity?.headSha
+			);
+		const current = candidates?.filter((draft) => draft.commitSha === identity?.headSha);
+		return pickLatestDraft(current?.length ? current : candidates, prIdentifier);
+	}, [
+		reviewDraftsQuery.data,
+		prCtx.provider,
+		prIdentifier,
+		boundId,
+		identity?.headSha,
+		mappingBindingPending,
+	]);
+	const draftActive =
+		mapping?.state === "running" ||
+		matchingDraft?.status === "queued" ||
+		matchingDraft?.status === "in_progress";
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
-		{ draftId: matchingDraft?.id ?? "" },
-		{ enabled: !!matchingDraft?.id, refetchInterval: draftActive ? 5_000 : false }
+		{ draftId: boundId ?? matchingDraft?.id ?? "" },
+		{ enabled: !!(boundId ?? matchingDraft?.id), refetchInterval: draftActive ? 5_000 : false }
 	);
 
 	const details = detailsQuery.data;
-	const aiDraft = aiDraftQuery.data ?? undefined;
+	const candidate = aiDraftQuery.data;
+	const aiDraft =
+		candidate &&
+		candidate.id === (boundId ?? matchingDraft?.id) &&
+		candidate.prProvider === prCtx.provider &&
+		candidate.prIdentifier === prIdentifier &&
+		(!boundId || candidate.commitSha === identity?.headSha)
+			? candidate
+			: undefined;
+	const selectedDraft = aiDraft ?? matchingDraft;
+	const activeDraft =
+		selectedDraft?.status === "queued" || selectedDraft?.status === "in_progress"
+			? selectedDraft
+			: undefined;
 	const roundNumber = aiDraft?.roundNumber ?? 1;
 
 	const fileOrder = useMemo(() => details?.files.map((file) => file.path) ?? [], [details?.files]);
 
 	useEffect(() => {
-		if (fileOrder.length === 0) return;
+		if (options.manageFileOrder === false || fileOrder.length === 0) return;
 		setFileOrder(sessionKey, fileOrder);
-	}, [fileOrder, sessionKey, setFileOrder]);
+	}, [fileOrder, sessionKey, setFileOrder, options.manageFileOrder]);
 
 	const draftThreads = useMemo<AIDraftThread[]>(
 		() =>
-			(aiDraft?.comments ?? [])
-				.filter((comment) => DRAFT_THREAD_STATUSES.has(comment.status))
-				.map((comment) => mapDraftComment(toDraftCommentLike(comment), roundNumber)),
-		[aiDraft?.comments, roundNumber]
+			!aiDraft
+				? []
+				: aiDraft.comments
+						.filter((comment) => DRAFT_THREAD_STATUSES.has(comment.status))
+						.map((comment) =>
+							mapDraftComment(toDraftCommentLike(comment), roundNumber, {
+								draftId: aiDraft.id,
+								commitSha: aiDraft.commitSha,
+								currentHead: details?.headCommitOid,
+							})
+						),
+		[aiDraft, roundNumber, details?.headCommitOid]
 	);
 
 	const allThreads = useMemo<UnifiedThread[]>(
@@ -126,7 +228,8 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 	const acceptedThreads = useMemo(
 		() =>
 			draftThreads.filter(
-				(thread) => thread.status === "user-pending" || thread.status === "approved"
+				(thread) =>
+					!thread.isOutdated && (thread.status === "user-pending" || thread.status === "approved")
 			),
 		[draftThreads]
 	);
@@ -136,7 +239,16 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 	return {
 		details,
 		isLoading: detailsQuery.isLoading,
-		matchingDraft,
+		findingsLoading:
+			reviewDraftsQuery.isLoading ||
+			projection.isLoading ||
+			(!!(boundId ?? matchingDraft?.id) && aiDraftQuery.isLoading),
+		findingsError:
+			reviewDraftsQuery.isError ||
+			projection.isError ||
+			(!!(boundId ?? matchingDraft?.id) && aiDraftQuery.isError),
+		draftPending: mappingBindingPending || (!!(boundId ?? matchingDraft?.id) && !aiDraft),
+		matchingDraft: selectedDraft,
 		activeDraft,
 		aiDraft,
 		allThreads,

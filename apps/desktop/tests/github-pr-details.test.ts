@@ -72,6 +72,7 @@ describe("mapPRDetails", () => {
 		const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
 
 		expect(result.title).toBe("Fix auth bug");
+		expect(result.filesComplete).toBeUndefined();
 		expect(result.reviewDecision).toBe("REVIEW_REQUIRED");
 		expect(result.ciState).toBe("SUCCESS");
 		expect(result.checks).toHaveLength(1);
@@ -105,4 +106,98 @@ describe("mapPRDetails", () => {
 		expect(result.ciState).toBeNull();
 		expect(result.checks).toHaveLength(0);
 	});
+});
+
+test("preserves provider revision OIDs without substituting a branch or stale commit node", () => {
+	const raw = {
+		title: "Pinned",
+		body: "",
+		state: "OPEN",
+		isDraft: false,
+		author: { login: "alice", avatarUrl: "" },
+		reviewDecision: null,
+		commits: { nodes: [{ commit: { oid: "c".repeat(40), statusCheckRollup: null } }] },
+		reviewRequests: { nodes: [] },
+		reviews: { nodes: [] },
+		reviewThreads: { nodes: [] },
+		comments: { nodes: [] },
+		files: { nodes: [] },
+		headRefName: "feature",
+		baseRefName: "main",
+		headRefOid: "a".repeat(40),
+		baseRefOid: "b".repeat(40),
+	};
+	const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
+	expect(result.headCommitOid).toBe(raw.headRefOid);
+	expect(result.baseCommitOid).toBe(raw.baseRefOid);
+	expect(
+		mapPRDetails({ ...raw, baseRefOid: undefined } as unknown as Parameters<typeof mapPRDetails>[0])
+			.baseCommitOid
+	).toBeUndefined();
+});
+
+test("preserves outdated current-null versus original lines and side", () => {
+	const raw = {
+		title: "Threads",
+		body: "",
+		state: "OPEN",
+		isDraft: false,
+		author: { login: "alice", avatarUrl: "" },
+		reviewDecision: null,
+		commits: { nodes: [] },
+		reviewRequests: { nodes: [] },
+		reviews: { nodes: [] },
+		comments: { nodes: [] },
+		files: { nodes: [] },
+		headRefName: "feature",
+		baseRefName: "main",
+		reviewThreads: {
+			nodes: [
+				{
+					id: "outdated",
+					isResolved: true,
+					isOutdated: true,
+					line: null,
+					originalLine: 112,
+					diffSide: "LEFT",
+					path: "x.ts",
+					comments: { nodes: [{ id: "c", body: "old", author: null, createdAt: "today" }] },
+				},
+				{
+					id: "current",
+					isResolved: false,
+					isOutdated: false,
+					line: 32,
+					originalLine: 29,
+					diffSide: "RIGHT",
+					path: "x.ts",
+					comments: { nodes: [] },
+				},
+				{
+					id: "file",
+					isResolved: false,
+					line: null,
+					diffSide: "RIGHT",
+					path: "x.ts",
+					comments: { nodes: [] },
+				},
+			],
+		},
+	};
+	const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
+	expect(result.reviewThreads[0]).toMatchObject({
+		isOutdated: true,
+		isResolved: true,
+		line: null,
+		originalLine: 112,
+		diffSide: "LEFT",
+		comments: [{ author: "Unknown" }],
+	});
+	expect(result.reviewThreads[1]).toMatchObject({
+		isOutdated: false,
+		line: 32,
+		originalLine: 29,
+		diffSide: "RIGHT",
+	});
+	expect(result.reviewThreads[2]?.isOutdated).toBeUndefined();
 });

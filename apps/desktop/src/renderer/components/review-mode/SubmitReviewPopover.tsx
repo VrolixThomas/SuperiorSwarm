@@ -149,6 +149,7 @@ export function SubmitReviewPopover({
 	return (
 		<div
 			ref={panelRef}
+			data-browser-modal
 			className="absolute right-3 top-11 z-[60] w-[420px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-lg)]"
 		>
 			<div className="border-b border-[var(--border-subtle)] px-4 py-3">

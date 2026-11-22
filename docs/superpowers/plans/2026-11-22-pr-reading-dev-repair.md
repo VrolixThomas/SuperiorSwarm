@@ -1,0 +1,187 @@
+# PR reading workspace: development integration repair
+
+The live development app exposed gaps that fixture verification had missed: an older
+branch migration was skipped by an existing database, Bitbucket returned abbreviated
+commit IDs, and an existing review worktree lacked the exact PR commit objects.
+
+## Database startup
+
+Drizzle's SQLite migrator compares the latest ledger timestamp. A newer migration
+from another branch can hide the additive reading-path migration. Startup now checks
+the two reading-path tables after ordinary migrations and transactionally creates
+only missing tables from the shipped canonical SQL. Existing rows, extra columns,
+and the migration ledger remain untouched.
+
+The live database was backed up with SQLite's backup API before restart. Both tables
+were then present, with the same 73 ledger rows and maximum timestamp. Tests cover
+newer mixed histories, partial schemas, preservation, foreign keys, and rollback.
+
+## Provider identity
+
+Bitbucket details and provider state now resolve abbreviated hashes using the commit
+endpoint for each side's repository. Returned IDs must be full length and match the
+captured prefix. Fork source identity is preserved; missing, inaccessible, or mismatched
+objects remain unavailable. List polling does not expand every PR's hashes.
+
+## Polling and interface
+
+Reading-path consumers now share one reference-counted poller and one in-flight read.
+Unchanged snapshots retain references and do not notify subscribers. Same-head local
+reads no longer write the document. Regression measurements: three consumers produce
+one request instead of three; 21 identical snapshots produce one notification instead
+of 21; 20 unchanged reads produce no writes instead of 20.
+
+All PRs opens a dedicated searchable overview with repository filtering, author and
+activity context, current/next markers, and separate review/waiting sections. Unknown
+cached file counts are omitted. The selected PR overview has clear change, discussion,
+reviewer, and check sections. File names and folders occupy separate rail lines.
+Overview actions navigate to the actual changed file or requested discussion filter.
+Keyboard focus stays inside the overview even when automatic mapping settings are closed.
+
+## Verification
+
+- Focused startup/provider/performance/overview/workspace/panel regressions: passing.
+- Native Electron workspace with real Monaco and production snapshot IPC: passing.
+- Renderer type diagnostics: same 63 normalized signatures as the recorded baseline.
+- Desktop production build: passing.
+- Live `bun run dev`: missing-table error gone; Map enabled for the previously blocked
+  Bitbucket PR; overview search, selection, and file navigation exercised.
+- Only one dev instance is left running; an older duplicate instance was showing stale UI.
+- A final retry of the user's failed mapping attempt launched Codex successfully;
+  no provider review/comment was submitted.
+
+## Exact-object acquisition
+
+Snapshot reading remains local-only. A separate acquisition mutation validates the
+registered review workspace, provider, PR, captured head/base pair, and each side's
+configured repository remote before fetching missing full commit IDs. It never
+checks out, resets, or updates a branch. Missing fork connections and authentication
+failures produce actionable errors instead of silently using a different revision.
+
+Map uses the same acquisition service, independently cancellable from shared UI
+requests. Browsing deduplicates requests across mounts and only retries a failed
+acquisition after explicit Refresh for that workspace. Tests exercise cancellation,
+StrictMode, failed snapshot retries, forks, identity changes, deadlines, and unchanged
+HEAD, refs, and uncommitted files in disposable real repositories.
+
+The live repository's HTTPS Git connection had no password available despite a
+working app OAuth connection. Bitbucket Git authentication therefore uses the app's
+existing refreshed token. The documented OAuth Git username is `x-token-auth`:
+[Atlassian OAuth documentation](https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud).
+
+Live verification on PR #9503 succeeded after restarting root `bun run dev`: the
+acquisition mutation, snapshot creation, and both file reads completed, and the
+actual C# changes rendered side by side in Monaco. The first fetch took tens of
+seconds; subsequent snapshot and file responses completed within approximately
+150 ms after acquisition. This is not an end-to-end performance benchmark.
+
+Before/after digests of the real review worktree's HEAD, refs, status, tracked diff,
+and staged diff all matched. Both database tables exist and the migration ledger
+remains 73 rows with its original maximum timestamp. Retrying the user's failed Map
+attempt subsequently launched Codex, attached its owned agent terminal, and displayed
+Mapping with the 112-file manifest. The agent is waiting at Codex's "Hooks need review"
+prompt for two new or changed hooks. Hook trust was not granted automatically. A
+completed reading-path output is therefore not claimed; no provider review was submitted.
+
+Independent final acquisition/authentication/cancellation review approved the code;
+its latest batch passed 14 top-level tests across three files. The implementation
+agent's broader acquisition/router/provider/renderer batch passed 20 top-level tests
+across six files. Parent validation passed 21 focused top-level tests across nine
+files and the native Electron workspace test with actual Monaco. Changed-file Biome
+checks pass. Renderer diagnostics have the same 63 normalized signatures as baseline;
+main typechecking also retains existing unrelated errors.
+
+The requested knowledge-graph rebuild could not run because the local Python
+environment has no `graphify` module; source tests and builds do not depend on it.
+
+## Follow-up: opening must not prepare an agent workspace
+
+The live PR #12054 opening attempt was blocked in the old branch-worktree path:
+`getOrCreateReview → checkoutBranchWorktree → resolveBranchRef → git fetch`.
+The fetch had no deadline or application authentication. The process was still
+waiting after 90 seconds; the database contained a logical workspace but no worktree.
+Only that verified hung Git process and its children were stopped.
+
+Opening now creates/reuses the logical review record synchronously, without Git,
+provider calls, filesystem changes, or checkout. The review screen then loads provider
+details. File snapshots read immutable Git objects from the registered project root;
+missing objects may still require a bounded download. Browsing creates no worktree.
+
+Map and Ask prepare a detached worktree only when launching the agent, with exact-head
+validation, authenticated acquisition, a deadline, shared concurrent preparation,
+cancellation, and no resets of existing files. The runtime refuses to launch in the
+fallback project checkout. Legacy agents that review checkout contents require clean,
+current HEAD and target-base refs and otherwise return an actionable error.
+
+Snapshots remain rooted at the shared repository across agent worktree creation or
+removal. Terminal attachment updates the active workspace cwd only for the current
+review. A renderer deadline releases a lost opening request and fences late navigation.
+
+Live verification: selecting #12054 switched to the review screen within about 0.7 s
+in one observed run. Provider details followed about 4.4 s after the opening response,
+showing 205 changed files. A read-only database check confirmed `worktree_id` and path
+were still null. No mapping agent was launched during this check.
+
+Validation: 13 new backend regression cases; parent combined suite passed 13 outer
+tests across nine files (isolated wrappers contain additional cases). Independent
+review passed 12 outer tests across six files plus a real-router root-transition
+probe. Production build passes; renderer type diagnostics introduce no new signatures
+relative to the recorded baseline.
+
+## Follow-up: agent navigation and description rendering
+
+The agent remains a real workspace tab, but its surrounding shell now retains the PR
+header, repository/PR identity, All PRs navigation, and Back to PR review. The generic
+project sidebar and unrelated branch/CLI toolbar no longer replace the review shell.
+
+A saved tab is not evidence of a live PTY. The read-only terminal-state query validates
+the recorded run, workspace, session row, canonical cwd, and daemon inventory before
+the renderer mounts Terminal. It rechecks ownership after asynchronous inventory.
+Completed/ended sessions display an outcome card; no missing session is recreated.
+Preparing a newer run cannot advertise a previous run's terminal as the active agent.
+
+Bitbucket's layout and inline-card attributes are removed from description prose,
+including markers adjacent to text and links. Fenced, indented, inline and escaped
+code examples, unknown attributes, URLs and other Markdown remain intact.
+
+Live verification showed PR #9503's completed run as Agent finished in the consistent
+PR shell, then navigation to #12054 showed clean description text and its original
+link without raw layout/card markers. No agent was started and no provider content
+was modified during this verification. Scoped tests cover lifecycle inspection,
+ended-run navigation, preparation versus old terminals, and Markdown preservation.
+
+## Follow-up: an explicit review workflow
+
+The default workspace now has one persistent control area above the files. Agent
+selection sits beside Start/Retry; file browsing is always separate and available.
+Advanced automatic settings live under Review options. The sidebar no longer owns
+agent launch, stop, or remapping controls, and Submit review is visually secondary.
+
+The control area distinguishes pending start/preparation (agent has not started), a
+started session (open its workspace for prompts/progress), ready reading-path results,
+current findings, a failed start, a stopped run, and an outdated review. Preparation
+does not offer a nonfunctional Stop action before a run handle exists. Current
+findings navigate to their actual inline location; reading-path/file actions select
+their corresponding list. A path that does not exist is not selectable.
+
+The source controller exposes pending starts independently of other mutations so
+long preparation does not masquerade as an unexplained disabled button. No fake
+progress percentage or claim that the CLI is actively reading is inferred from a PTY.
+
+The historical #12054 fetch error cannot establish an authentication failure: the old
+code discarded exit details. Its captured head is now a local commit, and no agent
+worktree was registered. New failures use fixed safe categories for cancellation,
+timeout, access denial, unavailable repository/revision, network, local Git/disk, and
+unknown failure. Diagnostics log only category, operation, elapsed time and numeric
+exit code, never stderr, URLs, commands or credentials. Time limits are unchanged.
+
+Validation covers 13 workflow component cases, start-state transport behavior, full
+workspace actions, existing launch/recovery regressions, classified fetch failures,
+and native Electron/Monaco navigation at 1512×945 in both themes. The native harness
+now locates the renamed Start agent review action and checks unavailable-revision
+content directly instead of relying on an incidental Refresh word.
+
+Live verification on #12054 showed Agent did not start, the selected Codex agent next
+to Retry agent review, and a separate Browse files action. Browsing loaded the real
+first-file diff with the control area remaining visible in compact form. The old
+failed attempt was not retried and no new agent or provider review was started.
