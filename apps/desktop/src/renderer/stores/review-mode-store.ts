@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { PRContext } from "../../shared/github-types";
+import type { QueuePROrigin } from "../../shared/queue-pr-publication";
 import type { SidebarSegment } from "../../shared/types";
 import type { ReviewCommentFilter } from "../lib/pr-review-threads";
 
@@ -18,6 +19,10 @@ export interface ReviewTerminal {
 }
 
 export interface ReviewModeStore {
+	draftText: Record<string, string>;
+	setDraftText: (key: string, value: string) => void;
+	queueOrigin: (QueuePROrigin & { workspaceId: string }) | null;
+	setQueueOrigin: (origin: (QueuePROrigin & { workspaceId: string }) | null) => void;
 	active: { workspaceId: string; prCtx: PRContext } | null;
 	lastWorkspaceId: string | null;
 	view: ReviewView;
@@ -63,7 +68,12 @@ function createIntent(kind: ReviewIntent["kind"], threadId?: string): ReviewInte
 }
 
 export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
+	draftText: {},
+	setDraftText: (key, value) =>
+		set((state) => ({ draftText: { ...state.draftText, [key]: value } })),
 	active: null,
+	queueOrigin: null,
+	setQueueOrigin: (queueOrigin) => set({ queueOrigin }),
 	lastWorkspaceId: null,
 	view: "overview",
 	navigatorCollapsed: false,
@@ -81,12 +91,14 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 			if (sameWorkspace) {
 				return {
 					active: { workspaceId, prCtx },
+					queueOrigin: null,
 					lastWorkspaceId: null,
 					intent: null,
 				};
 			}
 			return {
 				active: { workspaceId, prCtx },
+				queueOrigin: null,
 				lastWorkspaceId: null,
 				view: "overview",
 				drawerOpen: false,
@@ -98,6 +110,7 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 	close: () =>
 		set((state) => ({
 			active: null,
+			queueOrigin: null,
 			lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
 			drawerOpen: false,
 			intent: null,

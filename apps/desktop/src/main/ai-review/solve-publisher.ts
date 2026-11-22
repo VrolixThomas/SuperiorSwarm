@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
+import type { GitProvider } from "../providers/types";
 import { incrementCounter } from "../telemetry/state";
 import { validateSolveTransition } from "./comment-solver-orchestrator";
 import { getSettings } from "./orchestrator";
@@ -16,6 +17,11 @@ export interface PublishSolveResult {
 	errors: string[];
 }
 
+export interface GuardedSolvePublication {
+	provider: GitProvider;
+	beforePush: () => Promise<void>;
+	afterPush: () => void;
+}
 interface ReplyAndResolveResult {
 	repliesPosted: number;
 	threadsResolved: number;
@@ -25,7 +31,8 @@ interface ReplyAndResolveResult {
 /** Post approved replies and resolve fixed threads for the given comment IDs. */
 async function postRepliesAndResolveThreads(
 	commentIds: string[],
-	session: { prIdentifier: string; prProvider: string }
+	session: { prIdentifier: string; prProvider: string },
+	provider?: GitProvider
 ): Promise<ReplyAndResolveResult> {
 	const db = getDb();
 	const errors: string[] = [];
@@ -35,7 +42,7 @@ async function postRepliesAndResolveThreads(
 	if (commentIds.length === 0) return { repliesPosted, threadsResolved, errors };
 
 	const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
-	const git = getGitProvider(session.prProvider);
+	const git = provider ?? getGitProvider(session.prProvider);
 
 	const approvedReplies = db
 		.select({ reply: schema.commentReplies, comment: schema.prComments })
@@ -127,7 +134,10 @@ function maybeFinishSession(sessionId: string, prevStatus: string): void {
 }
 
 /** Push commits and post approved replies for a single group. */
-export async function publishGroup(groupId: string): Promise<PublishSolveResult> {
+export async function publishGroup(
+	groupId: string,
+	guard?: GuardedSolvePublication
+): Promise<PublishSolveResult> {
 	const db = getDb();
 	const errors: string[] = [];
 	let pushed = false;
@@ -150,10 +160,13 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 	const { session, worktree } = resolved;
 
 	try {
+		await guard?.beforePush();
 		execSync("git push --set-upstream origin HEAD", { cwd: worktree.path, stdio: "pipe" });
 		pushed = true;
+		guard?.afterPush();
 	} catch (err) {
 		errors.push(`Git push failed: ${err}`);
+		if (guard) return { pushed, repliesPosted, threadsResolved, errors };
 	}
 
 	const groupCommentIds = db
@@ -163,15 +176,16 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 		.all()
 		.map((c) => c.id);
 
-	const result = await postRepliesAndResolveThreads(groupCommentIds, session);
+	const result = await postRepliesAndResolveThreads(groupCommentIds, session, guard?.provider);
 	repliesPosted = result.repliesPosted;
 	threadsResolved = result.threadsResolved;
 	errors.push(...result.errors);
 
-	db.update(schema.commentGroups)
-		.set({ status: "submitted" })
-		.where(eq(schema.commentGroups.id, groupId))
-		.run();
+	if (!guard || errors.length === 0)
+		db.update(schema.commentGroups)
+			.set({ status: "submitted" })
+			.where(eq(schema.commentGroups.id, groupId))
+			.run();
 
 	maybeFinishSession(group.solveSessionId, session.status);
 
@@ -179,7 +193,10 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 }
 
 /** Push all approved-but-not-yet-submitted groups in one shot. */
-export async function publishSolve(sessionId: string): Promise<PublishSolveResult> {
+export async function publishSolve(
+	sessionId: string,
+	guard?: GuardedSolvePublication
+): Promise<PublishSolveResult> {
 	const db = getDb();
 	const errors: string[] = [];
 	let pushed = false;
@@ -196,10 +213,13 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 
 	// One git push for all groups
 	try {
+		await guard?.beforePush();
 		execSync("git push --set-upstream origin HEAD", { cwd: worktree.path, stdio: "pipe" });
 		pushed = true;
+		guard?.afterPush();
 	} catch (err) {
 		errors.push(`Git push failed: ${err}`);
+		if (guard) return { pushed, repliesPosted, threadsResolved, errors };
 	}
 
 	// Only publish groups that are approved (not already submitted/reverted)
@@ -224,15 +244,16 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 			.all()
 			.map((c) => c.id);
 
-		const result = await postRepliesAndResolveThreads(approvedCommentIds, session);
+		const result = await postRepliesAndResolveThreads(approvedCommentIds, session, guard?.provider);
 		repliesPosted = result.repliesPosted;
 		threadsResolved = result.threadsResolved;
 		errors.push(...result.errors);
 
-		db.update(schema.commentGroups)
-			.set({ status: "submitted" })
-			.where(inArray(schema.commentGroups.id, approvedGroupIds))
-			.run();
+		if (!guard || errors.length === 0)
+			db.update(schema.commentGroups)
+				.set({ status: "submitted" })
+				.where(inArray(schema.commentGroups.id, approvedGroupIds))
+				.run();
 	}
 
 	maybeFinishSession(sessionId, session.status);

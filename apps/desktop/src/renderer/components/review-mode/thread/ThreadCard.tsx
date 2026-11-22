@@ -16,8 +16,9 @@ export interface ThreadCallbacks {
 	onDecline?: (draftCommentId: string) => void;
 	onDelete?: (draftCommentId: string) => void;
 	onSaveEdit?: (draftCommentId: string, body: string, status: AIDraftThread["status"]) => void;
-	onReply?: (threadId: string, body: string) => void;
+	onReply?: (threadId: string, body: string) => void | Promise<void>;
 	onResolve?: (threadId: string) => void;
+	onReplyCancel?: () => void;
 	onOpenInChanges?: (path: string, threadId: string) => void;
 	onOpenInComments?: (path: string, threadId: string) => void;
 }
@@ -363,14 +364,36 @@ export function ThreadCard({
 				<div className={`border-t border-[var(--border-subtle)] pb-3 pt-2 ${paddingClassName}`}>
 					<ReplyComposer
 						placeholder="Reply..."
+						initialValue={
+							useReviewModeStore.getState().draftText[
+								`${useReviewModeStore.getState().queueOrigin?.id ?? "review"}:${githubThread.id}`
+							] ?? ""
+						}
+						onDraftChange={(body) =>
+							useReviewModeStore
+								.getState()
+								.setDraftText(
+									`${useReviewModeStore.getState().queueOrigin?.id ?? "review"}:${githubThread.id}`,
+									body
+								)
+						}
 						ariaLabel="Reply to thread"
 						submitLabel="Reply"
 						autoFocus
-						onSubmit={(body) => {
-							callbacks.onReply?.(githubThread.id, body);
+						onSubmit={async (body) => {
+							await callbacks.onReply?.(githubThread.id, body);
+							useReviewModeStore
+								.getState()
+								.setDraftText(
+									`${useReviewModeStore.getState().queueOrigin?.id ?? "review"}:${githubThread.id}`,
+									""
+								);
 							setComposer(null);
 						}}
-						onCancel={() => setComposer(null)}
+						onCancel={() => {
+							callbacks.onReplyCancel?.();
+							setComposer(null);
+						}}
 					/>
 				</div>
 			)}

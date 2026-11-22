@@ -5,6 +5,16 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import { z } from "zod";
+import type {
+	ChangedFile,
+	SolveCommentStatus,
+	SolveGroupStatus,
+	SolveLaunchInfo,
+	SolveReplyStatus,
+	SolveSessionInfo,
+	SolveSessionStatus,
+} from "../../../shared/solve-types";
+import { requireOrdinarySolvePublication } from "../../activity-queue/solve-queue-origin";
 import { CLI_PRESETS, type LaunchOptions } from "../../ai-review/cli-presets";
 import { pollWorkspace } from "../../ai-review/comment-poller";
 import {
@@ -21,15 +31,6 @@ import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { getTaskRegistry } from "../../services/task-registry-handle";
-import type {
-	ChangedFile,
-	SolveCommentStatus,
-	SolveGroupStatus,
-	SolveLaunchInfo,
-	SolveReplyStatus,
-	SolveSessionInfo,
-	SolveSessionStatus,
-} from "../../shared/solve-types";
 import { publicProcedure, router } from "../index";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -647,6 +648,7 @@ export const commentSolverRouter = router({
 
 			assertNoDraftReplies(groupCommentIds);
 
+			requireOrdinarySolvePublication(group.solveSessionId);
 			return publishGroup(input.groupId);
 		}),
 
@@ -685,6 +687,7 @@ export const commentSolverRouter = router({
 
 			assertNoDraftReplies(approvedCommentIds);
 
+			requireOrdinarySolvePublication(input.sessionId);
 			return publishSolve(input.sessionId);
 		}),
 

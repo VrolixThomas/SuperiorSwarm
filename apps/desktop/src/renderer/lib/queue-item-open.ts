@@ -2,6 +2,7 @@ import type { QueueViewItem } from "../../shared/activity-queue";
 import { releaseQueuePermissionForOpen } from "../../shared/queue-permission-open";
 import { useProjectStore } from "../stores/projects";
 import { openTicketQueueTarget } from "../stores/queue-ticket-store";
+import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpcVanilla } from "../trpc/client";
 import { openQueueTarget } from "./activity-queue-navigation";
@@ -32,6 +33,23 @@ export async function openQueueItem(item: QueueViewItem) {
 			useTabStore.getState().setSidebarSegment("repos", { restoreWorkspace: false });
 		}
 		return null;
+	}
+	if (item.target.type === "pr") {
+		const destination = await openQueueTarget(item.target);
+		const active = useReviewModeStore.getState().active;
+		if (
+			active?.workspaceId === destination.workspaceId &&
+			active.prCtx.provider === item.target.provider &&
+			active.prCtx.owner === item.target.owner &&
+			active.prCtx.repo === item.target.repo &&
+			active.prCtx.number === item.target.number
+		)
+			useReviewModeStore.getState().setQueueOrigin({
+				id: item.id,
+				revision: item.revision,
+				workspaceId: destination.workspaceId,
+			});
+		return destination;
 	}
 	return openQueueTarget(item.target);
 }

@@ -1,10 +1,11 @@
-import { eq, like } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { WorkspaceQueueRevisionInput } from "../../shared/activity-queue";
 import { getDb } from "../db";
 import { sessionState } from "../db/schema";
 import { githubFetch } from "../github/auth";
 import { getGitProvider } from "../providers/git-provider";
 import { fetchQueuePRReviewEvidence } from "./pr-eligibility";
+import { assertPRMutationAvailable } from "./pr-mutation-reservations";
 import { isPRQueueItemCurrent } from "./pr-scope";
 import { currentExternalQueueItem } from "./queue-view";
 import { getActivityQueueService } from "./service";
@@ -72,28 +73,6 @@ export async function queuePRReviewCapability(input: WorkspaceQueueRevisionInput
 		target.accountId ?? ""
 	);
 }
-function assertNoReservation(input: WorkspaceQueueRevisionInput) {
-	const prior = getDb()
-		.select()
-		.from(sessionState)
-		.where(like(sessionState.key, "queue-pr-review:%"))
-		.all()
-		.map((row) => JSON.parse(row.value) as Receipt)
-		.find(
-			(row) =>
-				row.id === input.id &&
-				row.revision === input.revision &&
-				(row.status === "attempted" ||
-					row.status === "submitted" ||
-					(row.status === "pending" && row.expiresAt > Date.now()))
-		);
-	if (prior)
-		throw new Error(
-			prior.status === "attempted"
-				? "An earlier approval has an unknown outcome. Check the provider before handling a new occurrence."
-				: "This occurrence already has an approval reservation."
-		);
-}
 /** Reserve an exact operation. Only the still-mounted renderer dispatches after five seconds. */
 export async function prepareQueuePRReview(
 	input: WorkspaceQueueRevisionInput & {
@@ -114,7 +93,7 @@ export async function prepareQueuePRReview(
 		return existing;
 	}
 
-	assertNoReservation(input);
+	assertPRMutationAvailable(input);
 	requireItem(input);
 	const capability = await queuePRReviewCapability(input);
 	if (capability.headSha !== input.headSha || (!input.approveAnyway && !capability.eligible))
@@ -132,7 +111,7 @@ export async function prepareQueuePRReview(
 				throw new Error("Request ID belongs to another approval.");
 			return raced;
 		}
-		assertNoReservation(input);
+		assertPRMutationAvailable(input);
 		const now = Date.now();
 		const receipt: Receipt = {
 			...input,

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
-import type { NormalizedPRFile } from "../providers/types";
+import type { GitProvider, NormalizedPRFile } from "../providers/types";
 import { parsePrIdentifier } from "./pr-identifier";
 
 export interface PublishResult {
@@ -66,7 +66,8 @@ function resolveCommentPath(
 /** Publish approved draft comments to GitHub or Bitbucket */
 export async function publishReview(
 	draftId: string,
-	verdict: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" = "COMMENT"
+	verdict: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" = "COMMENT",
+	options?: { provider: GitProvider; body: string }
 ): Promise<PublishResult> {
 	const db = getDb();
 	const draft = db
@@ -104,7 +105,8 @@ export async function publishReview(
 	let failedCount = 0;
 	let verdictSubmitted = false;
 
-	const git = getGitProvider(draft.prProvider);
+	const git = options?.provider ?? getGitProvider(draft.prProvider);
+	const summary = options ? options.body.trim() : draft.summaryMarkdown;
 
 	// Fetch PR files for path validation
 	let commitId = draft.commitSha ?? undefined;
@@ -239,14 +241,14 @@ export async function publishReview(
 	// Submit the verdict only after every accepted inline/resolution comment has
 	// succeeded. Successfully posted rows are already marked submitted, so a
 	// retry cannot duplicate them.
-	if (failedCount === 0 && skippedCount === 0 && (draft.summaryMarkdown || verdict !== "COMMENT")) {
+	if (failedCount === 0 && skippedCount === 0 && (summary || verdict !== "COMMENT")) {
 		try {
 			await git.submitReview({
 				owner,
 				repo,
 				prNumber,
 				verdict,
-				body: draft.summaryMarkdown ?? "",
+				body: summary ?? "",
 			});
 			verdictSubmitted = true;
 		} catch (err) {

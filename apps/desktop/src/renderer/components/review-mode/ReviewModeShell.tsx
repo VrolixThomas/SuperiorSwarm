@@ -6,6 +6,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useQueuePRPublication } from "../../hooks/useQueuePRPublication";
 import {
 	type ThreadFilter,
 	draftStatusAfterEdit,
@@ -85,6 +86,8 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		enabled: isOpen,
 	});
 
+	const publication = useQueuePRPublication(prCtx, details?.headCommitOid);
+	const [publicationError, setPublicationError] = useState<string | null>(null);
 	const invalidateDrafts = useCallback(() => {
 		void utils.aiReview.getReviewDrafts.invalidate();
 		void utils.aiReview.getReviewDraft.invalidate();
@@ -151,7 +154,13 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 					status: draftStatusAfterEdit(status),
 					userEdit: body,
 				}),
-			onReply: (threadId, body) => {
+			onReplyCancel: publication.cancel,
+			onReply: async (threadId, body) => {
+				if (publication.applicable) {
+					await publication.submit({ kind: "reply", commentId: threadId, body });
+					invalidateDetails();
+					return;
+				}
 				if (prCtx.provider === "github") {
 					addReviewComment({ threadId, body });
 					return;
@@ -166,6 +175,14 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 				});
 			},
 			onResolve: (threadId) => {
+				if (publication.applicable) {
+					setPublicationError(null);
+					void publication
+						.submit({ kind: "resolve", commentId: threadId })
+						.then(() => invalidateDetails())
+						.catch((error) => setPublicationError(String(error)));
+					return;
+				}
 				if (prCtx.provider === "github") {
 					resolveThread({ threadId });
 					return;
@@ -181,6 +198,8 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			},
 		};
 	}, [
+		publication,
+		invalidateDetails,
 		addReviewComment,
 		allThreads,
 		deleteDraftComment,
@@ -267,6 +286,8 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			tabIndex={-1}
 			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
 		>
+			{publication.notice}
+			{publicationError && <div role="alert">{publicationError}</div>}
 			<ReviewHeader
 				prCtx={prCtx}
 				commentCount={commentCount}
@@ -311,6 +332,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 						</button>
 						{submitOpen && details && canSubmitReview && (
 							<SubmitReviewPopover
+								headSha={details.headCommitOid}
 								prCtx={prCtx}
 								draftId={aiDraft?.id ?? null}
 								acceptedThreads={acceptedThreads}
