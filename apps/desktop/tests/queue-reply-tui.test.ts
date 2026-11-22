@@ -136,6 +136,8 @@ test.skipIf(process.platform !== "darwin" || process.env["SS_QUEUE_REPLY_TUI"] !
 			expect(code).toBe(0);
 			expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8")).passed).toBe(true);
 		} finally {
+			// Also remove the credential link when Electron crashes or the harness times out.
+			rmSync(join(root, "codex-home/auth.json"), { force: true });
 			if (keep) console.log(`Workspace queue fixture: ${root}`);
 			else rmSync(root, { recursive: true, force: true });
 		}

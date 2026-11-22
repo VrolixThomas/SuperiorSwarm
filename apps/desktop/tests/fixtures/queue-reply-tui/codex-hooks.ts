@@ -8,17 +8,20 @@ export async function codexHookTrust(
 	cwd: string,
 	events: Record<string, Parameters<typeof TOML.stringify.value>[0]>,
 	env: NodeJS.ProcessEnv,
-	bridge: string
+	expectedCommand: string
 ) {
 	const child = spawn(
 		binary,
 		[
-			"app-server",
-			"--stdio",
+			"--no-daemon",
 			"-c",
 			`hooks=${TOML.stringify.value(events)}`,
 			"-c",
 			`projects=${TOML.stringify.value({ [cwd]: { trust_level: "trusted" } })}`,
+			"-c",
+			"mcp_servers={}",
+			"app-server",
+			"--stdio",
 		],
 		{ cwd, env, stdio: ["pipe", "pipe", "pipe"] }
 	);
@@ -58,10 +61,11 @@ export async function codexHookTrust(
 			data: { hooks: { key: string; command?: string; currentHash: string }[] }[];
 		};
 		const hooks = result.data.flatMap((row) => row.hooks);
-		assert(hooks.some((hook) => hook.command?.includes(bridge)));
+		assert.equal(hooks.length, 4, "Isolated fixture must expose only its four reviewed hooks");
+		assert(hooks.every((hook) => hook.command === expectedCommand));
 		const state: Record<string, Record<string, boolean | string>> = {};
 		for (const hook of hooks) {
-			if (hook.command?.includes(bridge)) {
+			if (hook.command === expectedCommand) {
 				state[hook.key] = { enabled: true, trusted_hash: hook.currentHash };
 			} else {
 				state[hook.key] = { enabled: false };
