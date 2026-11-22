@@ -397,3 +397,14 @@ test("in-app ticket details are account bound and reading never handles the occu
 	).rejects.toThrow("could not be loaded");
 	expect(queue.list().items).toHaveLength(1);
 });
+
+test("disabling show-all hides only baseline tickets and keeps later assignments", () => {
+	poll([fact()]);
+	poll([fact()], { showAll: true });
+	expect(queue.list().items).toHaveLength(1);
+	poll([fact(), fact({ id: "later" })], { showAll: true });
+	expect(queue.list().items).toHaveLength(2);
+	poll([fact(), fact({ id: "later" })], { showAll: false });
+	expect(queue.list().items).toHaveLength(1);
+	expect(queue.list().items[0]?.id).toBe(ticketQueueSourceId(account, "later"));
+});

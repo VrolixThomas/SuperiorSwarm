@@ -18,6 +18,7 @@ interface TicketSnapshot {
 	fact: TicketQueueFact;
 	eligible: boolean;
 	intake: boolean;
+	fresh: boolean;
 	feedbackBaseline: boolean;
 	seenComments: string[];
 	pendingComments: TicketQueueComment[];
@@ -35,6 +36,7 @@ function readSnapshot(value: unknown): TicketSnapshot | null {
 		typeof snapshot.fact.id === "string" &&
 		typeof snapshot.eligible === "boolean" &&
 		typeof snapshot.intake === "boolean" &&
+		typeof snapshot.fresh === "boolean" &&
 		typeof snapshot.feedbackBaseline === "boolean" &&
 		Array.isArray(snapshot.seenComments) &&
 		snapshot.seenComments.every((id) => typeof id === "string") &&
@@ -75,8 +77,8 @@ export function observeTicketPoll(
 		const link = links.get(fact.id);
 		const owned = fact.assigneeId === account.accountId;
 		const eligible = owned && fact.state === "unstarted" && !link;
-		const intake =
-			eligible && (showAll || (baseline !== null && (!previous?.eligible || previous.intake)));
+		const fresh = eligible && Boolean(baseline && (!previous?.eligible || previous.fresh));
+		const intake = eligible && (showAll || fresh);
 		const feedbackEligible =
 			owned && fact.state !== "closed" && (fact.state === "started" || !!link);
 		let seen = previous?.seenComments ?? [];
@@ -115,6 +117,7 @@ export function observeTicketPoll(
 			fact,
 			eligible,
 			intake,
+			fresh,
 			feedbackBaseline,
 			seenComments: seen,
 			pendingComments: pending,
@@ -133,6 +136,7 @@ export function observeTicketPoll(
 			fingerprint: JSON.stringify({
 				eligible,
 				intake,
+				fresh,
 				state: fact.state,
 				assignee: fact.assigneeId,
 				feedback: pending.map((comment) => comment.id).sort(),
@@ -174,6 +178,7 @@ export function observeTicketPoll(
 						...snapshot,
 						eligible: false,
 						intake: false,
+						fresh: false,
 						feedbackBaseline: false,
 						pendingComments: [],
 					},
