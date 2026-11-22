@@ -33,3 +33,9 @@ The tests use isolated databases/local fixtures and controlled external provider
 ## Local dependency delta
 
 The user's only pre-merge edit was bun.lock's desktop version0.23.3→0.23.4. Main already contains that exact version correction along with its new dependency pins; the correction is preserved by the merge rather than reverting the new lockfile. The original delta is backed up before applying the merge. No push/release is part of this work.
+
+## Applied to the requested branch
+
+`activity-queue` now contains merge commit `8776693d` and fetched main `4f2d7bc2` is an ancestor. The local lockfile-only stash was replayed cleanly and removed: its version correction was already in the merged lockfile, so the working tree is clean. Original delta backup: `/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-main-local-b_oqgkpz`.
+
+Dependencies were updated in this worktree using Bun, and desktop/PTY plus standalone MCP native bindings rebuilt for Electron45.4.1 ABI150. The actual requested worktree desktop build passes, as do73 post-merge smoke tests across8 isolated suites. No app instance was restarted or global provider configuration changed. A running dev app should be restarted to pick up the new Electron runtime.
