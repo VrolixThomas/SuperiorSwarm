@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { ReviewSnapshotRevision } from "../../../shared/review-snapshot-types";
-import { getWorkspaceCwdOrThrow } from "../../agent-launch/workspace-cwd-lookup";
 import { reviewRevisionAcquisition } from "../../review-explanation/acquisition-service";
 import { ReviewSnapshotError, ReviewSnapshotService } from "../../review-explanation/snapshot";
+import { getReviewSnapshotRoot } from "../../review-explanation/workspace-root";
 import { publicProcedure, router } from "../index";
 
 const oid = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
@@ -107,6 +107,6 @@ export function createReviewExplanationRouter(
 }
 
 export const reviewExplanationRouter = createReviewExplanationRouter(
-	new ReviewSnapshotService({ resolveRoot: async (id) => getWorkspaceCwdOrThrow(id) }),
+	new ReviewSnapshotService({ resolveRoot: async (id) => getReviewSnapshotRoot(id) }),
 	(input) => reviewRevisionAcquisition.acquire(input)
 );

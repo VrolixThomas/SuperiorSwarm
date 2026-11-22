@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import { getOrCreateReviewRecord } from "../../ai-review/review-workspace-preparation";
 import { getDb } from "../../db";
 import {
 	githubBranchPrs,
@@ -485,121 +486,7 @@ export const workspacesRouter = router({
 				targetBranch: z.string(),
 			})
 		)
-		.mutation(async ({ input }) => {
-			const db = getDb();
-
-			// 1. Guard: project must exist and be a git repository
-			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
-			if (!project) throw new Error("Project not found");
-
-			if (project.kind === "folder") {
-				throw new Error("This project is a plain folder. This action requires a git repository.");
-			}
-
-			// 2. Check for existing review workspace
-			let workspace = db
-				.select()
-				.from(workspaces)
-				.where(
-					and(
-						eq(workspaces.projectId, input.projectId),
-						eq(workspaces.prProvider, input.prProvider),
-						eq(workspaces.prIdentifier, input.prIdentifier)
-					)
-				)
-				.get();
-
-			// 3. Create if not exists
-			if (!workspace) {
-				const id = nanoid();
-				const now = new Date();
-				const name = `PR #${input.prIdentifier.split("#")[1]}: ${input.prTitle}`;
-				db.insert(workspaces)
-					.values({
-						id,
-						projectId: input.projectId,
-						name,
-						type: "review",
-						prProvider: input.prProvider,
-						prIdentifier: input.prIdentifier,
-						createdAt: now,
-						updatedAt: now,
-					})
-					.run();
-				workspace = db.select().from(workspaces).where(eq(workspaces.id, id)).get()!;
-			}
-
-			// 4. Ensure worktree exists
-
-			if (!workspace.worktreeId) {
-				// Compute worktree path
-				const sanitizedId = input.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
-				const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
-				assertWorktreePathAvailable(wtPath);
-
-				const { existsSync } = await import("node:fs");
-				if (!existsSync(wtPath)) {
-					// Worktree doesn't exist on disk — create it (blocking: we need the path)
-					await checkoutBranchWorktree(project.repoPath, wtPath, input.sourceBranch);
-				} else {
-					// Worktree already exists on disk — fetch in background so the UI switch is instant
-					const { default: simpleGit } = await import("simple-git");
-					const git = simpleGit(wtPath);
-					git
-						.fetch("origin")
-						.then(() => git.reset(["--hard", `origin/${input.sourceBranch}`]))
-						.catch((err) => {
-							console.error("[workspaces] Failed to update existing worktree, continuing:", err);
-						});
-				}
-
-				const now = new Date();
-				const worktreeId = nanoid();
-				db.insert(worktrees)
-					.values({
-						id: worktreeId,
-						projectId: input.projectId,
-						path: wtPath,
-						branch: input.sourceBranch,
-						baseBranch: input.targetBranch,
-						createdAt: now,
-						updatedAt: now,
-					})
-					.run();
-
-				db.update(workspaces)
-					.set({ worktreeId, updatedAt: now })
-					.where(eq(workspaces.id, workspace.id))
-					.run();
-
-				workspace = db.select().from(workspaces).where(eq(workspaces.id, workspace.id)).get()!;
-				resumeWorktreeServices(wtPath);
-			} else {
-				// Worktree exists — fetch in background so the UI switch is instant
-				const worktree = db
-					.select()
-					.from(worktrees)
-					.where(eq(worktrees.id, workspace.worktreeId))
-					.get();
-				if (worktree?.path) {
-					const { default: simpleGit } = await import("simple-git");
-					const git = simpleGit(worktree.path);
-					git
-						.fetch("origin")
-						.then(() => git.reset(["--hard", `origin/${input.sourceBranch}`]))
-						.catch((err) => {
-							console.error("[workspaces] Failed to update existing worktree:", err);
-						});
-				}
-			}
-
-			// 4. Return workspace with worktree path
-			const worktree = workspace.worktreeId
-				? db.select().from(worktrees).where(eq(worktrees.id, workspace.worktreeId)).get()
-				: null;
-
-			return { ...workspace, worktreePath: worktree?.path ?? null };
-		}),
+		.mutation(({ input }) => getOrCreateReviewRecord(input)),
 
 	cleanupReviewWorkspace: publicProcedure
 		.input(z.object({ workspaceId: z.string() }))

@@ -53,11 +53,25 @@ if (
 		db.insert(schema.projects)
 			.values({ id: "p", name: "isolated", repoPath: root, createdAt: now, updatedAt: now })
 			.run();
+		// This suite exercises an already-prepared workspace. Lazy preparation has
+		// dedicated coverage before the daemon launch boundary.
+		db.insert(schema.worktrees)
+			.values({
+				id: "existing-review-tree",
+				projectId: "p",
+				path: root,
+				branch: "feature",
+				baseBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
 		db.insert(schema.workspaces)
 			.values({
 				id: "w",
 				projectId: "p",
 				name: "review",
+				worktreeId: "existing-review-tree",
 				type: "review",
 				prProvider: "github",
 				prIdentifier: "o/r#1",

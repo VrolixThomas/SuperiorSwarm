@@ -93,3 +93,37 @@ main typechecking also retains existing unrelated errors.
 
 The requested knowledge-graph rebuild could not run because the local Python
 environment has no `graphify` module; source tests and builds do not depend on it.
+
+## Follow-up: opening must not prepare an agent workspace
+
+The live PR #12054 opening attempt was blocked in the old branch-worktree path:
+`getOrCreateReview → checkoutBranchWorktree → resolveBranchRef → git fetch`.
+The fetch had no deadline or application authentication. The process was still
+waiting after 90 seconds; the database contained a logical workspace but no worktree.
+Only that verified hung Git process and its children were stopped.
+
+Opening now creates/reuses the logical review record synchronously, without Git,
+provider calls, filesystem changes, or checkout. The review screen then loads provider
+details. File snapshots read immutable Git objects from the registered project root;
+missing objects may still require a bounded download. Browsing creates no worktree.
+
+Map and Ask prepare a detached worktree only when launching the agent, with exact-head
+validation, authenticated acquisition, a deadline, shared concurrent preparation,
+cancellation, and no resets of existing files. The runtime refuses to launch in the
+fallback project checkout. Legacy agents that review checkout contents require clean,
+current HEAD and target-base refs and otherwise return an actionable error.
+
+Snapshots remain rooted at the shared repository across agent worktree creation or
+removal. Terminal attachment updates the active workspace cwd only for the current
+review. A renderer deadline releases a lost opening request and fences late navigation.
+
+Live verification: selecting #12054 switched to the review screen within about 0.7 s
+in one observed run. Provider details followed about 4.4 s after the opening response,
+showing 205 changed files. A read-only database check confirmed `worktree_id` and path
+were still null. No mapping agent was launched during this check.
+
+Validation: 13 new backend regression cases; parent combined suite passed 13 outer
+tests across nine files (isolated wrappers contain additional cases). Independent
+review passed 12 outer tests across six files plus a real-router root-transition
+probe. Production build passes; renderer type diagnostics introduce no new signatures
+relative to the recorded baseline.

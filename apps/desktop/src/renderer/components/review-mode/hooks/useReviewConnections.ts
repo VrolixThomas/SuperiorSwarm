@@ -4,7 +4,10 @@ import type {
 	ReviewPathIdentity,
 	ReviewPathLaunchResult,
 } from "../../../../shared/review-path-runtime";
-import { attachReadingPathTerminal } from "../../../lib/review-connected-terminal";
+import {
+	attachReadingPathTerminal,
+	registerReviewTerminal,
+} from "../../../lib/review-connected-terminal";
 import {
 	reviewPathIdentityKey,
 	useLiveReviewPath,
@@ -26,6 +29,7 @@ export function useReviewConnections(
 ) {
 	const [attachmentError, setAttachmentError] = useState<string>();
 	const { mutateAsync: attach } = trpc.workspaces.attachTerminal.useMutation();
+	const utils = trpc.useUtils();
 	const scopeKey = JSON.stringify([
 		workspaceId,
 		prCtx.provider,
@@ -50,6 +54,8 @@ export function useReviewConnections(
 			setAttachmentError(undefined);
 			void attachReadingPathTerminal(workspaceId, launch, attach, isCurrent, scopeKey)
 				.then((ok) => {
+					if (ok && isCurrent())
+						void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
 					if (!ok && isCurrent())
 						setAttachmentError("The agent terminal did not match this review workspace.");
 				})
@@ -61,7 +67,7 @@ export function useReviewConnections(
 						)
 				);
 		},
-		[workspaceId, attach, scopeKey]
+		[workspaceId, attach, scopeKey, utils]
 	);
 	const identity = useMemo<ReviewPathIdentity | undefined>(
 		() =>
@@ -124,7 +130,8 @@ export function useReviewConnections(
 				cwd: descriptor.worktreePath,
 				reviewScopeKey: scopeKey,
 			};
-			useReviewModeStore.getState().setTerminal(recovered);
+			registerReviewTerminal(recovered);
+			void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
 			setAttachmentError(undefined);
 			return recovered;
 		} catch (error) {
@@ -133,7 +140,7 @@ export function useReviewConnections(
 					error instanceof Error ? error.message : "Could not recover the agent terminal."
 				);
 		}
-	}, [identity, ownedRun?.terminalId, scopeKey, workspaceId, live.state.snapshot]);
+	}, [identity, ownedRun?.terminalId, scopeKey, workspaceId, live.state.snapshot, utils]);
 	const recoveryAttempt = useRef("");
 	useEffect(() => {
 		const attempt = `${scopeKey}:${ownedRun?.terminalId ?? ""}`;

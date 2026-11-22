@@ -8,6 +8,7 @@ import type { GitHubPRDetails } from "../../shared/github-types";
 import type { ReviewPathRun, ReviewPathRuntimePort } from "../../shared/review-path-runtime";
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getReviewDrafts, getSettings } from "../ai-review/orchestrator";
+import { ensureReviewWorkspace } from "../ai-review/review-workspace";
 import { getDb } from "../db";
 import { reviewDrafts, terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
@@ -55,7 +56,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				workspace.prIdentifier !== identifier
 			)
 				throw new Error("Reading-path identity does not match the review workspace");
-			const cwd = getWorkspaceCwdOrThrow(workspace.id);
+			let cwd = getWorkspaceCwdOrThrow(workspace.id);
 			let details: GitHubPRDetails | undefined;
 			// Never reset a live review worktree or silently substitute its mutable HEAD.
 			const controller = new AbortController();
@@ -97,6 +98,31 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 					throw new Error("PR head changed before agent launch");
 				if (headMissing && !details.baseCommitOid)
 					throw new Error("Review target revision is unavailable. Refresh the PR.");
+				// Browsing owns only a logical review record. Provision an isolated
+				// worktree at the agent boundary, never launch in the fallback project root.
+				if (!workspace.worktreeId) {
+					const prepared = await ensureReviewWorkspace({
+						projectId: workspace.projectId,
+						prProvider: run.identity.provider,
+						prIdentifier: identifier,
+						prTitle: details.title,
+						sourceBranch: details.sourceBranch,
+						targetBranch: details.targetBranch,
+						expectedHeadOid: run.identity.headSha,
+						signal: controller.signal,
+					});
+					if (controller.signal.aborted || !sameActiveRun(store.getRun(run.id), run))
+						throw new Error("Reading-path run is no longer active");
+					const linked = getDb()
+						.select()
+						.from(workspaces)
+						.where(eq(workspaces.id, workspace.id))
+						.get();
+					if (prepared.workspaceId !== workspace.id || !linked?.worktreeId)
+						throw new Error("Reading-path agent requires an isolated review worktree");
+					cwd = getWorkspaceCwdOrThrow(workspace.id);
+					await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
+				}
 				if (details.baseCommitOid) {
 					// Acquisition only uses the network for missing objects, including a missing base.
 					await reviewRevisionAcquisition.acquire(

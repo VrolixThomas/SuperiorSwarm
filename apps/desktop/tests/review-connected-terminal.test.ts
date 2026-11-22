@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { attachReadingPathTerminal } from "../src/renderer/lib/review-connected-terminal";
 import { useReviewModeStore } from "../src/renderer/stores/review-mode-store";
+import { useTabStore } from "../src/renderer/stores/tab-store";
 
 test("attach an already-running reading terminal without launching or taking focus", async () => {
 	useReviewModeStore.setState({ terminals: {}, drawerOpen: false });
@@ -22,6 +23,35 @@ test("attach an already-running reading terminal without launching or taking foc
 	expect(calls).toEqual(["review-path:run:1"]);
 	expect(useReviewModeStore.getState().terminals["review-ws"]?.tabId).toBe("review-path:run:1");
 	expect(useReviewModeStore.getState().drawerOpen).toBe(false);
+});
+
+test("a lazy agent launch updates the active workspace cwd without opening its terminal", async () => {
+	const prCtx = {
+		provider: "github" as const,
+		owner: "o",
+		repo: "r",
+		number: 1,
+		title: "PR",
+		sourceBranch: "feature",
+		targetBranch: "main",
+		repoPath: "/project",
+	};
+	useTabStore.getState().activateReviewWorkspace("lazy-review", "/project", prCtx);
+	useReviewModeStore.setState({ view: "changes", drawerOpen: false });
+	await attachReadingPathTerminal(
+		"lazy-review",
+		{
+			terminalId: "review-path:lazy:1",
+			reviewWorkspaceId: "lazy-review",
+			worktreePath: "/isolated",
+		},
+		async () => {}
+	);
+	expect(useTabStore.getState().activeWorkspaceCwd).toBe("/isolated");
+	expect(useReviewModeStore.getState().active?.prCtx.repoPath).toBe("/isolated");
+	expect(useReviewModeStore.getState().view).toBe("changes");
+	expect(useReviewModeStore.getState().drawerOpen).toBe(false);
+	expect(useTabStore.getState().getTabsByWorkspace("lazy-review")).toEqual([]);
 });
 
 test("reject descriptors from another workspace and do not register failed attachments", async () => {

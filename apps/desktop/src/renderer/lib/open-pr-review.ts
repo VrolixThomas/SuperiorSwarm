@@ -15,22 +15,55 @@ interface ReviewWorkspaceRequest {
 	targetBranch: string;
 }
 
+/** Bound UI waiting even if an IPC response is lost; expired requests cannot navigate later. */
+export async function withReviewOpeningDeadline<T>(
+	operation: (isCurrent: () => boolean) => Promise<T>,
+	options: { timeoutMs?: number; isCurrent?: () => boolean } = {}
+): Promise<T> {
+	let active = true;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const isCurrent = () => active && (options.isCurrent?.() ?? true);
+	try {
+		return await Promise.race([
+			Promise.resolve().then(() => operation(isCurrent)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => {
+					active = false;
+					reject(
+						new Error(
+							"Preparing this PR took too long. Check the connection and try opening it again."
+						)
+					);
+				}, options.timeoutMs ?? 75_000);
+			}),
+		]);
+	} finally {
+		active = false;
+		clearTimeout(timer);
+	}
+}
+
 /** Shared sidebar/queue flow: create or reuse the review worktree before activating it. */
 export async function openPRReview(
 	{ projectId, prCtx }: OpenPRReviewInput,
 	getOrCreateReview: (
 		input: ReviewWorkspaceRequest
-	) => Promise<{ id: string; worktreePath: string | null }>
+	) => Promise<{ id: string; worktreePath: string | null }>,
+	options: { timeoutMs?: number; isCurrent?: () => boolean } = {}
 ) {
-	const workspace = await getOrCreateReview({
-		projectId,
-		prProvider: prCtx.provider,
-		prIdentifier: formatPrIdentifier(prCtx),
-		prTitle: prCtx.title,
-		sourceBranch: prCtx.sourceBranch,
-		targetBranch: prCtx.targetBranch,
-	});
-	const cwd = workspace.worktreePath ?? prCtx.repoPath;
-	useTabStore.getState().activateReviewWorkspace(workspace.id, cwd, { ...prCtx, repoPath: cwd });
-	return workspace;
+	return withReviewOpeningDeadline(async (isCurrent) => {
+		if (!isCurrent()) throw new Error("PR opening request is no longer active");
+		const workspace = await getOrCreateReview({
+			projectId,
+			prProvider: prCtx.provider,
+			prIdentifier: formatPrIdentifier(prCtx),
+			prTitle: prCtx.title,
+			sourceBranch: prCtx.sourceBranch,
+			targetBranch: prCtx.targetBranch,
+		});
+		if (!isCurrent()) throw new Error("PR opening request is no longer active");
+		const cwd = workspace.worktreePath ?? prCtx.repoPath;
+		useTabStore.getState().activateReviewWorkspace(workspace.id, cwd, { ...prCtx, repoPath: cwd });
+		return workspace;
+	}, options);
 }
