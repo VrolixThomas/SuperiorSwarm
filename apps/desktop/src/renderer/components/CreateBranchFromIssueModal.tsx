@@ -56,13 +56,8 @@ export function CreateBranchFromIssueModal({ issue, onClose, queueStart }: Props
 			if (queueStart && issue) {
 				setCreatedWorkspaceId(workspace.id);
 				try {
-					await linkTicketMutation.mutateAsync({
-						provider: issue.provider,
-						ticketId: issue.id,
-						ticketUrl: issue.url,
-						workspaceId: workspace.id,
-						queueAccount: queueStart.account,
-					});
+					// Queue Start links the created workspace in main before this response.
+					await utils.tickets.getLinkedTickets.invalidate();
 					await utils.workspaces.listByProject.invalidate();
 					const launch = await startChat.mutateAsync({
 						workspaceId: workspace.id,

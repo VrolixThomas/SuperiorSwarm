@@ -88,6 +88,9 @@ export function observeTicketPoll(
 			pending = [];
 			feedbackBaseline = false;
 		} else if (fact.comments) {
+			// Edits enrich the existing occurrence; only new attributable comment IDs create one.
+			const currentComments = new Map(fact.comments.map((comment) => [comment.id, comment]));
+			pending = pending.map((comment) => currentComments.get(comment.id) ?? comment);
 			const unseen = fact.comments.filter((comment) => !seen.includes(comment.id));
 			if (feedbackBaseline) {
 				pending = [
@@ -104,7 +107,12 @@ export function observeTicketPoll(
 			pending = [
 				...new Map(
 					pending
-						.filter((comment) => comment.createdAt >= latestSelf)
+						.filter(
+							(comment) =>
+								comment.authorId &&
+								comment.authorId !== account.accountId &&
+								comment.createdAt >= latestSelf
+						)
 						.map((comment) => [comment.id, comment])
 				).values(),
 			].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
@@ -137,7 +145,6 @@ export function observeTicketPoll(
 				eligible,
 				intake,
 				fresh,
-				state: fact.state,
 				assignee: fact.assigneeId,
 				feedback: pending.map((comment) => comment.id).sort(),
 			}),

@@ -205,6 +205,7 @@ export function prepareTicketQueueAction(input: {
 	if (
 		input.action === "start" &&
 		(source.error ||
+			source.acknowledgedRevision === source.revision ||
 			candidate.kind !== "ticket-start" ||
 			ticketQueueLinks(candidate.target).has(candidate.target.ticketId))
 	)

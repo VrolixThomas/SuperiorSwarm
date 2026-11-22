@@ -1,0 +1,14 @@
+{
+  "main": {
+    "existingDiagnosticCount": 60,
+    "ownedDiagnostics": []
+  },
+  "renderer": {
+    "existingDiagnosticCount": 81,
+    "ownedDiagnostics": []
+  },
+  "tests-final": {
+    "existingDiagnosticCount": 221,
+    "ownedDiagnostics": []
+  }
+}

@@ -24,7 +24,7 @@ import {
 } from "../src/main/activity-queue/ticket-source";
 import { closeDb, getDb } from "../src/main/db";
 import { atlassianAuth, linearAuth, sessionState, ticketBranchLinks } from "../src/main/db/schema";
-import { activityQueueSources } from "../src/main/db/schema-activity-queue";
+import { activityQueueSnoozes, activityQueueSources } from "../src/main/db/schema-activity-queue";
 import {
 	type TicketQueueAccount,
 	type TicketQueueComment,
@@ -230,7 +230,7 @@ test("Linear transport paginates fresh snapshot and refuses repeated cursors", a
 	const transport: TicketQueueTransport = {
 		jira: unavailable,
 		linear: async (_query, variables) => {
-			expect(variables.account).toBe("me");
+			expect(variables["account"]).toBe("me");
 			page++;
 			return {
 				issues: {
@@ -407,4 +407,71 @@ test("disabling show-all hides only baseline tickets and keeps later assignments
 	poll([fact(), fact({ id: "later" })], { showAll: false });
 	expect(queue.list().items).toHaveLength(1);
 	expect(queue.list().items[0]?.id).toBe(ticketQueueSourceId(account, "later"));
+});
+
+const reviewLink = new Map([
+	["uuid-1", { workspaceId: "w", workspaceName: "w", projectId: "p", projectName: "repo" }],
+]);
+test("status-only changes must not resurrect dismissed linked feedback", () => {
+	poll([fact({ state: "started", comments: [] })], { links: reviewLink });
+	poll([fact({ state: "started", comments: [comment("external")] })], { links: reviewLink });
+	const attention = queue.list().items[0]!;
+	queue.acknowledge(attention);
+	poll([fact({ state: "unstarted", comments: [comment("external")] })], { links: reviewLink });
+	expect(queue.list().items).toHaveLength(0);
+});
+test("edited external feedback refreshes text without new receipt", () => {
+	poll([fact({ state: "started", comments: [] })]);
+	poll([fact({ state: "started", comments: [comment("external")] })]);
+	const attention = queue.list().items[0]!;
+	poll([
+		fact({
+			state: "started",
+			comments: [{ ...comment("external"), body: "Correction: do NOT deploy" }],
+		}),
+	]);
+	const edited = queue.list().items[0]!;
+	expect(edited.revision).toBe(attention.revision);
+	expect(edited.summary).toContain("Correction: do NOT deploy");
+});
+test("dismissed intake cannot still prepare Start", () => {
+	authenticateJira();
+	poll([], { account: jira });
+	poll([fact({ provider: "jira", id: "SUP-1" })], { account: jira });
+	const attention = queue.list().items[0]!;
+	queue.acknowledge(attention);
+	expect(() => prepareTicketQueueAction({ ...attention, action: "start" })).toThrow();
+});
+
+test("status and comment edits preserve Later until a genuinely new comment arrives", () => {
+	poll([fact({ state: "started", comments: [] })], { links: reviewLink });
+	poll([fact({ state: "started", comments: [comment("external")] })], { links: reviewLink });
+	const attention = queue.list().items[0]!;
+	getDb()
+		.insert(activityQueueSnoozes)
+		.values({
+			sourceId: attention.id,
+			revision: attention.revision,
+			untilChange: true,
+			createdAt: now,
+		})
+		.run();
+	poll(
+		[
+			fact({
+				state: "unstarted",
+				comments: [{ ...comment("external"), body: "Updated detail", author: "Updated name" }],
+			}),
+		],
+		{ links: reviewLink }
+	);
+	const edited = queue.list().items[0]!;
+	expect(edited.revision).toBe(attention.revision);
+	expect(edited.summary).toContain("Updated name commented: Updated detail");
+	expect(getDb().select().from(activityQueueSnoozes).all()[0]?.revision).toBe(edited.revision);
+	poll(
+		[fact({ state: "unstarted", comments: [comment("external"), comment("next", "other", 20)] })],
+		{ links: reviewLink }
+	);
+	expect(queue.list().items[0]?.revision).toBeGreaterThan(attention.revision);
 });

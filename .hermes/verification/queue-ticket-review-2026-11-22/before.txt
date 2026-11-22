@@ -1,0 +1,102 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-ticket-source.test.ts:
+(pass) silent baseline, later assignment, title-only enrichment, exact Done and durable restart [15.99ms]
+(pass) show-all includes old assignments; reassignment reopens and links resolve [5.14ms]
+(pass) failed reads retain candidates; only complete absence clears [2.04ms]
+(pass) feedback baseline/self suppression, outside-queue self reply cleanup, fresh revision after Done [3.52ms]
+(pass) unknown author is not feedback; comment failures preserve unread feedback [3.33ms]
+(pass) same Jira key across sites/accounts never shares baseline or receipt [2.39ms]
+(pass) account switch blocks actions; legacy Jira links cannot clear; explicit scoped link resolves [8.18ms]
+(pass) Linear transport paginates fresh snapshot and refuses repeated cursors [2.06ms]
+(pass) Jira comments retain authors/mentions; incomplete pages fail closed [1.84ms]
+(pass) a silently baselined ticket reassigned back after absence appears [1.14ms]
+(pass) feedback stays resolved on return until a new external comment after new baseline [1.92ms]
+(pass) ordinary ticket linking verifies observed Jira site instead of a bare key [1.30ms]
+(pass) runtime refresh uses complete provider transport and retains state on errors [2.60ms]
+(pass) shutdown invalidates in-flight provider results before DB writes [0.47ms]
+(pass) in-app ticket details are account bound and reading never handles the occurrence [1.00ms]
+(pass) disabling show-all hides only baseline tickets and keeps later assignments [2.64ms]
+REVIEW_STATUS {"oldRevision":2,"items":[{"kind":"ticket-feedback","revision":3,"summary":"other commented: Please check external"}]}
+414 |  poll([fact({state:"started",comments:[]})],{links:reviewLink});
+415 |  poll([fact({state:"started",comments:[comment("external")]})],{links:reviewLink});
+416 |  const attention=queue.list().items[0]!; queue.acknowledge(attention);
+417 |  poll([fact({state:"unstarted",comments:[comment("external")]})],{links:reviewLink});
+418 |  console.log("REVIEW_STATUS",JSON.stringify({oldRevision:attention.revision,items:queue.list().items.map(x=>({kind:x.kind,revision:x.revision,summary:x.summary}))}));
+419 |  expect(queue.list().items).toHaveLength(0);
+                                  ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 0
+Received length: 1
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/tests/queue-ticket-source.test.ts:419:29)
+(fail) REVIEW: status-only changes must not resurrect dismissed linked feedback [3.45ms]
+REVIEW_EDIT {"revision":2,"summary":"other commented: Please check external"}
+424 |  const attention=queue.list().items[0]!;
+425 |  poll([fact({state:"started",comments:[{...comment("external"),body:"Correction: do NOT deploy"}]})]);
+426 |  const edited=queue.list().items[0]!;
+427 |  console.log("REVIEW_EDIT",JSON.stringify({revision:edited.revision,summary:edited.summary}));
+428 |  expect(edited.revision).toBe(attention.revision);
+429 |  expect(edited.summary).toContain("Correction: do NOT deploy");
+                              ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "Correction: do NOT deploy"
+Received: "other commented: Please check external"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/tests/queue-ticket-source.test.ts:429:25)
+(fail) REVIEW: edited external feedback refreshes text without new receipt [1.81ms]
+430 | });
+431 | test("REVIEW: dismissed intake cannot still prepare Start", () => {
+432 |  authenticateJira();
+433 |  poll([],{account:jira}); poll([fact({provider:"jira",id:"SUP-1"})],{account:jira});
+434 |  const attention=queue.list().items[0]!; queue.acknowledge(attention);
+435 |  expect(() => prepareTicketQueueAction({...attention,action:"start"})).toThrow();
+                                                                             ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  target: {
+    type: "ticket",
+    provider: "jira",
+    accountId: "me",
+    siteId: "site-a",
+    ticketId: "SUP-1",
+    identifier: "SUP-1",
+    url: "https://linear.app/swarm/issue/SUP-1",
+    groupId: "team-1",
+  },
+  title: "SUP-1 · Fix a queue",
+  settings: {
+    showAll: false,
+    defaultAgent: "codex",
+  },
+}
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/tests/queue-ticket-source.test.ts:435:72)
+(fail) REVIEW: dismissed intake cannot still prepare Start [1.56ms]
+
+tests/queue-ticket-start.test.ts:
+REVIEW_CREATE_CONCURRENT 2
+REVIEW_CREATE_RESULTS [ "fulfilled", "fulfilled" ]
+20 |  const item=queue.list().items[0]!;const caller=workspacesRouter.createCaller({});
+21 |  const one=caller.create({projectId:"p1",branch:"feature/a",queueTicket:{id:item.id,revision:item.revision}});
+22 |  const two=caller.create({projectId:"p2",branch:"feature/b",queueTicket:{id:item.id,revision:item.revision}});
+23 |  await new Promise(r=>setTimeout(r,20));console.log("REVIEW_CREATE_CONCURRENT",launches);release();
+24 |  const result=await Promise.allSettled([one,two]);console.log("REVIEW_CREATE_RESULTS",result.map(r=>r.status));
+25 |  expect(launches).toBe(1);
+                       ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 2
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/tests/queue-ticket-start.test.ts:25:19)
+(fail) REVIEW: concurrent Start requests must reserve the exact queue occurrence [24.04ms]
+
+ 16 pass
+ 4 fail
+ 76 expect() calls
+Ran 20 tests across 2 files. [385.00ms]

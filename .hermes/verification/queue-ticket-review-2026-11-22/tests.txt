@@ -1,0 +1,76 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-ticket-detail-ui.test.tsx:
+(pass) Tickets displays exact scoped task/description/comment and never shows retained data after account error [25.24ms]
+
+tests/queue-ticket-source.test.ts:
+(pass) silent baseline, later assignment, title-only enrichment, exact Done and durable restart [27.93ms]
+(pass) show-all includes old assignments; reassignment reopens and links resolve [5.24ms]
+(pass) failed reads retain candidates; only complete absence clears [1.85ms]
+(pass) feedback baseline/self suppression, outside-queue self reply cleanup, fresh revision after Done [7.33ms]
+(pass) unknown author is not feedback; comment failures preserve unread feedback [3.03ms]
+(pass) same Jira key across sites/accounts never shares baseline or receipt [2.25ms]
+(pass) account switch blocks actions; legacy Jira links cannot clear; explicit scoped link resolves [7.74ms]
+(pass) Linear transport paginates fresh snapshot and refuses repeated cursors [5.21ms]
+(pass) Jira comments retain authors/mentions; incomplete pages fail closed [4.11ms]
+(pass) a silently baselined ticket reassigned back after absence appears [3.94ms]
+(pass) feedback stays resolved on return until a new external comment after new baseline [2.31ms]
+(pass) ordinary ticket linking verifies observed Jira site instead of a bare key [1.13ms]
+(pass) runtime refresh uses complete provider transport and retains state on errors [4.78ms]
+(pass) shutdown invalidates in-flight provider results before DB writes [0.39ms]
+(pass) in-app ticket details are account bound and reading never handles the occurrence [6.75ms]
+(pass) disabling show-all hides only baseline tickets and keeps later assignments [7.16ms]
+(pass) status-only changes must not resurrect dismissed linked feedback [9.15ms]
+(pass) edited external feedback refreshes text without new receipt [2.86ms]
+(pass) dismissed intake cannot still prepare Start [1.04ms]
+(pass) status and comment edits preserve Later until a genuinely new comment arrives [1.94ms]
+
+tests/owned-chat-launch.test.ts:
+(pass) claude own chat in worktree: exact cwd/policy/nonce without hijacking dispatch [17.89ms]
+(pass) claude own chat in folder: exact cwd/policy/nonce without hijacking dispatch [18.44ms]
+(pass) claude own chat in orchestrator: exact cwd/policy/nonce without hijacking dispatch [30.16ms]
+(pass) claude own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [18.01ms]
+(pass) codex own chat in worktree: exact cwd/policy/nonce without hijacking dispatch [12.30ms]
+(pass) codex own chat in folder: exact cwd/policy/nonce without hijacking dispatch [22.97ms]
+(pass) codex own chat in orchestrator: exact cwd/policy/nonce without hijacking dispatch [16.97ms]
+(pass) codex own chat in coordinator: exact cwd/policy/nonce without hijacking dispatch [35.19ms]
+[workspace-cwd] Cannot resolve directory: {
+  path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-exQsH9",
+  error:  8 | 
+ 9 | export function canonicalWorkspaceDirectory(path: string): string {
+10 | 	if (!path || !isAbsolute(path) || path.includes("\0") || Buffer.from(path).toString() !== path)
+11 | 		throw new WorkspaceError("WORKSPACE_PATH_INVALID");
+12 | 	try {
+13 | 		const root = realpathSync(path);
+                    ^
+ENOENT: no such file or directory, lstat '/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-exQsH9'
+    path: "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/owned-chat-launch-exQsH9",
+ syscall: "lstat",
+   errno: -2,
+    code: "ENOENT"
+
+      at canonicalWorkspaceDirectory (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/src/main/agent-launch/workspace-cwd-lookup.ts:13:16)
+      at startOwnedChat (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/src/main/services/owned-chat.ts:23:14)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-ticket-review/apps/desktop/tests/owned-chat-launch.test.ts:224:3)
+,
+}
+(pass) deleted workspace and missing folder reject before preparing a launch [4.63ms]
+(pass) the public start API rejects caller-supplied cwd, binary, argv and permission override [6.22ms]
+(pass) failed owned registration removes only the newly prepared terminal [8.20ms]
+(pass) claude explicit ticket prompt is shell-quoted, bounded and reflected in launch descriptor [6.17ms]
+(pass) codex explicit ticket prompt is shell-quoted, bounded and reflected in launch descriptor [9.30ms]
+(pass) whitespace initial prompt stays promptless; leading flag is treated as user text [20.26ms]
+
+tests/queue-ticket-ui.test.tsx:
+(pass) Open validates exact receipt and navigates to Tickets without creating or acknowledging [3.02ms]
+(pass) Start waits for confirmed main creation/linking and starts contextual default agent once [35.37ms]
+(pass) failed chat launch never retries creation of the already linked workspace [28.27ms]
+(pass) stale occurrence does not open confirmation or create work [7.61ms]
+
+tests/queue-ticket-start.test.ts:
+(pass) confirmed ticket Start reserves and links one occurrence across races and restart [268.14ms]
+
+ 40 pass
+ 0 fail
+ 246 expect() calls
+Ran 40 tests across 5 files. [1165.00ms]

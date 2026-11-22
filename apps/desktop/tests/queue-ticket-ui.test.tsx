@@ -16,7 +16,7 @@ for (const [key, value] of Object.entries({
 	Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
 const calls: { type: string; input: unknown }[] = [];
 let prepareError = false;
-let linkError = false;
+let launchError = false;
 const issue = {
 	provider: "jira" as const,
 	id: "SUP-39",
@@ -80,7 +80,6 @@ mock.module("../src/renderer/trpc/client", () => ({
 					mutate: noop,
 					mutateAsync: async (input: unknown) => {
 						calls.push({ type: "link", input });
-						if (linkError) throw Error("Link could not be saved");
 					},
 				}),
 			},
@@ -90,6 +89,7 @@ mock.module("../src/renderer/trpc/client", () => ({
 				useMutation: () => ({
 					mutateAsync: async (input: unknown) => {
 						calls.push({ type: "launch", input });
+						if (launchError) throw Error("Chat could not be started");
 						return {
 							workspaceId: "new-workspace",
 							terminalId: "new-chat",
@@ -150,7 +150,7 @@ const item = {
 beforeEach(() => {
 	calls.length = 0;
 	prepareError = false;
-	linkError = false;
+	launchError = false;
 	refreshes = 0;
 });
 afterEach(async () => {
@@ -201,7 +201,7 @@ test("Open validates exact receipt and navigates to Tickets without creating or 
 	]);
 	expect(document.querySelector("form")).toBeNull();
 });
-test("Start waits for confirmation then links exact site and starts contextual default agent once", async () => {
+test("Start waits for confirmed main creation/linking and starts contextual default agent once", async () => {
 	await mount();
 	await click("Start work…");
 	expect(calls.map((call) => call.type)).toEqual(["prepare"]);
@@ -211,7 +211,6 @@ test("Start waits for confirmation then links exact site and starts contextual d
 	expect(calls.map((call) => call.type)).toEqual([
 		"prepare",
 		"create",
-		"link",
 		"launch",
 		"terminal-create",
 		"terminal-write",
@@ -220,23 +219,20 @@ test("Start waits for confirmation then links exact site and starts contextual d
 		queueTicket: { id: item.id, revision: 2 },
 		projectId: "repo",
 	});
-	expect(calls.find((call) => call.type === "link")?.input).toMatchObject({
-		queueAccount: { accountId: "me", siteId: "site-a" },
-		workspaceId: "new-workspace",
-	});
+	expect(calls.some((call) => call.type === "link")).toBe(false);
 	expect(calls.find((call) => call.type === "launch")?.input).toMatchObject({
 		provider: "codex",
 		initialPrompt: expect.stringContaining("Start work on SUP-39: Fix tickets"),
 	});
 	expect(refreshes).toBe(1);
 });
-test("failed link never starts agent or retries creation; occurrence conflict refreshes", async () => {
+test("failed chat launch never retries creation of the already linked workspace", async () => {
 	await mount();
 	await click("Start work…");
-	linkError = true;
+	launchError = true;
 	await confirm();
-	expect(calls.some((call) => call.type === "launch")).toBe(false);
-	expect(document.body.textContent).toContain("Link could not be saved");
+	expect(calls.filter((call) => call.type === "launch")).toHaveLength(1);
+	expect(document.body.textContent).toContain("Chat could not be started");
 	await confirm();
 	expect(calls.filter((call) => call.type === "create")).toHaveLength(1);
 });
