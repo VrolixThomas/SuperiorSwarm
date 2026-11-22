@@ -26,7 +26,7 @@ Seven React tests use the real tab, pane and review-mode stores with the product
 
 ## Results
 
-- **9 backend tests / 107 assertions pass:** [backend](combined-backend.txt).
+- **9 backend tests / 114 assertions pass:** [backend](combined-backend.txt).
 - **7 navigation tests / 23 assertions pass:** [navigation](combined-navigation.txt).
 - **21 existing publication tests / 68 assertions pass:** [regression](publication-regression.txt).
 - **10 direct approval/recovery tests / 27 assertions pass:** [approval](approval-regression.txt).
