@@ -8,12 +8,14 @@ export function RailHeader({
 	source,
 	progress,
 	showViewed = true,
+	showAgentControls = true,
 }: {
 	mode: "path" | "files";
 	onModeChange: (mode: "path" | "files") => void;
 	source: ReviewPathSource;
 	progress: { viewed: number; total: number };
 	showViewed?: boolean;
+	showAgentControls?: boolean;
 }) {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const { path, status } = source;
@@ -26,34 +28,45 @@ export function RailHeader({
 							key={value}
 							type="button"
 							aria-pressed={mode === value}
+							disabled={
+								!showAgentControls &&
+								value === "path" &&
+								(status === "none" || (status === "failed" && !path?.entries.length))
+							}
+							title={
+								value === "path" && status === "none"
+									? "Start an agent review to create a reading path"
+									: undefined
+							}
 							onClick={() => onModeChange(value)}
-							className={`h-6 rounded-[5px] px-3 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${mode === value ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)]"}`}
+							className={`h-6 rounded-[5px] px-3 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 ${mode === value ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)]"}`}
 						>
-							{value === "path" ? "Path" : "Files"}
+							{value === "path" ? (showAgentControls ? "Path" : "Reading path") : "Files"}
 						</button>
 					))}
 				</div>
-				{status === "mapping" ? (
-					<button
-						type="button"
-						onClick={source.stop}
-						className="rounded-[6px] border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-secondary)]"
-					>
-						Stop
-					</button>
-				) : (
-					path && (
+				{showAgentControls &&
+					(status === "mapping" ? (
 						<button
 							type="button"
-							aria-label="Path options"
-							aria-expanded={menuOpen}
-							onClick={() => setMenuOpen(!menuOpen)}
-							className="flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--text-tertiary)]"
+							onClick={source.stop}
+							className="rounded-[6px] border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-secondary)]"
 						>
-							<MoreHorizontal size={16} />
+							Stop
 						</button>
-					)
-				)}
+					) : (
+						path && (
+							<button
+								type="button"
+								aria-label="Path options"
+								aria-expanded={menuOpen}
+								onClick={() => setMenuOpen(!menuOpen)}
+								className="flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--text-tertiary)]"
+							>
+								<MoreHorizontal size={16} />
+							</button>
+						)
+					))}
 			</div>
 			{menuOpen && (
 				<div className="absolute right-3 top-10 z-10 rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-lg)]">
@@ -72,7 +85,7 @@ export function RailHeader({
 				</div>
 			)}
 			<div className="mt-2 flex min-w-0 items-center gap-1.5 text-[12px] text-[var(--text-tertiary)]">
-				{status === "mapping" ? (
+				{showAgentControls && status === "mapping" ? (
 					<>
 						<LoaderCircle
 							size={12}
@@ -104,7 +117,7 @@ export function RailHeader({
 					<span>No reading path yet</span>
 				)}
 			</div>
-			{status === "stale" && (
+			{showAgentControls && status === "stale" && (
 				<div className="mt-2 text-[11px] text-[var(--text-secondary)]">
 					Path is from an older commit ·{" "}
 					<button

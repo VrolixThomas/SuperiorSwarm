@@ -23,12 +23,90 @@ interface AcquisitionOptions {
 
 const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
+const FETCH_FAILURE_MESSAGES = {
+	cancelled: "Review revision acquisition was cancelled.",
+	timeout: "Review revision fetch timed out. Retry preparation.",
+	authentication:
+		"Review repository access was denied. Check credentials or repository permissions and retry preparation.",
+	"repository-unavailable":
+		"Review repository could not be found or accessed. Verify the repository and access permissions.",
+	network:
+		"Review repository connection failed. Check the network connection and retry preparation.",
+	"revision-unavailable":
+		"Review repository did not provide the requested commit. Refresh the PR revision and retry preparation.",
+	"local-git":
+		"Review revision preparation failed. Check local Git or disk access and retry preparation.",
+	unknown: "Review revision fetch failed. Retry preparation.",
+} as const;
+
+export type RevisionFetchFailureCode = keyof typeof FETCH_FAILURE_MESSAGES;
+
+export class RevisionFetchError extends Error {
+	constructor(readonly code: RevisionFetchFailureCode) {
+		super(FETCH_FAILURE_MESSAGES[code]);
+		this.name = "RevisionFetchError";
+	}
+}
+
+/** Classify known Git failures without retaining raw stderr, which can contain credentials. */
+export function classifyRevisionFetchFailure(input: {
+	operation: "init" | "fetch";
+	aborted: boolean;
+	code?: string | number | null;
+	killed?: boolean;
+	signal?: string | null;
+	stderr: string;
+}): RevisionFetchFailureCode {
+	if (input.aborted) return "cancelled";
+	if (input.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return "local-git";
+	if (
+		(input.killed && input.signal === "SIGKILL") ||
+		input.code === "ETIMEDOUT" ||
+		/(?:operation|connection) timed out/i.test(input.stderr)
+	)
+		return "timeout";
+	if (
+		input.operation === "init" ||
+		["ENOENT", "EACCES", "ENOSPC", "EROFS"].includes(String(input.code))
+	)
+		return "local-git";
+	if (
+		/authentication failed|could not read (?:username|password)|permission denied \(publickey|requested URL returned error: (?:401|403)\b|HTTP[^\n]*(?:401|403)\b/i.test(
+			input.stderr
+		)
+	)
+		return "authentication";
+	if (/repository[^\n]*not found|requested URL returned error: 404\b/i.test(input.stderr))
+		return "repository-unavailable";
+	if (
+		/not our ref|could(?:n't| not) find remote ref|unadvertised object|no such ref/i.test(
+			input.stderr
+		)
+	)
+		return "revision-unavailable";
+	if (
+		/could not resolve (?:host|proxy)|failed to connect|couldn't connect|connection (?:reset|refused|closed)|network is unreachable|SSL (?:certificate|connect)|certificate verification failed|RPC failed|early EOF|requested URL returned error: 5\d\d\b/i.test(
+			input.stderr
+		)
+	)
+		return "network";
+	if (
+		/no space left|read-only file system|cannot (?:write|mkdir)|unable to (?:create|write)|not a git repository|not a valid object|insufficient permission/i.test(
+			input.stderr
+		)
+	)
+		return "local-git";
+	return "unknown";
+}
+
 function fetchGit(
 	root: string,
 	args: string[],
 	signal: AbortSignal,
 	env: NodeJS.ProcessEnv
 ): Promise<void> {
+	const started = Date.now();
+	const operation = args[0] === "init" ? "init" : "fetch";
 	return new Promise((resolve, reject) => {
 		execFile(
 			"git",
@@ -41,14 +119,25 @@ function fetchGit(
 				maxBuffer: 1024 * 1024,
 				env,
 			},
-			(error) => {
-				if (error || signal.aborted)
-					reject(
-						new Error(
-							"Review revision fetch failed. Check the repository's Git authentication and retry Refresh."
-						)
-					);
-				else resolve();
+			(error, _stdout, stderr) => {
+				if (error || signal.aborted) {
+					const category = classifyRevisionFetchFailure({
+						operation,
+						aborted: signal.aborted,
+						code: error?.code,
+						killed: error?.killed,
+						signal: error?.signal,
+						stderr,
+					});
+					// Deliberately omit command, URL, environment, error object and stderr.
+					console.warn("[review-acquisition] Git operation failed", {
+						operation,
+						category,
+						elapsedMs: Math.max(0, Date.now() - started),
+						exitCode: typeof error?.code === "number" ? error.code : null,
+					});
+					reject(new RevisionFetchError(category));
+				} else resolve();
 			}
 		);
 	});

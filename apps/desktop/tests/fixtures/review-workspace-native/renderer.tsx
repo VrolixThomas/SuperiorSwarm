@@ -119,12 +119,12 @@ createRoot(document.getElementById("root")!).render(
 );
 async function run() {
 	await poll(
-		() => !!button("Map this PR") && !button("Map this PR")!.disabled,
+		() => !!button("Start agent review") && !button("Start agent review")!.disabled,
 		"initial live workspace"
 	);
 	check("live adapter loads overview", text().includes("Disposable PR") && text().includes("106"));
 	await capture("01-start-no-path");
-	await click("Map this PR");
+	await click("Start agent review");
 	await wait(350);
 	await capture("02-mapping-live");
 	await select("src/alpha.ts");
@@ -485,10 +485,18 @@ async function run() {
 	await refresh();
 	check("head refresh clears selected Ask anchor", store.getState().askAnchor === null);
 	store.getState().setPanel(null);
-	await wait();
+	await poll(
+		() => !!document.querySelector("output")?.textContent?.includes("unavailable"),
+		"unknown revision failure"
+	);
 	check(
 		"unknown commit renders unavailable instead of stale content",
-		editors().every((e) => e.getValue() === "") && text().includes("Refresh")
+		editors().every((e) => e.getValue() === "") &&
+			!!document.querySelector("output")?.textContent?.includes("unavailable"),
+		{
+			notice: document.querySelector("output")?.textContent,
+			modelLengths: editors().map((e) => e.getValue().length),
+		}
 	);
 	check("nine categories captured in both themes", metrics.length === 18);
 	check(

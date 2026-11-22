@@ -2,9 +2,11 @@ import type * as monaco from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { GitHubPRFile } from "../../../shared/github-types";
 import type { CodeReference } from "../../../shared/review-path-types";
+import { railItems, selectableRailItems } from "../../lib/review-path-model";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
 import { ReviewReadingPane } from "./ReviewReadingPane";
+import { ReviewWorkflowBar } from "./ReviewWorkflowBar";
 import { ReviewWorkspaceTopBar } from "./ReviewWorkspaceTopBar";
 import { useReadingNavigation } from "./hooks/useReadingNavigation";
 import { useReadingThreads } from "./hooks/useReadingThreads";
@@ -134,6 +136,30 @@ export function ReviewWorkspace({
 		[onCodeEditor]
 	);
 	const { openThread, callbacks, renderThread } = useReadingThreads(data, nav, source, onReference);
+	const beginReading = (mode: "path" | "files") => {
+		const ordered = selectableRailItems(railItems(source.path, files, mode));
+		const target = ordered.find((item) => item.path === nav.selectedPath) ?? ordered[0];
+		nav.changeMode(mode);
+		if (target) nav.select(target);
+	};
+	const currentFindings = data.allThreads.filter(
+		(thread) =>
+			thread.isAIDraft &&
+			!thread.isOutdated &&
+			(thread.status === "pending" ||
+				thread.status === "user-pending" ||
+				thread.status === "approved" ||
+				thread.status === "edited")
+	);
+	const openFindings = () => {
+		const target =
+			currentFindings.find((thread) => thread.isAIDraft && thread.status === "pending") ??
+			currentFindings[0];
+		if (target) {
+			openThread(target);
+			useReviewModeStore.getState().setPanel(null);
+		}
+	};
 	useReviewKeymap({
 		workspaceId,
 		prCtx,
@@ -164,14 +190,19 @@ export function ReviewWorkspace({
 			data-review-workspace
 			className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text)] outline-none"
 		>
-			<ReviewWorkspaceTopBar
-				prCtx={prCtx}
-				data={data}
-				source={source}
-				queue={queue}
-				onNextPR={nextPR}
-				openTerminal={openTerminal}
-			/>
+			<ReviewWorkspaceTopBar prCtx={prCtx} data={data} queue={queue} onNextPR={nextPR} />
+			{data.details && (
+				<ReviewWorkflowBar
+					source={source}
+					compact={!nav.overviewOpen && !!nav.selected}
+					readOnly={!data.isOpen}
+					onBrowseFiles={() => beginReading("files")}
+					onReadPath={() => beginReading("path")}
+					onOpenAgent={openTerminal}
+					onOpenFindings={openFindings}
+					findingsCount={currentFindings.length}
+				/>
+			)}
 			{attachmentError && (
 				<div role="alert" className="px-4 py-2 text-[12px] text-[var(--color-danger)]">
 					{attachmentError}
@@ -203,6 +234,7 @@ export function ReviewWorkspace({
 						onSelect={nav.select}
 						collapsed={collapsed}
 						showViewed={prCtx.provider === "github"}
+						showAgentControls={false}
 					/>
 				)}
 				<main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

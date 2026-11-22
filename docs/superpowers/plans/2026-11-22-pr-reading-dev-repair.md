@@ -149,3 +149,39 @@ PR shell, then navigation to #12054 showed clean description text and its origin
 link without raw layout/card markers. No agent was started and no provider content
 was modified during this verification. Scoped tests cover lifecycle inspection,
 ended-run navigation, preparation versus old terminals, and Markdown preservation.
+
+## Follow-up: an explicit review workflow
+
+The default workspace now has one persistent control area above the files. Agent
+selection sits beside Start/Retry; file browsing is always separate and available.
+Advanced automatic settings live under Review options. The sidebar no longer owns
+agent launch, stop, or remapping controls, and Submit review is visually secondary.
+
+The control area distinguishes pending start/preparation (agent has not started), a
+started session (open its workspace for prompts/progress), ready reading-path results,
+current findings, a failed start, a stopped run, and an outdated review. Preparation
+does not offer a nonfunctional Stop action before a run handle exists. Current
+findings navigate to their actual inline location; reading-path/file actions select
+their corresponding list. A path that does not exist is not selectable.
+
+The source controller exposes pending starts independently of other mutations so
+long preparation does not masquerade as an unexplained disabled button. No fake
+progress percentage or claim that the CLI is actively reading is inferred from a PTY.
+
+The historical #12054 fetch error cannot establish an authentication failure: the old
+code discarded exit details. Its captured head is now a local commit, and no agent
+worktree was registered. New failures use fixed safe categories for cancellation,
+timeout, access denial, unavailable repository/revision, network, local Git/disk, and
+unknown failure. Diagnostics log only category, operation, elapsed time and numeric
+exit code, never stderr, URLs, commands or credentials. Time limits are unchanged.
+
+Validation covers 13 workflow component cases, start-state transport behavior, full
+workspace actions, existing launch/recovery regressions, classified fetch failures,
+and native Electron/Monaco navigation at 1512×945 in both themes. The native harness
+now locates the renamed Start agent review action and checks unavailable-revision
+content directly instead of relying on an incidental Refresh word.
+
+Live verification on #12054 showed Agent did not start, the selected Codex agent next
+to Retry agent review, and a separate Browse files action. Browsing loaded the real
+first-file diff with the control area remaining visible in compact form. The old
+failed attempt was not retried and no new agent or provider review was started.

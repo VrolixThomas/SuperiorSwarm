@@ -119,6 +119,9 @@ export function removeContextStep(path: ReviewPath, stepId: string): ReviewPath 
 	};
 }
 export interface ReviewPathSource {
+	/** A start request is preparing the agent; no terminal is implied yet. */
+	starting?: boolean;
+	agentSessionStarted?: boolean;
 	path: ReviewPath | null;
 	status: ReviewPathStatus;
 	available: boolean;
@@ -266,6 +269,7 @@ export interface LiveReviewPathState {
 	error?: string;
 	pollError?: string;
 	pending: boolean;
+	starting?: boolean;
 	mutationErrors?: Partial<Record<string, { id?: string; message: string }>>;
 }
 export function reviewPathIdentityKey(identity: ReviewPathIdentity): string {
@@ -287,6 +291,7 @@ export function createLiveReviewPathController(
 	let state: LiveReviewPathState = { snapshot: null, available: false, pending: false };
 	let sequence = 0;
 	let pendingMutations = 0;
+	let pendingStarts = 0;
 	const mutationSequences = new Map<string, number>();
 	const subscribers = new Set<() => void>();
 	let inFlightRefresh: Promise<ReviewPathSnapshot | undefined> | undefined;
@@ -330,10 +335,12 @@ export function createLiveReviewPathController(
 		const generation = ++sequence;
 		if (mutation) {
 			pendingMutations++;
+			if (mutation === "start") pendingStarts++;
 			mutationSequences.set(mutation, generation);
 			publish({
 				...state,
 				pending: true,
+				starting: pendingStarts > 0,
 				mutationErrors: { ...state.mutationErrors, [mutation]: undefined },
 			});
 		}
@@ -367,7 +374,8 @@ export function createLiveReviewPathController(
 		} finally {
 			if (mutation) {
 				pendingMutations--;
-				publish({ ...state, pending: pendingMutations > 0 });
+				if (mutation === "start") pendingStarts--;
+				publish({ ...state, pending: pendingMutations > 0, starting: pendingStarts > 0 });
 			}
 		}
 	}
@@ -554,7 +562,12 @@ export function useReviewPath(
 	);
 	if (options.fixture) return fixture;
 	const path = state.snapshot?.path ?? null;
+	const latestMapping = state.snapshot?.runs
+		.filter((run) => run.kind === "mapping")
+		.sort((a, b) => b.version - a.version)[0];
 	return {
+		starting: !!state.starting,
+		agentSessionStarted: !!latestMapping?.terminalId,
 		path,
 		status: path?.status ?? "none",
 		available: state.available && !state.pending,

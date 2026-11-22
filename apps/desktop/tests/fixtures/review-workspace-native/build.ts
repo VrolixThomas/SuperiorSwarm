@@ -17,7 +17,7 @@ const boundary: Bun.BunPlugin = {
 			loader: "js",
 			contents: args.path.endsWith("logger")
 				? "export const log={info(){},warn(){},error(){}}"
-				: "export const getWorkspaceCwdOrThrow=()=>{throw Error('Global workspace lookup prohibited')}",
+				: "export const getWorkspaceCwdOrThrow=()=>{throw Error('Global workspace lookup prohibited')}; export const canonicalWorkspaceDirectory=()=>{throw Error('Global workspace lookup prohibited')}",
 		}));
 	},
 };

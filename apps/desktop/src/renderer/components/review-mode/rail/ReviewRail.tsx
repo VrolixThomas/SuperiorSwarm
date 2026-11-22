@@ -31,6 +31,7 @@ export interface ReviewRailProps {
 	onSelect: (item: RailFileItem) => void;
 	collapsed?: boolean;
 	showViewed?: boolean;
+	showAgentControls?: boolean;
 }
 const clamp = (width: number) => Math.min(360, Math.max(240, width));
 
@@ -45,6 +46,7 @@ export function ReviewRail({
 	onSelect,
 	collapsed = false,
 	showViewed = true,
+	showAgentControls = true,
 }: ReviewRailProps) {
 	const defaultMode = useReviewPathSettingsStore((state) => state.defaultRailMode);
 	const mode = resolveRailMode(override, defaultMode, source.status);
@@ -118,8 +120,11 @@ export function ReviewRail({
 				source={source}
 				progress={viewedProgress(files, viewed)}
 				showViewed={showViewed}
+				showAgentControls={showAgentControls}
 			/>
-			{(source.status === "none" || source.status === "failed") && <MapPathCard source={source} />}
+			{showAgentControls && (source.status === "none" || source.status === "failed") && (
+				<MapPathCard source={source} />
+			)}
 			{mode === "path" ? (
 				<PathRail {...listProps} mapping={source.status === "mapping"} />
 			) : (

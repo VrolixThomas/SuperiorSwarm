@@ -60,7 +60,7 @@ export function createReviewExplanationRouter(
 						message:
 							error instanceof Error && error.message.startsWith("Review ")
 								? error.message
-								: "Review revision acquisition failed. Check Git authentication and retry Refresh.",
+								: "Review revision acquisition failed. Retry preparation.",
 					});
 				}
 			}),

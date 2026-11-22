@@ -112,9 +112,9 @@ export function OverviewView({
 							)}
 						</div>
 						<p className="mt-[12px] border-t border-[var(--border-subtle)] pt-[12px] text-[12px] leading-[18px] text-[var(--text-tertiary)]">
-							Read the files directly, or use “Map this PR” in the sidebar for a guided reading
-							order. <kbd className="rounded bg-[var(--bg-overlay)] px-[4px]">j</kbd> opens the
-							first file.
+							Use the review controls above to start an agent, or browse these files yourself.
+							<kbd className="ml-1 rounded bg-[var(--bg-overlay)] px-[4px]">j</kbd> opens the first
+							file.
 						</p>
 					</section>
 					<section>

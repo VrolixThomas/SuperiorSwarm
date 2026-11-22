@@ -190,7 +190,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 			await h.settle();
 			await h.settle();
 			const map = [...h.container.querySelectorAll("button")].find(
-				(button) => button.textContent === "Map this PR"
+				(button) => button.textContent === "Start agent review"
 			);
 			expect(map?.disabled).toBe(false);
 			await act(async () => map?.click());

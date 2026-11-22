@@ -194,7 +194,7 @@ if (
 			expect(h.container.querySelector('[aria-label="Resize AI review terminal"]')).toBeNull();
 			await act(async () =>
 				Array.from(h.container.querySelectorAll("button"))
-					.find((button) => button.textContent === "Agent workspace")
+					.find((button) => button.textContent === "Open agent workspace")
 					?.click()
 			);
 			expect(useReviewModeStore.getState().view).toBe("terminal");
@@ -275,12 +275,13 @@ if (
 			);
 			try {
 				await h.settle();
-				if (phase === "preparing") expect(h.container.textContent).not.toContain("Agent workspace");
+				if (phase === "preparing")
+					expect(h.container.textContent).not.toContain("Open agent workspace");
 				else {
-					expect(h.container.textContent).toContain("Agent workspace");
+					expect(h.container.textContent).toContain("Open agent workspace");
 					await act(async () =>
 						Array.from(h.container.querySelectorAll("button"))
-							.find((button) => button.textContent === "Agent workspace")
+							.find((button) => button.textContent === "Open agent workspace")
 							?.click()
 					);
 					expect(useReviewModeStore.getState().view).toBe("terminal");

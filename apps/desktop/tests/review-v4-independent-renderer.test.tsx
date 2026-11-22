@@ -20,8 +20,8 @@ if (inIsolatedFileBrowserTest(import.meta.path, "V4 independent renderer boundar
 	const { ReviewWorkspace } = await import(
 		"../src/renderer/components/review-mode/ReviewWorkspace"
 	);
-	const { ReviewWorkspaceTopBar } = await import(
-		"../src/renderer/components/review-mode/ReviewWorkspaceTopBar"
+	const { ReviewWorkflowBar } = await import(
+		"../src/renderer/components/review-mode/ReviewWorkflowBar"
 	);
 	const { AllPRsDrawer } = await import(
 		"../src/renderer/components/review-mode/queue/AllPRsDrawer"
@@ -99,37 +99,32 @@ if (inIsolatedFileBrowserTest(import.meta.path, "V4 independent renderer boundar
 	test("V4: an attached Ask terminal remains reachable when mapping and legacy review are idle", async () => {
 		let opened = 0;
 		const props = {
-			prCtx: pr,
-			data: {
-				details,
-				agentActions: {
-					isReviewActive: false,
-					isPending: false,
-					label: "Start Review",
-					trigger: () => {},
-					cancel: null,
-				},
-				canSubmitReview: true,
-				submitOpen: false,
-				setSubmitOpen: () => {},
+			source: {
+				status: "none",
+				path: null,
+				available: true,
+				unavailableReason: undefined,
+				start: () => {},
+				stop: () => {},
+				retry: () => {},
+				addContextStep: () => {},
+				removeContextStep: () => {},
 			},
-			source: { status: "none", path: null },
-			queue: { queue: { needsReview: [], waitingOnAuthor: [] }, next: null, openingKey: null },
-			onNextPR: () => {},
-			openTerminal: () => {
+			onBrowseFiles: () => {},
+			onReadPath: () => {},
+			findingsCount: 0,
+			onOpenAgent: () => {
 				opened++;
 			},
 		};
 		const h = await renderBrowserTest(
-			<ReviewWorkspaceTopBar
-				{...(props as unknown as Parameters<typeof ReviewWorkspaceTopBar>[0])}
-			/>,
+			<ReviewWorkflowBar {...(props as unknown as Parameters<typeof ReviewWorkflowBar>[0])} />,
 			[],
 			false,
 			{ request }
 		);
 		try {
-			// Every other top-bar callback is inert/local. This tests reachability without assuming a label.
+			// Every other workflow callback is inert/local. This tests reachability without assuming a label.
 			await act(async () => {
 				for (const button of h.container.querySelectorAll("button")) button.click();
 			});
@@ -204,8 +199,8 @@ if (inIsolatedFileBrowserTest(import.meta.path, "V4 independent renderer boundar
 		);
 		try {
 			await h.settle();
-			const mapping = [...h.container.querySelectorAll("button")].find((button) =>
-				button.textContent?.startsWith("Mapping ·")
+			const mapping = [...h.container.querySelectorAll("button")].find(
+				(button) => button.textContent === "Open agent workspace"
 			);
 			expect(mapping).toBeDefined();
 			expect(mapping?.disabled).toBe(false);
