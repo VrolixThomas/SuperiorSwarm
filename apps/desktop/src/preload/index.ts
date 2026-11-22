@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { BrowserAPI, BrowserOpenTab, BrowserStateEvent } from "../shared/browser";
 import {
 	HERMES_ATTACHMENT_IPC_MAX_BYTES,
 	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
@@ -287,7 +288,35 @@ const repoAPI: RepoAPI = {
 	},
 };
 
+const browserAPI: BrowserAPI = {
+	onState(callback) {
+		const handler = (_event: Electron.IpcRendererEvent, event: BrowserStateEvent) =>
+			callback(event);
+		ipcRenderer.on("browser:state", handler);
+		return () => {
+			ipcRenderer.removeListener("browser:state", handler);
+		};
+	},
+	onOpenTab(callback) {
+		const handler = (_event: Electron.IpcRendererEvent, tab: BrowserOpenTab) => callback(tab);
+		ipcRenderer.on("browser:open-tab", handler);
+		return () => {
+			ipcRenderer.removeListener("browser:open-tab", handler);
+		};
+	},
+	onShortcut(callback) {
+		const handler = (
+			_event: Electron.IpcRendererEvent,
+			input: { browserId: string; kind: "address" | "close" | "palette" | "focus" }
+		) => callback(input);
+		ipcRenderer.on("browser:shortcut", handler);
+		return () => {
+			ipcRenderer.removeListener("browser:shortcut", handler);
+		};
+	},
+};
 contextBridge.exposeInMainWorld("electron", {
+	browser: browserAPI,
 	terminal: terminalAPI,
 	terminalFiles: {
 		nativePaths: (files: File[]) =>

@@ -19,6 +19,14 @@ import { solveSessionKey, useSolveSessionStore } from "./solve-session-store";
 
 export type TabItem =
 	| {
+			kind: "browser";
+			id: string;
+			workspaceId: string;
+			title: string;
+			url: string;
+			viewport: "desktop" | "phone";
+	  }
+	| {
 			kind: "terminal";
 			id: string;
 			workspaceId: string;

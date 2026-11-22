@@ -9,7 +9,7 @@
 	"license": "MIT",
 	"private": true,
 	"scripts": {
-		"postinstall": "cd mcp-standalone && npm install --no-audit --no-fund && cd .. && [ ! -d node_modules/node-pty ] || find node_modules/node-pty -name spawn-helper -exec chmod +x {} + && electron-rebuild -f -w better-sqlite3 && node scripts/rebuild-mcp-native.mjs",
+		"postinstall": "node scripts/rebuild-desktop-native.mjs && cd mcp-standalone && npm ci --ignore-scripts --no-audit --no-fund && cd .. && node scripts/rebuild-mcp-native.mjs",
 		"dev": "electron-vite dev",
 		"build": "electron-vite build",
 		"dist": "electron-vite build && electron-builder --mac",
@@ -42,7 +42,7 @@
 		"@xterm/addon-webgl": "^0.19.0",
 		"@xterm/headless": "6.0.0",
 		"@xterm/xterm": "^6.0.0",
-		"better-sqlite3": "^12.6.2",
+		"better-sqlite3": "13.2.0",
 		"chokidar": "^3.6.0",
 		"diff": "^8.0.4",
 		"drizzle-orm": "^0.45.1",
@@ -71,7 +71,7 @@
 		"zustand": "^5.0.2"
 	},
 	"devDependencies": {
-		"@electron/rebuild": "^4.0.3",
+		"@electron/rebuild": "4.2.1",
 		"@superiorswarm/typescript-config": "workspace:*",
 		"@tailwindcss/postcss": "^4.0.0",
 		"@types/better-sqlite3": "^7.6.12",
@@ -85,7 +85,7 @@
 		"@vitejs/plugin-react": "^4.3.4",
 		"autoprefixer": "^10.4.20",
 		"drizzle-kit": "^0.30.3",
-		"electron": "^40.0.0",
+		"electron": "45.4.1",
 		"electron-builder": "^26.8.1",
 		"electron-vite": "^4.0.0",
 		"happy-dom": "^20.11.2",

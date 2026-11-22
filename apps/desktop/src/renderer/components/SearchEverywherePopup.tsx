@@ -279,6 +279,7 @@ export function SearchEverywherePopup() {
 
 	return createPortal(
 		<div
+			data-browser-modal
 			className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) close();

@@ -8,6 +8,7 @@ export function InstallingOverlay() {
 
 	return (
 		<output
+			data-browser-modal
 			className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 bg-[var(--bg-base)]/95 backdrop-blur-sm"
 			aria-label="Installing update"
 		>

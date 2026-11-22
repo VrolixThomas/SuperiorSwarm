@@ -6,6 +6,7 @@ import type { FileCaller } from "../terminal/terminal-files";
 
 export interface TrpcContext {
 	fileCaller?: FileCaller;
+	browserCaller?: FileCaller;
 }
 
 export const t = initTRPC.context<TrpcContext>().create({
