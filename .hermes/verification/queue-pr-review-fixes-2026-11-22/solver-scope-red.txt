@@ -1,0 +1,22 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-pr-solver-scope.test.ts:
+{"result":"prepared","queued":1,"spawned":1,"siblingStillPresent":false}
+26 |  getDb().insert(s.commentSolveSessions).values({id:'sibling-live',workspaceId:sibling,prProvider:'bitbucket',prIdentifier:'owner/repo#7',prTitle:'Other provider PR',sourceBranch:'other',targetBranch:'main',status:'in_progress',createdAt:now,updatedAt:now}).run();
+27 |  item={id:'queue',revision:1,kind:'pr-feedback',target:{type:'pr',provider:'github',owner:'owner',repo:'repo',number:7},context:{workspaceId:ws}};
+28 |  const result=await solveQueuePRFeedback({id:'queue',revision:1});
+29 |  console.log(JSON.stringify({result:result.status,queued,spawned,siblingStillPresent:!!getDb().select().from(s.commentSolveSessions).where(eq(s.commentSolveSessions.id,'sibling-live')).get()}));
+30 |  expect(spawned).toBe(1);
+31 |  expect(getDb().select().from(s.commentSolveSessions).where(eq(s.commentSolveSessions.id,'sibling-live')).get()).toBeDefined();
+                                                                                                                      ^
+error: expect(received).toBeDefined()
+
+Received: undefined
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-pr-review/apps/desktop/tests/queue-pr-solver-scope.test.ts:31:114)
+(fail) new queue solver preserves active other-provider session with same PR identifier [18.33ms]
+
+ 0 pass
+ 1 fail
+ 2 expect() calls
+Ran 1 test across 1 file. [83.00ms]

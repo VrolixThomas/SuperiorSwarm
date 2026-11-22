@@ -1,0 +1,30 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-pr-scoped-source.test.ts:
+(pass) author and reviewer queues stay distinct; own baseline and self-comments silent [4.93ms]
+(pass) feedback resolution, failed poll, Done and later new event [3.19ms]
+(pass) outside-queue review on current head clears re-review [1.14ms]
+(pass) same PR number across repo/accounts has independent receipts [3.36ms]
+(pass) late old-account facts cannot populate the new account [0.19ms]
+(pass) old-account cached author role never makes a new viewer an author [0.61ms]
+(pass) Bitbucket outside review clears only a previously confirmed unchanged head [1.73ms]
+Pending after unknown bounded viewer history: 0
+217 |  await poll(pr,{...facts,reviewRequested:false,viewerReviewHead:'old'});
+218 |  await poll(pr,{...facts,reviewRequested:false,headSha:'new',viewerReviewHead:'old'});
+219 |  expect(queue().list().items).toHaveLength(1);
+220 |  await poll(pr,{...facts,reviewRequested:false,headSha:'new',viewerReviewHead:undefined,viewerIsReviewer:undefined});
+221 |  console.log('Pending after unknown bounded viewer history:',queue().list().items.length);
+222 |  expect(queue().list().items).toHaveLength(1);
+                                    ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-pr-review/apps/desktop/tests/queue-pr-scoped-source.test.ts:222:31)
+(fail) review stays pending when bounded review window loses viewer history [1.12ms]
+
+ 7 pass
+ 1 fail
+ 19 expect() calls
+Ran 8 tests across 1 file. [73.00ms]
