@@ -25,6 +25,8 @@ interface Receipt {
 	status: "pending" | "cancelled" | "attempted" | "submitted" | "rejected";
 	detail?: string;
 	outcome?: PublishResult;
+	/** Review submissions finish reviewer attention, not unresolved feedback on our own PR. */
+	resolvesOccurrence?: boolean;
 }
 const key = (id: string) => `queue-pr-publication:${id}`;
 const read = (id: string): Receipt | null => {
@@ -166,6 +168,7 @@ export async function dispatchQueuePRPublication(requestId: string) {
 	try {
 		if (Date.now() > receipt.expiresAt) throw new Error("Publication expired.");
 		const target = await validate(receipt);
+		const sourceKind = requireItem(receipt.origin).kind;
 		if (draftDigest(receipt.origin, receipt.operation) !== receipt.draftDigest)
 			throw new Error("The draft changed. Review it again.");
 		const provider = getGitProvider(target.provider);
@@ -333,10 +336,11 @@ export async function dispatchQueuePRPublication(requestId: string) {
 			throw new Error(
 				"Publication was partial or uncertain. Inspect the provider before retrying."
 			);
+		receipt.resolvesOccurrence = Boolean(outcome.verdictSubmitted && sourceKind === "pr-review");
 		receipt.status = "submitted";
 		receipt.detail = "Published.";
 		write(receipt);
-		if (outcome.verdictSubmitted) {
+		if (receipt.resolvesOccurrence) {
 			try {
 				if (currentExternalQueueItem(receipt.origin))
 					getActivityQueueService().acknowledge(receipt.origin);

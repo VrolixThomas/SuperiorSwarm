@@ -19,6 +19,7 @@ export function assertPRMutationAvailable(origin: QueuePROrigin, operation?: Que
 			expiresAt: number;
 			operation?: QueuePRPublication;
 			outcome?: { verdictSubmitted?: boolean };
+			resolvesOccurrence?: boolean;
 		};
 		const source = receipt.origin ?? receipt;
 		if (source.id !== origin.id || source.revision !== origin.revision) continue;
@@ -30,7 +31,7 @@ export function assertPRMutationAvailable(origin: QueuePROrigin, operation?: Que
 			(receipt.status === "pending" && receipt.expiresAt > Date.now()) ||
 			(receipt.status === "submitted" &&
 				(!receipt.operation ||
-					receipt.outcome?.verdictSubmitted ||
+					(receipt.resolvesOccurrence ?? receipt.outcome?.verdictSubmitted) ||
 					JSON.stringify(receipt.operation) === JSON.stringify(operation)))
 		)
 			throw new Error("This occurrence already has a publication reservation.");
