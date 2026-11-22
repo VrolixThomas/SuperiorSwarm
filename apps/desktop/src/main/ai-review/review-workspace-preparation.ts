@@ -148,7 +148,10 @@ export function getOrCreateReviewRecord(input: ReviewWorkspaceInput) {
 	});
 }
 
+type PreparationPhase = "metadata" | "fetching" | "worktree";
 interface PendingPreparation {
+	listeners: Set<(phase: PreparationPhase) => void>;
+	phase: () => PreparationPhase;
 	controller: AbortController;
 	promise: Promise<PreparedWorkspace>;
 	consumers: number;
@@ -163,7 +166,11 @@ export class ReviewWorkspacePreparer {
 
 	open(
 		input: ReviewWorkspaceInput,
-		opts: { signal?: AbortSignal; expectedHeadOid?: string } = {}
+		opts: {
+			signal?: AbortSignal;
+			expectedHeadOid?: string;
+			onPhase?: (phase: PreparationPhase) => void;
+		} = {}
 	): Promise<PreparedWorkspace> {
 		if (opts.signal?.aborted)
 			return Promise.reject(new Error("Review workspace preparation cancelled"));
@@ -186,8 +193,14 @@ export class ReviewWorkspacePreparer {
 					{ once: true }
 				)
 			);
+			const listeners = new Set<(phase: PreparationPhase) => void>();
+			let phase: PreparationPhase = "metadata";
+			const report = (next: PreparationPhase) => {
+				phase = next;
+				for (const listener of listeners) listener(next);
+			};
 			const promise = Promise.race([
-				this.prepare(input, controller.signal, opts.expectedHeadOid),
+				this.prepare(input, controller.signal, opts.expectedHeadOid, report),
 				cancelled,
 			]).finally(() => {
 				clearTimeout(timeout);
@@ -195,6 +208,8 @@ export class ReviewWorkspacePreparer {
 				if (this.pending.get(key) === owned) this.pending.delete(key);
 			});
 			const owned: PendingPreparation = {
+				listeners,
+				phase: () => phase,
 				controller,
 				consumers: 0,
 				settled: false,
@@ -205,11 +220,16 @@ export class ReviewWorkspacePreparer {
 			this.pending.set(key, entry);
 		}
 		const owned = entry;
+		if (opts.onPhase) {
+			owned.listeners.add(opts.onPhase);
+			opts.onPhase(owned.phase());
+		}
 		owned.consumers++;
 		let released = false;
 		const release = () => {
 			if (released) return;
 			released = true;
+			if (opts.onPhase) owned.listeners.delete(opts.onPhase);
 			owned.consumers--;
 			if (!owned.consumers && !owned.settled) owned.controller.abort();
 		};
@@ -231,7 +251,8 @@ export class ReviewWorkspacePreparer {
 	private async prepare(
 		input: ReviewWorkspaceInput,
 		signal: AbortSignal,
-		expectedHeadOid?: string
+		expectedHeadOid?: string,
+		onPhase?: (phase: PreparationPhase) => void
 	): Promise<PreparedWorkspace> {
 		const db = getDb();
 		const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
@@ -353,10 +374,11 @@ export class ReviewWorkspacePreparer {
 				validate();
 				return root;
 			},
-			resolveSources,
+			resolveSources: async () => sources,
 			getAuthorization: this.options.getAuthorization ?? getReviewRevisionAuthorization,
 			fetchObjects: this.options.fetchObjects,
 		});
+		onPhase?.("fetching");
 		await acquisition.acquire(revision, signal);
 		validate();
 		const worktreeId = nanoid();
@@ -376,6 +398,7 @@ export class ReviewWorkspacePreparer {
 			await mkdir(path);
 			ownedPath = true;
 			validate();
+			onPhase?.("worktree");
 			await runReviewWorktreeGit(
 				root,
 				["worktree", "add", "--detach", "--", path, sources.headOid],

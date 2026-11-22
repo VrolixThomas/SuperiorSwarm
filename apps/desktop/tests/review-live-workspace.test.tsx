@@ -19,6 +19,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 	const { ReviewWorkspace } = await import(
 		"../src/renderer/components/review-mode/ReviewWorkspace"
 	);
+	const { useTabStore } = await import("../src/renderer/stores/tab-store");
 	const { useReviewModeStore } = await import("../src/renderer/stores/review-mode-store");
 	const { useReviewPathSettingsStore } = await import(
 		"../src/renderer/stores/review-path-settings-store"
@@ -100,7 +101,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 			},
 		],
 	};
-	test("manual Map and Ask use live full identity and attach existing terminals; Mine uses account ID", async () => {
+	test("manual Map and Ask accept background jobs before terminals; Mine uses account ID", async () => {
 		let snapshot: ReviewPathSnapshot = {
 			identity,
 			path: null,
@@ -146,7 +147,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 					if (path.startsWith("reviewPath.") && path.endsWith("Settings")) return settings;
 					if (path === "reviewPath.get") return snapshot;
 					if (path === "workspaces.attachTerminal") return { success: true };
-					if (path === "reviewPath.start") {
+					if (path === "reviewPath.startJob") {
 						expect(input).toMatchObject({ identity, agent: { id: "codex" }, alsoReview: true });
 						snapshot = {
 							...snapshot,
@@ -162,24 +163,33 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 							},
 						};
 						return {
-							snapshot,
-							launch: {
-								terminalId: "review-path:map:1",
-								reviewWorkspaceId: identity.workspaceId,
-								worktreePath: "/review-worktree",
-								launchScript: "never-launch-twice.sh",
-							},
+							id: "map-job",
+							identity,
+							kind: "mapping",
+							agent: { id: "codex", label: "Codex" },
+							state: "queued",
+							phase: "queued",
+							attempt: 1,
+							trigger: "manual",
+							startedAt: new Date().toISOString(),
+							updatedAt: new Date().toISOString(),
+							activity: [],
 						};
 					}
-					if (path === "reviewPath.ask") {
-						expect(input).toMatchObject({ identity, text: "Why this change?" });
+					if (path === "reviewPath.askJob") {
+						expect(input).toMatchObject({ identity, question: { text: "Why this change?" } });
 						return {
-							snapshot,
-							launch: {
-								terminalId: "review-path:ask:1",
-								reviewWorkspaceId: identity.workspaceId,
-								worktreePath: "/review-worktree",
-							},
+							id: "ask-job",
+							identity,
+							kind: "question",
+							agent: { id: "codex", label: "Codex" },
+							state: "queued",
+							phase: "queued",
+							attempt: 1,
+							trigger: "manual",
+							startedAt: new Date().toISOString(),
+							updatedAt: new Date().toISOString(),
+							activity: [],
 						};
 					}
 					return [];
@@ -195,9 +205,13 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 			expect(map?.disabled).toBe(false);
 			await act(async () => map?.click());
 			await h.settle();
-			expect(useReviewModeStore.getState().terminals[identity.workspaceId]?.tabId).toBe(
-				"review-path:map:1"
-			);
+			expect(
+				useTabStore
+					.getState()
+					.getTabsByWorkspace(identity.workspaceId)
+					.some((tab) => tab.kind === "review-agent" && tab.jobId === "map-job")
+			).toBe(true);
+			expect(useReviewModeStore.getState().terminals[identity.workspaceId]).toBeUndefined();
 			expect(useReviewModeStore.getState().drawerOpen).toBe(false);
 			await act(async () => useReviewModeStore.getState().setPanel("threads"));
 			const mine = h.container.querySelector<HTMLButtonElement>('[data-filter="mine"]');
@@ -223,7 +237,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "live workspace connection glue 
 				h.container.querySelector<HTMLButtonElement>('button[aria-label="Send question"]')?.click()
 			);
 			await h.settle();
-			expect(h.calls.filter((call) => call.path === "reviewPath.ask")).toHaveLength(1);
+			expect(h.calls.filter((call) => call.path === "reviewPath.askJob")).toHaveLength(1);
 			expect(terminalWrites).toBe(0);
 			expect(h.calls.some((call) => call.path === "aiReview.getReviewDraft")).toBe(false);
 			await act(async () => {

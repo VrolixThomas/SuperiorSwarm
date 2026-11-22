@@ -75,7 +75,7 @@ test("acquires exact missing objects and then reads snapshot without changing wo
 	const head = git("rev-parse", "HEAD");
 	const { service, fetches } = harness();
 	await Promise.all([service.acquire(input), service.acquire(input)]);
-	expect(fetches).toHaveLength(2);
+	expect(fetches).toHaveLength(1);
 	expect(fetches.flatMap((fetch) => fetch.oids).sort()).toEqual(
 		[fixture.head, fixture.target].sort()
 	);
@@ -86,7 +86,7 @@ test("acquires exact missing objects and then reads snapshot without changing wo
 	expect(git("rev-parse", "HEAD")).toBe(head);
 	expect(readFileSync(join(root, "work.txt"), "utf8")).toBe("uncommitted user work");
 	await service.acquire(input);
-	expect(fetches).toHaveLength(2);
+	expect(fetches).toHaveLength(1);
 });
 
 test.each(["workspace", "revision", "fork"])(

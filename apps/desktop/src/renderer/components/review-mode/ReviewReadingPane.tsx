@@ -1,23 +1,33 @@
 import type * as monaco from "monaco-editor";
 import type { ReactNode } from "react";
 import type { UnifiedThread } from "../../../shared/github-types";
+import type { ReviewAgentJob } from "../../../shared/review-agent-job";
 import type { CodeReference, ContextFileStep } from "../../../shared/review-path-types";
 import { matchesReviewFilter } from "../../lib/pr-review-threads";
-import { openThreadInChanges } from "../../lib/review-mode-nav";
 import { numberSteps, stepForPath, stepLabel } from "../../lib/review-path-model";
 import type { ReviewPathSource } from "../../lib/review-path-source";
-import { useReviewModeStore } from "../../stores/review-mode-store";
+import { usePRReviewSessionStore } from "../../stores/pr-review-session-store";
 import { HintBar } from "./HintBar";
+import { useReviewUIApi } from "./ReviewUIContext";
 import type { ActiveReview } from "./ReviewWorkspace";
 import type { useReadingNavigation } from "./hooks/useReadingNavigation";
+import { MapPathCard } from "./rail/MapPathCard";
 import { ContextFileView } from "./step/ContextFileView";
 import { StepDiff } from "./step/StepDiff";
 import { StepHeader } from "./step/StepHeader";
 import type { ThreadCallbacks } from "./thread/ThreadCard";
 import type { useReviewWorkspaceData } from "./useReviewWorkspaceData";
 import { OverviewView } from "./views/OverviewView";
+import { PathSummaryCard } from "./views/PathSummaryCard";
 
 interface ReadingPaneProps {
+	tabMode?: boolean;
+	compact?: boolean;
+	setupInContent?: boolean;
+	onOpenSession?: () => void;
+	job?: ReviewAgentJob;
+	findingsCount?: number;
+	onOpenFindings?: () => void;
 	active: ActiveReview;
 	data: ReturnType<typeof useReviewWorkspaceData>;
 	nav: ReturnType<typeof useReadingNavigation>;
@@ -32,6 +42,13 @@ interface ReadingPaneProps {
 	onCodeEditor: (editor: monaco.editor.IStandaloneCodeEditor | null) => void;
 }
 export function ReviewReadingPane({
+	tabMode = false,
+	compact = false,
+	setupInContent = false,
+	onOpenSession,
+	job,
+	findingsCount = 0,
+	onOpenFindings = () => {},
 	active,
 	data,
 	nav,
@@ -45,6 +62,7 @@ export function ReviewReadingPane({
 	onDiffEditor,
 	onCodeEditor,
 }: ReadingPaneProps) {
+	const ui = useReviewUIApi();
 	const { selected } = nav;
 	const path = source.path;
 	const index = nav.items.findIndex((item) => item.path === nav.selectedPath);
@@ -91,30 +109,83 @@ export function ReviewReadingPane({
 						Pull request details are unavailable. Reopen the PR to retry.
 					</div>
 				) : nav.overviewOpen || !selected ? (
-					<div className="h-full overflow-y-auto">
-						<OverviewView
-							prCtx={active.prCtx}
-							details={data.details}
-							aiDraft={data.aiDraft}
-							counts={data.counts}
-							onJumpToComments={(filter) => {
-								const store = useReviewModeStore.getState();
-								if (filter === "pending" || filter === "accepted" || filter === "declined") {
-									const thread = data.allThreads.find(
-										(thread) =>
-											thread.isAIDraft && !thread.isOutdated && matchesReviewFilter(thread, filter)
-									);
-									if (thread) {
-										openThreadInChanges(active.workspaceId, active.prCtx, thread.path, thread.id);
-										store.setPanel(null);
-										return;
+					<div
+						className="h-full overflow-y-auto"
+						ref={(element) => {
+							if (element)
+								element.scrollTop =
+									usePRReviewSessionStore.getState().sessions.get(data.sessionKey)
+										?.overviewScrollTop ?? 0;
+						}}
+						onScroll={(event) =>
+							usePRReviewSessionStore
+								.getState()
+								.setOverviewScroll(data.sessionKey, event.currentTarget.scrollTop)
+						}
+					>
+						{setupInContent && (source.status === "none" || source.status === "failed") && (
+							<MapPathCard
+								source={source}
+								workspaceDesign
+								onBrowseFiles={() => {
+									nav.changeMode("files");
+									nav.advance(1);
+								}}
+							/>
+						)}
+						{tabMode && path && path.entries.some((entry) => entry.steps.length) ? (
+							<PathSummaryCard
+								description={data.details.body}
+								onRemap={source.available ? source.retry : undefined}
+								onOpenSession={onOpenSession}
+								path={path}
+								headSha={data.details.headCommitOid}
+								job={job}
+								findingsCount={findingsCount}
+								onFindings={onOpenFindings}
+								onRead={() => {
+									nav.changeMode("path");
+									const first = path.entries.flatMap((entry) => entry.steps)[0];
+									if (first)
+										nav.openReference({ path: first.path, line: 1, description: "Start reading" });
+								}}
+								onBrowse={() => {
+									nav.changeMode("files");
+									nav.advance(1);
+								}}
+							/>
+						) : (
+							<OverviewView
+								prCtx={active.prCtx}
+								details={data.details}
+								aiDraft={data.aiDraft}
+								counts={data.counts}
+								onJumpToComments={(filter) => {
+									const store = ui.getState();
+									if (filter === "pending" || filter === "accepted" || filter === "declined") {
+										const thread = data.allThreads.find(
+											(thread) =>
+												thread.isAIDraft &&
+												!thread.isOutdated &&
+												matchesReviewFilter(thread, filter)
+										);
+										if (thread) {
+											nav.openReference({
+												path: thread.path,
+												line: thread.line ?? 1,
+												description: "Review finding",
+											});
+											usePRReviewSessionStore.getState().selectThread(data.sessionKey, thread.id);
+											store.setPanel(null);
+											return;
+										}
 									}
-								}
-								store.setCommentFilter(filter);
-								store.setPanel("threads");
-							}}
-							onReadFiles={() => nav.advance(1)}
-						/>
+									store.setCommentFilter(filter);
+									store.setPanel("threads");
+								}}
+								onReadFiles={() => nav.advance(1)}
+							/>
+						)}
 					</div>
 				) : context ? (
 					<ContextFileView
@@ -140,6 +211,7 @@ export function ReviewReadingPane({
 					/>
 				) : (
 					<StepDiff
+						forceUnified={compact}
 						workspaceId={active.workspaceId}
 						reviewDraftId={
 							data.aiDraft?.commitSha === data.details.headCommitOid &&
@@ -191,6 +263,7 @@ export function ReviewReadingPane({
 				)}
 			</div>
 			<HintBar
+				compact={compact}
 				context={!!context}
 				hasThreads={data.allThreads.some((thread) => thread.path === selected?.path)}
 				showViewed={active.prCtx.provider === "github" && !!selected?.changed}

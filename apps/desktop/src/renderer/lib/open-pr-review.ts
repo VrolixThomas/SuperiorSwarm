@@ -43,7 +43,7 @@ export async function withReviewOpeningDeadline<T>(
 	}
 }
 
-/** Shared sidebar/queue flow: create or reuse the review worktree before activating it. */
+/** Shared sidebar/queue flow: activate a logical review without preparing Git. */
 export async function openPRReview(
 	{ projectId, prCtx }: OpenPRReviewInput,
 	getOrCreateReview: (
@@ -64,6 +64,13 @@ export async function openPRReview(
 		if (!isCurrent()) throw new Error("PR opening request is no longer active");
 		const cwd = workspace.worktreePath ?? prCtx.repoPath;
 		useTabStore.getState().activateReviewWorkspace(workspace.id, cwd, { ...prCtx, repoPath: cwd });
+		const store = useTabStore.getState();
+		const meta = store.workspaceMetadata[workspace.id];
+		if (meta)
+			store.setWorkspaceMetadata(workspace.id, {
+				...meta,
+				reviewWorktreePath: workspace.worktreePath,
+			});
 		return workspace;
 	}, options);
 }

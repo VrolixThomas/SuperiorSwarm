@@ -21,6 +21,7 @@ export interface ReviewTerminal {
 }
 
 export interface ReviewModeStore {
+	observedHeadSha: string | null;
 	railMode: "path" | "files" | null;
 	panel: "threads" | "ask" | null;
 	queueOpen: boolean;
@@ -85,67 +86,71 @@ const readingPathDefaults = {
 	askAnchor: null,
 };
 
-export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
-	...readingPathDefaults,
-	active: null,
-	lastWorkspaceId: null,
-	view: "overview",
-	navigatorCollapsed: false,
-	drawerOpen: false,
-	drawerHeight: 300,
-	terminals: {},
-	commentFilter: "all",
-	publishedCommentsVisible: true,
-	intent: null,
+export const createReviewModeStore = () =>
+	create<ReviewModeStore>()((set) => ({
+		...readingPathDefaults,
+		observedHeadSha: null,
+		active: null,
+		lastWorkspaceId: null,
+		view: "overview",
+		navigatorCollapsed: false,
+		drawerOpen: false,
+		drawerHeight: 300,
+		terminals: {},
+		commentFilter: "all",
+		publishedCommentsVisible: true,
+		intent: null,
 
-	open: (workspaceId, prCtx) =>
-		set((state) => {
-			const sameWorkspace =
-				state.active?.workspaceId === workspaceId || state.lastWorkspaceId === workspaceId;
-			if (sameWorkspace) {
+		open: (workspaceId, prCtx) =>
+			set((state) => {
+				const sameWorkspace =
+					state.active?.workspaceId === workspaceId || state.lastWorkspaceId === workspaceId;
+				if (sameWorkspace) {
+					return {
+						active: { workspaceId, prCtx },
+						lastWorkspaceId: null,
+						intent: null,
+					};
+				}
 				return {
+					...readingPathDefaults,
 					active: { workspaceId, prCtx },
 					lastWorkspaceId: null,
+					view: "overview",
+					drawerOpen: false,
+					commentFilter: "all",
 					intent: null,
 				};
-			}
-			return {
+			}),
+
+		close: () =>
+			set((state) => ({
 				...readingPathDefaults,
-				active: { workspaceId, prCtx },
-				lastWorkspaceId: null,
-				view: "overview",
+				active: null,
+				lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
 				drawerOpen: false,
-				commentFilter: "all",
 				intent: null,
-			};
-		}),
+			})),
 
-	close: () =>
-		set((state) => ({
-			...readingPathDefaults,
-			active: null,
-			lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
-			drawerOpen: false,
-			intent: null,
-		})),
+		setRailMode: (railMode) => set({ railMode }),
+		setPanel: (panel) => set({ panel }),
+		setQueueOpen: (queueOpen) => set({ queueOpen }),
+		setOverviewOpen: (overviewOpen) => set({ overviewOpen }),
+		setAskAnchor: (askAnchor) => set({ askAnchor }),
+		setView: (view) => set({ view }),
+		toggleNavigator: () => set((state) => ({ navigatorCollapsed: !state.navigatorCollapsed })),
+		setDrawerOpen: (open) => set({ drawerOpen: open }),
+		setDrawerHeight: (height) => set({ drawerHeight: Math.min(700, Math.max(180, height)) }),
+		setTerminal: (terminal) =>
+			set((state) => ({
+				terminals: { ...state.terminals, [terminal.workspaceId]: terminal },
+			})),
+		setCommentFilter: (filter) => set({ commentFilter: filter }),
+		setPublishedCommentsVisible: (visible) => set({ publishedCommentsVisible: visible }),
+		togglePublishedComments: () =>
+			set((state) => ({ publishedCommentsVisible: !state.publishedCommentsVisible })),
+		sendIntent: (kind, threadId) => set({ intent: createIntent(kind, threadId) }),
+		clearIntent: () => set({ intent: null }),
+	}));
 
-	setRailMode: (railMode) => set({ railMode }),
-	setPanel: (panel) => set({ panel }),
-	setQueueOpen: (queueOpen) => set({ queueOpen }),
-	setOverviewOpen: (overviewOpen) => set({ overviewOpen }),
-	setAskAnchor: (askAnchor) => set({ askAnchor }),
-	setView: (view) => set({ view }),
-	toggleNavigator: () => set((state) => ({ navigatorCollapsed: !state.navigatorCollapsed })),
-	setDrawerOpen: (open) => set({ drawerOpen: open }),
-	setDrawerHeight: (height) => set({ drawerHeight: Math.min(700, Math.max(180, height)) }),
-	setTerminal: (terminal) =>
-		set((state) => ({
-			terminals: { ...state.terminals, [terminal.workspaceId]: terminal },
-		})),
-	setCommentFilter: (filter) => set({ commentFilter: filter }),
-	setPublishedCommentsVisible: (visible) => set({ publishedCommentsVisible: visible }),
-	togglePublishedComments: () =>
-		set((state) => ({ publishedCommentsVisible: !state.publishedCommentsVisible })),
-	sendIntent: (kind, threadId) => set({ intent: createIntent(kind, threadId) }),
-	clearIntent: () => set({ intent: null }),
-}));
+export const useReviewModeStore = createReviewModeStore();

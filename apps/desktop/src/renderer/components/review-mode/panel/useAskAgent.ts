@@ -1,6 +1,7 @@
 /** Stable Ask boundary. Fixture mode is explicit; live requests never receive sample answers. */
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PRContext } from "../../../../shared/github-types";
+import { isReviewAgentJobActive, reviewAgentQuestionId } from "../../../../shared/review-agent-job";
 import type {
 	ReviewPathIdentity,
 	ReviewPathLaunchResult,
@@ -13,6 +14,8 @@ import {
 	reviewPathRegistryKey,
 	useLiveReviewPath,
 } from "../../../lib/review-path-source";
+import { trpcVanilla } from "../../../trpc/client";
+import { useReviewAgentJobs } from "../useReviewAgentJob";
 
 const conversations = new Map<string, AskMessage[]>();
 const listeners = new Set<() => void>();
@@ -65,8 +68,19 @@ export function useAskAgent(
 		onLaunch?: (launch: ReviewPathLaunchResult) => void;
 	} = {}
 ) {
+	const [cancelError, setCancelError] = useState<string>();
 	const live = useLiveReviewPath(options.fixture ? undefined : options.identity);
 	const fixture = options.fixture === true;
+	const jobs = useReviewAgentJobs(
+		options.identity?.workspaceId ?? "",
+		!fixture && !!options.identity
+	);
+	const questionJobs =
+		jobs.data?.filter(
+			(job) => job.kind === "question" && job.identity.headSha === options.identity?.headSha
+		) ?? [];
+	const activeQuestionJobs = questionJobs.filter(isReviewAgentJobActive);
+	const latestJob = questionJobs.at(-1);
 	const key = reviewPathRegistryKey(prCtx, fixture);
 	const snapshot = useCallback(() => conversations.get(key) ?? empty, [key]);
 	const messages = useSyncExternalStore(subscribe, snapshot, snapshot);
@@ -123,27 +137,76 @@ export function useAskAgent(
 		[live.state.snapshot]
 	);
 	const error =
-		live.state.mutationErrors?.["ask"]?.message ??
+		cancelError ??
+		(activeQuestionJobs.length ? undefined : live.state.mutationErrors?.["ask"]?.message) ??
 		live.state.mutationErrors?.["cancelQuestion"]?.message ??
 		(live.controller ? live.state.pollError : live.state.error) ??
-		conversation.error;
+		(activeQuestionJobs.length ? undefined : conversation.error) ??
+		(latestJob?.state === "failed" ? latestJob.error : undefined);
 	return {
-		messages: fixture ? messages : conversation.messages,
+		messages: fixture
+			? messages
+			: [
+					...conversation.messages,
+					...activeQuestionJobs.flatMap((job) =>
+						job.question &&
+						!conversation.messages.some((message) => message.id === reviewAgentQuestionId(job))
+							? [
+									{
+										id: reviewAgentQuestionId(job),
+										role: "user" as const,
+										text: job.question.text,
+										anchor: job.question.anchor,
+										createdAt: job.startedAt ?? "",
+									},
+								]
+							: []
+					),
+				],
 		send,
 		status: fixture
 			? ("idle" as const)
 			: error
 				? ("error" as const)
-				: conversation.pending || live.state.pending
+				: conversation.pending || live.state.pending || activeQuestionJobs.length > 0
 					? ("pending" as const)
 					: live.state.available
 						? ("idle" as const)
 						: ("unavailable" as const),
 		available: fixture || live.state.available,
 		error: fixture ? undefined : error,
-		questions: conversation.questions,
+		questions: [
+			...conversation.questions,
+			...activeQuestionJobs.flatMap((job) =>
+				job.question &&
+				!conversation.questions.some((question) => question.id === reviewAgentQuestionId(job))
+					? [
+							{
+								id: reviewAgentQuestionId(job),
+								conversationId: live.state.snapshot?.conversationId ?? job.id,
+								runId: job.runId ?? job.id,
+								state: "pending" as const,
+								message: {
+									id: reviewAgentQuestionId(job),
+									role: "user" as const,
+									text: job.question.text,
+									anchor: job.question.anchor,
+									createdAt: job.startedAt ?? "",
+								},
+							},
+						]
+					: []
+			),
+		],
 		cancel: (questionId: string) => {
-			void live.controller?.cancelQuestion(questionId);
+			setCancelError(undefined);
+			const job = activeQuestionJobs.find((job) => reviewAgentQuestionId(job) === questionId);
+			if (job)
+				void trpcVanilla.reviewPath.cancelJob
+					.mutate({ workspaceId: job.identity.workspaceId, jobId: job.id })
+					.then(() => jobs.refetch())
+					.catch((error) => setCancelError(error instanceof Error ? error.message : String(error)));
+			else void live.controller?.cancelQuestion(questionId);
 		},
 	};
 }

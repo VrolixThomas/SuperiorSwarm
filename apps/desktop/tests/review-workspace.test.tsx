@@ -175,7 +175,7 @@ if (
 			await h.cleanup();
 		}
 	});
-	test("agent action opens a workspace tab even when a legacy drawer was left open", async () => {
+	test("saved terminal metadata alone never opens or relaunches an unverified agent view", async () => {
 		reset();
 		useTabStore.setState({ activeWorkspaceId: "workspace", sidebarSegment: "prs" });
 		useReviewModeStore
@@ -197,14 +197,8 @@ if (
 					.find((button) => button.textContent === "Open agent workspace")
 					?.click()
 			);
-			expect(useReviewModeStore.getState().view).toBe("terminal");
-			expect(useReviewModeStore.getState().drawerOpen).toBe(false);
-			expect(
-				useTabStore
-					.getState()
-					.getTabsByWorkspace("workspace")
-					.some((tab) => tab.id === "review-path:existing:1" && tab.kind === "terminal")
-			).toBe(true);
+			expect(useReviewModeStore.getState().view).toBe("changes");
+			expect(h.container.textContent).not.toContain("Open agent workspace");
 			expect(h.calls.some((call) => call.path === "reviewPath.start")).toBe(false);
 		} finally {
 			await h.cleanup();
@@ -237,6 +231,22 @@ if (
 					request: (path, input) => {
 						if (path === "projects.getPRDetails") return { ...details, headCommitOid: head };
 						if (path === "reviewPath.status") return { identity, status: "none" };
+						if (path === "reviewPath.jobs")
+							return [
+								{
+									id: "observed-job",
+									identity,
+									agent: { id: "codex", label: "Codex" },
+									kind: "mapping",
+									state: phase === "preparing" ? "preparing" : "completed",
+									phase: phase === "preparing" ? "metadata" : "completed",
+									attempt: 1,
+									trigger: "manual",
+									startedAt: null,
+									updatedAt: null,
+									activity: [],
+								},
+							];
 						if (path === "reviewPath.get")
 							return {
 								identity,
@@ -275,23 +285,14 @@ if (
 			);
 			try {
 				await h.settle();
-				if (phase === "preparing")
-					expect(h.container.textContent).not.toContain("Open agent workspace");
-				else {
-					expect(h.container.textContent).toContain("Open agent workspace");
-					await act(async () =>
-						Array.from(h.container.querySelectorAll("button"))
-							.find((button) => button.textContent === "Open agent workspace")
-							?.click()
-					);
-					expect(useReviewModeStore.getState().view).toBe("terminal");
-					expect(
-						h.calls.some(
-							(call) =>
-								call.path === "workspaces.attachTerminal" || call.path === "reviewPath.start"
-						)
-					).toBe(false);
-				}
+				expect(h.calls.some((call) => call.path === "reviewPath.jobs")).toBe(true);
+				expect(
+					h.calls.some(
+						(call) =>
+							call.path === "workspaces.attachTerminal" || call.path === "reviewPath.startJob"
+					)
+				).toBe(false);
+				if (phase === "preparing") expect(h.container.textContent).toContain("Preparing");
 			} finally {
 				await h.cleanup();
 			}
@@ -325,6 +326,85 @@ if (
 			await key("f");
 			await h.settle();
 			expect(useReviewPathSettingsStore.getState().defaultRailMode).toBe("files");
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("tab review keyboard ignores hidden views and sibling terminal targets", async () => {
+		reset();
+		const active = { workspaceId: "tab-keyboard", prCtx };
+		const h = await renderBrowserTest(
+			<ReviewWorkspace active={active} fixture tabMode isActive={false} />,
+			[],
+			false,
+			{ request }
+		);
+		const terminal = document.createElement("div");
+		terminal.tabIndex = 0;
+		document.body.appendChild(terminal);
+		try {
+			await key("j");
+			expect(h.container.querySelector("[data-diff]")).toBeNull();
+			await h.rerender(<ReviewWorkspace active={active} fixture tabMode isActive />);
+			await act(async () =>
+				terminal.dispatchEvent(new window.KeyboardEvent("keydown", { key: "j", bubbles: true }))
+			);
+			expect(h.container.querySelector("[data-diff]")).toBeNull();
+			await key("j");
+			expect(h.container.querySelector("[data-diff]")).not.toBeNull();
+			expect(h.container.textContent).not.toContain("All PRs");
+			expect(h.container.textContent).not.toContain("Choose how to review");
+		} finally {
+			terminal.remove();
+			await h.cleanup();
+		}
+	});
+
+	test("remount on a cached new head clears old anchors but preserves question text", async () => {
+		reset();
+		const { reviewUIScopeKey, reviewUIStoreFor } = await import(
+			"../src/renderer/components/review-mode/ReviewUIContext"
+		);
+		const active = { workspaceId: "revision-remount", prCtx };
+		const scope = reviewUIScopeKey(active);
+		const ui = reviewUIStoreFor(scope);
+		let currentHead = details.headCommitOid;
+		const h = await renderBrowserTest(
+			<ReviewWorkspace active={active} tabMode fixture />,
+			[],
+			false,
+			{
+				request: (path, input) =>
+					path === "projects.getPRDetails"
+						? { ...details, headCommitOid: currentHead }
+						: request(path, input),
+			}
+		);
+		try {
+			const anchor = {
+				path: PR129_FILES[0]!.path,
+				side: "RIGHT" as const,
+				startLine: 2,
+				endLine: 2,
+			};
+			await act(async () => {
+				ui.getState().setAskAnchor(anchor);
+				usePRReviewSessionStore.getState().setDraft(scope, "nav:selection", anchor);
+				usePRReviewSessionStore.getState().setDraft(scope, "ask:text", "Keep the question");
+			});
+			await h.rerender(<div />);
+			currentHead = "b".repeat(40);
+			h.queryClient.clear();
+			await h.rerender(<ReviewWorkspace active={active} tabMode fixture />);
+			await h.settle();
+			expect(ui.getState().askAnchor).toBeNull();
+			expect(
+				usePRReviewSessionStore.getState().sessions.get(scope)?.drafts?.["nav:selection"]
+			).toBeNull();
+			expect(usePRReviewSessionStore.getState().sessions.get(scope)?.drafts?.["ask:text"]).toBe(
+				"Keep the question"
+			);
 		} finally {
 			await h.cleanup();
 		}

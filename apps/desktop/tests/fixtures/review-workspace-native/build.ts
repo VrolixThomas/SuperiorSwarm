@@ -24,7 +24,12 @@ const boundary: Bun.BunPlugin = {
 for (const [entry, target, format, naming] of [
 	["main.ts", "node", "esm", "main.mjs"],
 	["preload.ts", "browser", "cjs", "preload.cjs"],
-	["renderer.tsx", "browser", "esm", "renderer.[ext]"],
+	[
+		process.argv[3] === "tabs" ? "renderer-tabs.tsx" : "renderer.tsx",
+		"browser",
+		"esm",
+		"renderer.[ext]",
+	],
 ] as const) {
 	const r = await Bun.build({
 		entrypoints: [join(import.meta.dir, entry)],

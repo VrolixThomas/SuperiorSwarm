@@ -1,9 +1,10 @@
 import { useTabStore } from "../../stores/tab-store";
 export function HintBar({
+	compact = false,
 	context = false,
 	hasThreads = false,
 	showViewed = true,
-}: { context?: boolean; hasThreads?: boolean; showViewed?: boolean }) {
+}: { compact?: boolean; context?: boolean; hasThreads?: boolean; showViewed?: boolean }) {
 	const mode = useTabStore((s) => s.diffMode);
 	const setMode = useTabStore((s) => s.setDiffMode);
 	const keyClass = "rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-secondary)]";
@@ -26,7 +27,7 @@ export function HintBar({
 				</span>
 			)}
 			<div className="flex-1" />
-			{!context && (
+			{!context && !compact && (
 				<div className="flex shrink-0 rounded-md bg-[var(--bg-surface)] p-0.5">
 					{(["inline", "split"] as const).map((value) => (
 						<button

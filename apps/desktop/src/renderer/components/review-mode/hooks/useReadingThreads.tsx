@@ -3,7 +3,7 @@ import type { UnifiedThread } from "../../../../shared/github-types";
 import type { CodeReference } from "../../../../shared/review-path-types";
 import type { ReviewPathSource } from "../../../lib/review-path-source";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
-import { useReviewModeStore } from "../../../stores/review-mode-store";
+import { useReviewUIApi } from "../ReviewUIContext";
 import { AgentNoteRow } from "../thread/AgentNoteRow";
 import { FindingCard } from "../thread/FindingCard";
 import { ResolvedThreadRow } from "../thread/ResolvedThreadRow";
@@ -16,6 +16,7 @@ export function useReadingThreads(
 	source: ReviewPathSource,
 	onReference: (ref: CodeReference) => void
 ) {
+	const ui = useReviewUIApi();
 	const activeThreadId = usePRReviewSessionStore(
 		(s) => s.sessions.get(data.sessionKey)?.activeThreadId ?? null
 	);
@@ -38,9 +39,9 @@ export function useReadingThreads(
 				if (thread) openThread(thread);
 				else nav.openReference({ path, line: 1, description: "Review file" });
 			},
-			onOpenInComments: () => useReviewModeStore.getState().setPanel("threads"),
+			onOpenInComments: () => ui.getState().setPanel("threads"),
 		}),
-		[data.callbacks, data.allThreads, openThread, nav.openReference]
+		[data.callbacks, data.allThreads, openThread, nav.openReference, ui]
 	);
 	const renderThread = useCallback(
 		(thread: UnifiedThread) => {

@@ -94,3 +94,10 @@ test("an old map-only claim never marks a code review as performed", async () =>
 	expect(await createAutoMapper(h.deps)(pr)).toBe(false);
 	expect(h.stats().ledger).toBe(0);
 });
+
+test("durably queued preparation suppresses the legacy launcher without claiming a performed review", async () => {
+	const h = harness();
+	h.deps.start = async () => ({ claimed: true, reviewIncluded: false, reviewQueued: true });
+	expect(await createAutoMapper(h.deps)(pr)).toBe(true);
+	expect(h.stats().ledger).toBe(0);
+});

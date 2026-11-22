@@ -15,10 +15,11 @@ import { TicketsSidebar } from "./tickets/TicketsSidebar";
 
 interface SidebarProps {
 	collapsed: boolean;
+	navigationInRail?: boolean;
 	onExpand: (section?: "tickets" | "prs" | "hermes") => void;
 }
 
-export function Sidebar({ collapsed, onExpand }: SidebarProps) {
+export function Sidebar({ collapsed, onExpand, navigationInRail = false }: SidebarProps) {
 	const { openSettings, openAddModal, openCreateCrossRepoModal } = useProjectStore();
 	const { data: projectsList } = trpc.projects.list.useQuery();
 	const segment = useTabStore((s) => s.sidebarSegment);
@@ -137,98 +138,102 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	};
 
 	if (collapsed) {
-		return <SidebarRail onExpand={handleExpand} />;
+		return navigationInRail ? null : <SidebarRail onExpand={handleExpand} />;
 	}
 
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
-			<div className="app-drag flex h-[52px] shrink-0 items-center pl-[88px] pr-2">
-				<div className="app-no-drag flex shrink-0 items-center gap-0.5">
-					<Tooltip label="Go Back" actionId="nav.workspaceBack">
-						<button
-							type="button"
-							onClick={() => goBackWorkspace()}
-							disabled={!canGoBackWorkspace}
-							aria-label="Go Back"
-							className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
-						>
-							<svg
-								aria-hidden="true"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<path d="M15 18l-6-6 6-6" />
-							</svg>
-						</button>
-					</Tooltip>
-					<Tooltip label="Go Forward" actionId="nav.workspaceForward">
-						<button
-							type="button"
-							onClick={() => goForwardWorkspace()}
-							disabled={!canGoForwardWorkspace}
-							aria-label="Go Forward"
-							className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
-						>
-							<svg
-								aria-hidden="true"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<path d="M9 18l6-6-6-6" />
-							</svg>
-						</button>
-					</Tooltip>
-				</div>
-			</div>
-
-			{/* Segmented control — always at top */}
-			<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
-				{(["repos", "tickets", "prs", "hermes"] as const).map((seg) => {
-					const actionIds = {
-						repos: "nav.repos",
-						tickets: "nav.tickets",
-						prs: "nav.prs",
-						hermes: "nav.hermes",
-					} as const;
-					const labels = {
-						repos: "Projects",
-						tickets: "Tickets",
-						prs: "PRs",
-						hermes: "Agents",
-					} as const;
-					return (
-						<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">
+			{!navigationInRail && (
+				<div className="app-drag flex h-[52px] shrink-0 items-center pl-[88px] pr-2">
+					<div className="app-no-drag flex shrink-0 items-center gap-0.5">
+						<Tooltip label="Go Back" actionId="nav.workspaceBack">
 							<button
 								type="button"
-								onClick={() => setSidebarSegment(seg)}
-								className={`relative flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
-									segment === seg
-										? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
-										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-								}`}
+								onClick={() => goBackWorkspace()}
+								disabled={!canGoBackWorkspace}
+								aria-label="Go Back"
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
 							>
-								{labels[seg]}
-								{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
-									<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
-								)}
+								<svg
+									aria-hidden="true"
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M15 18l-6-6 6-6" />
+								</svg>
 							</button>
 						</Tooltip>
-					);
-				})}
-			</div>
+						<Tooltip label="Go Forward" actionId="nav.workspaceForward">
+							<button
+								type="button"
+								onClick={() => goForwardWorkspace()}
+								disabled={!canGoForwardWorkspace}
+								aria-label="Go Forward"
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
+							>
+								<svg
+									aria-hidden="true"
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="M9 18l6-6-6-6" />
+								</svg>
+							</button>
+						</Tooltip>
+					</div>
+				</div>
+			)}
+
+			{/* Segmented control — legacy shell only */}
+			{!navigationInRail && (
+				<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
+					{(["repos", "tickets", "prs", "hermes"] as const).map((seg) => {
+						const actionIds = {
+							repos: "nav.repos",
+							tickets: "nav.tickets",
+							prs: "nav.prs",
+							hermes: "nav.hermes",
+						} as const;
+						const labels = {
+							repos: "Projects",
+							tickets: "Tickets",
+							prs: "PRs",
+							hermes: "Agents",
+						} as const;
+						return (
+							<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">
+								<button
+									type="button"
+									onClick={() => setSidebarSegment(seg)}
+									className={`relative flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
+										segment === seg
+											? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+											: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+									}`}
+								>
+									{labels[seg]}
+									{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
+										<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
+									)}
+								</button>
+							</Tooltip>
+						);
+					})}
+				</div>
+			)}
 
 			{/* Segment content */}
 			<div className="flex min-h-0 flex-1 flex-col">
@@ -239,46 +244,48 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 					</div>
 				)}
 				{segment === "prs" && (
-					<div className="min-h-0 flex-1 overflow-y-auto">
-						<PullRequestsTab />
+					<div className="min-h-0 flex-1 overflow-hidden">
+						<PullRequestsTab navigationInRail={navigationInRail} />
 					</div>
 				)}
 				{segment === "hermes" && <HermesSidebar />}
 			</div>
 
 			{/* Footer — Settings */}
-			<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
-				<Tooltip
-					label={hasDismissedUpdate ? "Settings — update ready" : "Settings"}
-					actionId="general.settings"
-				>
-					<button
-						type="button"
-						onClick={openSettings}
-						className="relative flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+			{!navigationInRail && (
+				<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
+					<Tooltip
+						label={hasDismissedUpdate ? "Settings — update ready" : "Settings"}
+						actionId="general.settings"
 					>
-						<svg
-							aria-hidden="true"
-							width="15"
-							height="15"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.5"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							className="shrink-0"
+						<button
+							type="button"
+							onClick={openSettings}
+							className="relative flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
 						>
-							<circle cx="12" cy="12" r="3" />
-							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-						</svg>
-						<span className="truncate">Settings</span>
-						{hasDismissedUpdate && (
-							<span className="ml-auto size-[6px] shrink-0 rounded-full bg-[#30d158] shadow-[0_0_0_2px_var(--bg-base)]" />
-						)}
-					</button>
-				</Tooltip>
-			</div>
+							<svg
+								aria-hidden="true"
+								width="15"
+								height="15"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								className="shrink-0"
+							>
+								<circle cx="12" cy="12" r="3" />
+								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+							</svg>
+							<span className="truncate">Settings</span>
+							{hasDismissedUpdate && (
+								<span className="ml-auto size-[6px] shrink-0 rounded-full bg-[#30d158] shadow-[0_0_0_2px_var(--bg-base)]" />
+							)}
+						</button>
+					</Tooltip>
+				</div>
+			)}
 		</div>
 	);
 }

@@ -1,4 +1,4 @@
-import { eq, max, notInArray } from "drizzle-orm";
+import { and, eq, max, notInArray, notLike } from "drizzle-orm";
 import type { SessionSaveData } from "../../shared/types";
 import { getDb } from "./index";
 import * as schema from "./schema";
@@ -121,13 +121,21 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 	);
 
 	db.transaction((tx) => {
-		// Delete sessions no longer open
+		// Review sessions belong to the runtime; hiding their view is not disposal.
+		// Only explicit cancellation/runtime cleanup may remove these ownership rows.
 		if (currentIds.length > 0) {
 			tx.delete(schema.terminalSessions)
-				.where(notInArray(schema.terminalSessions.id, currentIds))
+				.where(
+					and(
+						notInArray(schema.terminalSessions.id, currentIds),
+						notLike(schema.terminalSessions.id, "review-path:%")
+					)
+				)
 				.run();
 		} else {
-			tx.delete(schema.terminalSessions).run();
+			tx.delete(schema.terminalSessions)
+				.where(notLike(schema.terminalSessions.id, "review-path:%"))
+				.run();
 		}
 
 		// Insert or update changed session metadata. `updated_at` is deliberately

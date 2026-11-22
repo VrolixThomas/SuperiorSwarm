@@ -9,7 +9,7 @@ import { type TicketScope, isTicketScope } from "../../shared/tickets";
 import type { SidebarSegment } from "../../shared/types";
 import { basename } from "../lib/format";
 import { openThreadInChanges } from "../lib/review-mode-nav";
-import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
+import { createDefaultPane, findParentSplit, getAllPanes, usePaneStore } from "./pane-store";
 import { prReviewSessionKey, usePRReviewSessionStore } from "./pr-review-session-store";
 import { useReviewModeStore } from "./review-mode-store";
 import { useReviewSessionStore } from "./review-session-store";
@@ -17,7 +17,30 @@ import { solveSessionKey, useSolveSessionStore } from "./solve-session-store";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
+export interface ReviewAgentTabJob {
+	id: string;
+	identity: { workspaceId: string };
+	agent: { label: string };
+	terminalId?: string;
+	cwd?: string;
+	state?: import("../../shared/review-agent-job").ReviewAgentJob["state"];
+	phase?: string;
+}
+
 export type TabItem =
+	| { kind: "pr-review"; id: string; workspaceId: string; prCtx: PRContext; title: "Review" }
+	| {
+			kind: "review-agent";
+			id: string;
+			workspaceId: string;
+			jobId: string;
+			agentLabel: string;
+			terminalId?: string;
+			cwd?: string;
+			title: string;
+			state?: ReviewAgentTabJob["state"];
+			phase?: string;
+	  }
 	| {
 			kind: "terminal";
 			id: string;
@@ -115,6 +138,10 @@ export interface WorkspaceMetadata {
 	prTitle?: string;
 	sourceBranch?: string;
 	targetBranch?: string;
+	/** Confirmed isolated review worktree, never the project checkout fallback. */
+	reviewWorktreePath?: string | null;
+	reviewHiddenJobIds?: string[];
+	reviewHiddenTerminalIds?: string[];
 }
 
 export interface WorkspaceHistoryEntry {
@@ -340,6 +367,15 @@ interface TabStore {
 		cwd: string,
 		options?: { rightPanel?: RightPanelState; recordHistory?: boolean }
 	) => void;
+	ensureReviewTab: (workspaceId: string, prCtx: PRContext) => string;
+	ensureReviewAgentTab: (job: ReviewAgentTabJob) => string;
+	hideReviewAgentTab: (workspaceId: string, jobId: string) => void;
+	isReviewAgentTabHidden: (workspaceId: string, jobId: string) => boolean;
+	revealReviewAgentTab: (
+		workspaceId: string,
+		options?: { jobId?: string; beside?: boolean }
+	) => boolean;
+	canCreateWorkspaceTerminal: (workspaceId: string) => boolean;
 	activateReviewWorkspace: (workspaceId: string, cwd: string, prCtx: PRContext) => void;
 	canGoBackWorkspace: () => boolean;
 	canGoForwardWorkspace: () => boolean;
@@ -656,7 +692,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	// ── Tab management (delegates to pane-store) ────────────────────────
 
-	addTab: (tab) => {
+	addTab: (inputTab) => {
+		let tab = inputTab;
+		if (tab.kind === "terminal" && !tab.id.startsWith("review-path:")) {
+			if (!get().canCreateWorkspaceTerminal(tab.workspaceId)) return "";
+			tab = {
+				...tab,
+				cwd: get().workspaceMetadata[tab.workspaceId]?.reviewWorktreePath ?? tab.cwd,
+			};
+		}
 		ps().ensureLayout(tab.workspaceId);
 		const focused = resolveFocusedPane(tab.workspaceId);
 		if (focused) {
@@ -671,6 +715,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const found = ps().findPaneForTab(wsId, id);
 		if (!found) return;
 		const removed = found.tabs.find((t) => t.id === id);
+		if (removed?.kind === "review-agent") get().hideReviewAgentTab(wsId, removed.jobId);
 		ps().removeTabFromPane(wsId, found.id, id);
 		// Drop the solve session when its tab closes.
 		if (removed && removed.kind === "solve-review") {
@@ -821,9 +866,140 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		get().setActiveWorkspace(workspaceId, cwd, { recordHistory: false });
 	},
 
+	ensureReviewTab: (workspaceId, prCtx) => {
+		const id = `pr-review:${workspaceId}`;
+		const existing = ps().findPaneForTab(workspaceId, id);
+		if (existing) {
+			const previous = existing.tabs.find((t) => t.id === id);
+			if (
+				previous?.kind === "pr-review" &&
+				JSON.stringify(previous.prCtx) !== JSON.stringify(prCtx)
+			)
+				ps().updateTabInPanes(id, (t) => ({ ...t, prCtx }) as TabItem);
+			return id;
+		}
+		const root = ps().ensureLayout(workspaceId);
+		const pane = getAllPanes(root)[0];
+		if (pane)
+			ps().addTabToPane(
+				workspaceId,
+				pane.id,
+				{ kind: "pr-review", id, workspaceId, prCtx, title: "Review" },
+				{ activate: !pane.activeTabId }
+			);
+		return id;
+	},
+	hideReviewAgentTab: (workspaceId, jobId) => {
+		const meta = get().workspaceMetadata[workspaceId] ?? { type: "review" };
+		const terminalId = get()
+			.getTabsByWorkspace(workspaceId)
+			.find((t) => t.kind === "review-agent" && t.jobId === jobId);
+		const terminalIds =
+			terminalId?.kind === "review-agent" && terminalId.terminalId ? [terminalId.terminalId] : [];
+		if (!meta.reviewHiddenJobIds?.includes(jobId))
+			get().setWorkspaceMetadata(workspaceId, {
+				...meta,
+				reviewHiddenJobIds: [...(meta.reviewHiddenJobIds ?? []), jobId],
+				reviewHiddenTerminalIds: [
+					...new Set([...(meta.reviewHiddenTerminalIds ?? []), ...terminalIds]),
+				],
+			});
+	},
+	isReviewAgentTabHidden: (workspaceId, jobId) =>
+		get().workspaceMetadata[workspaceId]?.reviewHiddenJobIds?.includes(jobId) ?? false,
+	ensureReviewAgentTab: (job) => {
+		const workspaceId = job.identity.workspaceId;
+		const meta = get().workspaceMetadata[workspaceId];
+		if (meta?.reviewHiddenJobIds?.includes(job.id))
+			get().setWorkspaceMetadata(workspaceId, {
+				...meta,
+				reviewHiddenJobIds: meta.reviewHiddenJobIds.filter((id) => id !== job.id),
+				reviewHiddenTerminalIds: meta.reviewHiddenTerminalIds?.filter(
+					(id) => id !== job.terminalId
+				),
+			});
+		const id = `review-agent:${job.id}`;
+		const tab: TabItem = {
+			kind: "review-agent",
+			id,
+			workspaceId,
+			jobId: job.id,
+			agentLabel: job.agent.label,
+			title: job.agent.label,
+			terminalId: job.terminalId,
+			cwd: job.cwd,
+			state: job.state,
+			phase: job.phase,
+		};
+		const existing = ps().findPaneForTab(workspaceId, id);
+		if (existing) {
+			const previous = existing.tabs.find((t) => t.id === id);
+			if (JSON.stringify(previous) !== JSON.stringify(tab)) ps().updateTabInPanes(id, () => tab);
+			return id;
+		}
+		// A legacy view may already own this exact PTY. Upgrade in place, retaining selection.
+		const legacy =
+			job.terminalId &&
+			get()
+				.getTabsByWorkspace(workspaceId)
+				.find(
+					(t) =>
+						t.kind === "review-agent" &&
+						t.jobId.startsWith("legacy:") &&
+						t.terminalId === job.terminalId
+				);
+		if (legacy) {
+			const pane = ps().findPaneForTab(workspaceId, legacy.id);
+			ps().updateTabInPanes(legacy.id, () => tab);
+			if (pane?.activeTabId === legacy.id) ps().setActiveTabInPane(workspaceId, pane.id, id);
+			return id;
+		}
+		const root = ps().ensureLayout(workspaceId);
+		const pane =
+			getAllPanes(root).find((p) => p.tabs.some((t) => t.kind === "pr-review")) ??
+			getAllPanes(root)[0];
+		if (pane) ps().addTabToPane(workspaceId, pane.id, tab, { activate: false });
+		return id;
+	},
+	revealReviewAgentTab: (workspaceId, options) => {
+		const agents = get()
+			.getTabsByWorkspace(workspaceId)
+			.filter((t): t is Extract<TabItem, { kind: "review-agent" }> => t.kind === "review-agent");
+		const tab = options?.jobId ? agents.find((t) => t.jobId === options.jobId) : agents.at(-1);
+		if (!tab) return false;
+		let pane = ps().findPaneForTab(workspaceId, tab.id);
+		const reviewPane = ps().findPaneForTab(workspaceId, `pr-review:${workspaceId}`);
+		if (!pane) return false;
+		if (options?.beside && reviewPane) {
+			ps().setActiveTabInPane(workspaceId, reviewPane.id, `pr-review:${workspaceId}`);
+			const root = ps().getLayout(workspaceId);
+			const parent = root && findParentSplit(root, reviewPane.id);
+			const alreadyBeside =
+				parent?.direction === "horizontal" &&
+				parent.children[0].id === reviewPane.id &&
+				parent.children[1].id === pane.id;
+			if (alreadyBeside && parent) ps().setPaneRatio(workspaceId, parent.id, 0.6);
+			if (!alreadyBeside) {
+				if (pane.id !== reviewPane.id)
+					ps().moveTabBetweenPanes(workspaceId, pane.id, reviewPane.id, tab.id);
+				ps().setActiveTabInPane(workspaceId, reviewPane.id, `pr-review:${workspaceId}`);
+				const id = ps().splitPaneForCommand(workspaceId, reviewPane.id, "horizontal", tab);
+				pane = ps().findPaneForTab(workspaceId, tab.id);
+				if (!id || !pane) return false;
+			}
+		}
+		ps().setActiveTabInPane(workspaceId, pane.id, tab.id);
+		ps().setFocusedPane(pane.id);
+		return true;
+	},
+	canCreateWorkspaceTerminal: (workspaceId) => {
+		const meta = get().workspaceMetadata[workspaceId];
+		return meta?.type !== "review" || Boolean(meta.reviewWorktreePath);
+	},
 	activateReviewWorkspace: (workspaceId, cwd, prCtx) => {
 		const resolvedPrCtx = { ...prCtx, repoPath: cwd };
 		get().setWorkspaceMetadata(workspaceId, {
+			...get().workspaceMetadata[workspaceId],
 			type: "review",
 			prProvider: resolvedPrCtx.provider,
 			prIdentifier: formatPrIdentifier(resolvedPrCtx),
@@ -845,6 +1021,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 						: state.activeWorkspaceBySegment.tickets,
 			},
 		}));
+		get().ensureReviewTab(workspaceId, resolvedPrCtx);
 		get().setActiveWorkspace(workspaceId, cwd);
 		useReviewModeStore.getState().open(workspaceId, resolvedPrCtx);
 	},
@@ -915,7 +1092,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		});
 
 		const reviewPrCtx = prCtxFromReviewMetadata(meta, cwd);
-		if (reviewPrCtx) useReviewModeStore.getState().open(workspaceId, reviewPrCtx);
+		if (reviewPrCtx) {
+			get().ensureReviewTab(workspaceId, reviewPrCtx);
+			useReviewModeStore.getState().open(workspaceId, reviewPrCtx);
+		}
 	},
 
 	canGoBackWorkspace: () => get().workspaceBackStack.length > 0,
@@ -1013,6 +1193,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	addTerminalTab: (workspaceId, cwd, title, explicitId) => {
+		if (!get().canCreateWorkspaceTerminal(workspaceId) && !explicitId?.startsWith("review-path:"))
+			return "";
+		const terminalCwd = get().workspaceMetadata[workspaceId]?.reviewWorktreePath ?? cwd;
 		const id = explicitId ?? nextTerminalId();
 		const existing = get()
 			.getAllTabs()
@@ -1021,8 +1204,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			get().setActiveTab(id);
 			return id;
 		}
-		const tabTitle = title ?? nextTerminalTitle();
-		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd };
+		const tabTitle =
+			title ??
+			(get().workspaceMetadata[workspaceId]?.type === "review" ? "Shell" : nextTerminalTitle());
+		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd: terminalCwd };
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
 		if (focused) {
@@ -1565,13 +1750,18 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			}
 		}
 
-		const tabs: TabItem[] = sessions.map((s) => ({
-			kind: "terminal" as const,
-			id: s.id,
-			workspaceId: s.workspaceId,
-			title: s.title,
-			cwd: s.cwd,
-		}));
+		const tabs: TabItem[] = sessions
+			.filter(
+				(session) =>
+					!workspaceMetadata[session.workspaceId]?.reviewHiddenTerminalIds?.includes(session.id)
+			)
+			.map((s) => ({
+				kind: "terminal" as const,
+				id: s.id,
+				workspaceId: s.workspaceId,
+				title: s.title,
+				cwd: s.cwd,
+			}));
 
 		const tabsByWorkspace = new Map<string, TabItem[]>();
 		for (const tab of tabs) {

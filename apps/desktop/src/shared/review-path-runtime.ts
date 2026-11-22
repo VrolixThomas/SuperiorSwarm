@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { GitHubPRDetails } from "./github-types";
 import type { AskMessage, ReviewPath, ReviewPathSettings } from "./review-path-types";
 
 export const reviewPathIdentitySchema = z
@@ -63,11 +64,14 @@ export interface ReviewPathRuntimePort {
 		run: ReviewPathRun;
 		agent: ReviewPath["agent"];
 		alsoReview: boolean;
+		metadata?: GitHubPRDetails;
 	}): Promise<ReviewPathLaunchResult | undefined>;
 	stopMapping(input: { run: ReviewPathRun }): Promise<void>;
 	ask(input: {
 		run: ReviewPathRun;
 		question: ReviewPathQuestion;
+		agent?: ReviewPath["agent"];
+		metadata?: GitHubPRDetails;
 	}): Promise<ReviewPathLaunchResult | undefined>;
 	cancelQuestion(input: { run: ReviewPathRun }): Promise<void>;
 }

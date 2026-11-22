@@ -5,6 +5,8 @@ export function isReviewPathTerminal(id: string): boolean {
 }
 
 const messages = {
+	REVIEW_WORKSPACE_NOT_PREPARED:
+		"Start an agent to prepare this PR workspace before opening a shell.",
 	...workspaceErrorMessages,
 	TERMINAL_WORKSPACE_MISMATCH:
 		"Terminal workspace mismatch. Reopen the terminal from its workspace.",

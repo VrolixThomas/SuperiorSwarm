@@ -16,7 +16,7 @@ import {
 	getWorkspaceCwdOrThrow,
 } from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
-import { terminalSessions, workspaces } from "../db/schema";
+import { projects, terminalSessions, workspaces, worktrees } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import {
 	type AgentSessionManager,
@@ -76,6 +76,28 @@ export function setupTerminalIPC(
 				if (ownedReview && (!row || row.workspaceId !== wsId))
 					throw new TerminalCreateError("REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
 				const reviewOwner = ownedReview ? reviewTerminalOwnership(db, id, wsId) : undefined;
+				const requirePreparedShell = () => {
+					if (!wsId || ownedReview) return;
+					const workspace = db.select().from(workspaces).where(eq(workspaces.id, wsId)).get();
+					if (workspace?.type !== "review") return;
+					const worktree = workspace.worktreeId
+						? db.select().from(worktrees).where(eq(worktrees.id, workspace.worktreeId)).get()
+						: undefined;
+					const project = db
+						.select()
+						.from(projects)
+						.where(eq(projects.id, workspace.projectId))
+						.get();
+					if (
+						!worktree ||
+						!project ||
+						worktree.projectId !== workspace.projectId ||
+						canonicalWorkspaceDirectory(worktree.path) ===
+							canonicalWorkspaceDirectory(project.repoPath)
+					)
+						throw new TerminalCreateError("REVIEW_WORKSPACE_NOT_PREPARED");
+				};
+				requirePreparedShell();
 				let wasAttached = daemonClient.hasLiveSession(id);
 				if ((row && row.workspaceId !== wsId) || (wasAttached && !row))
 					throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
@@ -99,6 +121,7 @@ export function setupTerminalIPC(
 				// The daemon inventory query yields. Recheck both record identity and
 				// the directory inode before handing the bound root to the daemon.
 				if (wsId && owner) {
+					requirePreparedShell();
 					if (getWorkspaceCwdOrThrow(wsId) !== cwd)
 						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 					try {

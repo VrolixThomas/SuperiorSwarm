@@ -10,12 +10,13 @@ export async function ensureReviewWorkspace(opts: {
 	targetBranch: string;
 	signal?: AbortSignal;
 	expectedHeadOid?: string;
+	onPhase?: (phase: "metadata" | "fetching" | "worktree") => void;
 }): Promise<{ workspaceId: string; worktreePath: string }> {
 	if (opts.prProvider !== "github" && opts.prProvider !== "bitbucket")
 		throw new Error("Review provider is unsupported");
 	const workspace = await reviewWorkspacePreparer.open(
 		{ ...opts, prProvider: opts.prProvider },
-		{ signal: opts.signal, expectedHeadOid: opts.expectedHeadOid }
+		{ signal: opts.signal, expectedHeadOid: opts.expectedHeadOid, onPhase: opts.onPhase }
 	);
 	return { workspaceId: workspace.id, worktreePath: workspace.worktreePath };
 }

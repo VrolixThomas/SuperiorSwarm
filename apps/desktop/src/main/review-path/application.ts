@@ -1,3 +1,10 @@
+import type { GitHubPRDetails } from "../../shared/github-types";
+import {
+	type ReviewAgentJob,
+	type StartReviewAgentJobInput,
+	isReviewAgentJobActive,
+	reviewAgentQuestionId,
+} from "../../shared/review-agent-job";
 import type {
 	ReviewPathIdentity,
 	ReviewPathRunScope,
@@ -8,16 +15,163 @@ import type { ReviewPathStorage } from "./storage";
 import { questionInputSchema } from "./validation";
 
 export interface ReviewPathApplicationDeps {
+	metadataTimeoutMs?: number;
 	storage: ReviewPathStorage;
 	runtime: () => ReviewPathRuntimePort;
 	/** Main-process provider read and registered workspace check, never fixture data. */
 	resolve: (
 		identity: ReviewPathIdentity
-	) => Promise<{ identity: ReviewPathIdentity; changedFiles: string[] }>;
+	) => Promise<{ identity: ReviewPathIdentity; changedFiles: string[]; details?: GitHubPRDetails }>;
 	validateWorkspace: (identity: ReviewPathIdentity) => void;
 }
 export class ReviewPathApplication {
 	constructor(readonly deps: ReviewPathApplicationDeps) {}
+	jobs(workspaceId: string) {
+		const jobs = this.deps.storage.jobs(workspaceId);
+		for (const job of jobs) this.deps.validateWorkspace(job.identity);
+		return jobs;
+	}
+	startJob(input: StartReviewAgentJobInput) {
+		return this.acceptJob(input);
+	}
+	askJob(input: Omit<StartReviewAgentJobInput, "alsoReview"> & { question: unknown }) {
+		return this.acceptJob(
+			{ ...input, alsoReview: false },
+			questionInputSchema.parse(input.question)
+		);
+	}
+	private acceptJob(input: StartReviewAgentJobInput, question?: ReviewAgentJob["question"]) {
+		this.deps.validateWorkspace(input.identity);
+		if (!input.requestId || input.requestId.length > 256) throw new Error("Invalid job request ID");
+		if (!["codex", "claude", "claude-code"].includes(input.agent.id))
+			throw new Error("Unsupported review agent");
+		const { job, accepted } = this.deps.storage.acceptJob(input, question);
+		if (accepted) {
+			// Persist and return before any network/PTY work. The captured job owns its
+			// identity even if the renderer navigates to another PR in the meantime.
+			setTimeout(() => {
+				void this.executeJob(job, job.alsoReview ?? input.alsoReview);
+			}, 0);
+		}
+		return job;
+	}
+	private jobActive(job: ReviewAgentJob) {
+		return this.deps.storage
+			.jobs(job.identity.workspaceId)
+			.some((j) => j.id === job.id && j.attempt === job.attempt && isReviewAgentJobActive(j));
+	}
+	private async resolveJob(job: ReviewAgentJob) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let fence: ReturnType<typeof setInterval> | undefined;
+		try {
+			const interrupted = new Promise<never>((_resolve, reject) => {
+				timer = setTimeout(
+					() => reject(new Error("PR metadata timed out. Retry to check this revision again.")),
+					this.deps.metadataTimeoutMs ?? 60_000
+				);
+				fence = setInterval(() => {
+					if (!this.jobActive(job)) reject(new Error("Review job is no longer active"));
+				}, 100);
+				timer.unref?.();
+				fence.unref?.();
+			});
+			return await Promise.race([this.deps.resolve(job.identity), interrupted]);
+		} finally {
+			clearTimeout(timer);
+			clearInterval(fence);
+		}
+	}
+	private async executeJob(job: ReviewAgentJob, alsoReview: boolean) {
+		const storage = this.deps.storage;
+		try {
+			if (!this.jobActive(job)) return;
+			storage.updateJob(
+				job,
+				{ state: "preparing", phase: "metadata" },
+				"Checking pull request revision"
+			);
+			const generation = storage.reserveMetadata(job.identity);
+			const resolved = await this.resolveJob(job);
+			if (!this.jobActive(job)) return;
+			this.deps.validateWorkspace(job.identity);
+			if (!storage.acceptJobMetadata(job.identity, resolved.identity, generation))
+				throw new Error(
+					"Request superseded by a newer PR observation. Retry with the current revision."
+				);
+			if (resolved.identity.headSha !== job.identity.headSha)
+				throw new Error("PR head changed. Refresh the PR before retrying.");
+			const before = storage.peek(job.identity);
+			const runtime = this.deps.runtime();
+			const questionResult = job.question
+				? storage.enqueueQuestion(job.identity, {
+						...job.question,
+						id: reviewAgentQuestionId(job),
+					})
+				: undefined;
+			const run =
+				questionResult?.run ??
+				storage.begin(job.identity, job.agent, resolved.changedFiles, { alsoReview });
+			storage.updateJob(
+				job,
+				{ runId: run.id, runVersion: run.version, phase: "worktree" },
+				"Preparing isolated agent workspace"
+			);
+			for (const old of before.runs)
+				if (old.state === "running" && storage.getRun(old.id)?.state !== "running") {
+					try {
+						if (old.kind === "mapping") await runtime.stopMapping({ run: old });
+						else await runtime.cancelQuestion({ run: old });
+					} catch {
+						/* already fenced */
+					}
+				}
+			if (!this.jobActive(job)) return;
+			const launch = questionResult
+				? await runtime.ask({
+						run,
+						question: questionResult.question,
+						agent: job.agent,
+						metadata: resolved.details,
+					})
+				: await runtime.startMapping({
+						run,
+						agent: job.agent,
+						alsoReview,
+						metadata: resolved.details,
+					});
+			if (!this.jobActive(job) || storage.getRun(run.id)?.state !== "running") return;
+			if (launch?.terminalId) storage.attachTerminal(run, launch.terminalId);
+			storage.updateJob(
+				job,
+				{
+					state: "running",
+					phase: job.kind === "mapping" ? "mapping" : "answering",
+					terminalId: launch?.terminalId,
+					cwd: launch?.worktreePath,
+				},
+				job.kind === "mapping" ? "Agent is mapping this PR" : "Agent is answering your question"
+			);
+		} catch (error) {
+			if (!this.jobActive(job)) return;
+			const message = error instanceof Error ? error.message : "Agent preparation failed";
+			const current = storage.jobs(job.identity.workspaceId).find((j) => j.id === job.id);
+			const run = current?.runId ? storage.getRun(current.runId) : undefined;
+			if (run?.state === "running") storage.fail(run, message);
+			storage.updateJob(job, { state: "failed", phase: "failed", error: message }, message);
+		}
+	}
+	async cancelJob(workspaceId: string, jobId: string) {
+		const job = this.jobs(workspaceId).find((j) => j.id === jobId);
+		if (!job) throw new Error("Unknown review job");
+		if (!isReviewAgentJobActive(job)) return job;
+		// Fence synchronously, before waiting for process cleanup.
+		this.deps.storage.updateJob(job, { state: "cancelled", phase: "cancelled" }, "Stopped by you");
+		const run = job.runId ? this.deps.storage.getRun(job.runId) : undefined;
+		if (run?.state === "running") await this.cancel(run);
+		const cancelled = this.jobs(workspaceId).find((j) => j.id === jobId);
+		if (!cancelled) throw new Error("Review workspace no longer exists");
+		return cancelled;
+	}
 	async get(identity: ReviewPathIdentity) {
 		this.deps.validateWorkspace(identity);
 		// Polling an unchanged revision is a local durable read. A different observed

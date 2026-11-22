@@ -8,6 +8,8 @@ export interface Pane {
 	id: string;
 	tabs: TabItem[];
 	activeTabId: string | null;
+	/** Most recently selected first, for deterministic command splitting. */
+	recentTabIds?: string[];
 }
 
 /** Interior node — divides space between two children. */
@@ -32,6 +34,8 @@ export interface SerializedPane {
 	id: string;
 	tabs: TabItem[];
 	activeTabId: string | null;
+	/** Most recently selected first, for deterministic command splitting. */
+	recentTabIds?: string[];
 }
 
 /** Serialized interior node. */

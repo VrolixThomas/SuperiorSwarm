@@ -38,6 +38,57 @@ const snapshot: any = {
 	messages: [],
 };
 let viewed: string[] = [];
+const jobs: any[] = [];
+function acceptJob(i: any, kind = "mapping") {
+	const now = new Date().toISOString();
+	const job = {
+		id: i.retryJobId ?? `fixture-job-${jobs.length + 1}`,
+		identity: i.identity,
+		agent: i.agent,
+		alsoReview: i.alsoReview,
+		kind,
+		state: "preparing",
+		phase: "fetching",
+		startedAt: now,
+		updatedAt: now,
+		attempt: (jobs.find((j) => j.id === i.retryJobId)?.attempt ?? 0) + 1,
+		trigger: "manual",
+		activity: [{ at: now, phase: "fetching", message: "Fetching requested revision" }],
+		question: i.question,
+	};
+	const existing = jobs.findIndex((j) => j.id === job.id);
+	if (existing >= 0) jobs[existing] = job;
+	else jobs.push(job);
+	return job;
+}
+function acceptQuestion(i: any) {
+	if (askError) throw Error("Controlled provider unavailable");
+	const job = acceptJob(i, "question");
+	const q = i.question;
+	const run = {
+		id: `run-${q.id}`,
+		version: 1,
+		kind: "question",
+		questionId: q.id,
+		state: "running",
+		identity: snapshot.identity,
+		conversationId: snapshot.conversationId,
+	};
+	const question = {
+		id: q.id,
+		runId: run.id,
+		runVersion: 1,
+		conversationId: snapshot.conversationId,
+		state: "pending",
+		message: { id: q.id, role: "user", text: q.text, anchor: q.anchor },
+	};
+	snapshot.runs.push(run);
+	snapshot.questions.push(question);
+	snapshot.messages.push(question.message);
+	job.state = "running";
+	job.phase = "answering";
+	return job;
+}
 const draft: any = {
 	id: "draft",
 	commitSha: pr.headCommitOid,
@@ -110,12 +161,12 @@ async function start() {
 					identity: { id: account, login: "verified" },
 				})),
 				getMyPRs: record("github.getMyPRs", () =>
-					[1, 2, 3].map((number) => ({
+					[1, 2, 3, 4].map((number) => ({
 						number,
 						repoOwner: "fixture",
 						repoName: "repo",
-						title: `Disposable PR ${number}`,
-						role: "reviewer",
+						title: number === 4 ? "Authored fixture change" : `Disposable PR ${number}`,
+						role: number === 4 ? "author" : "reviewer",
 						state: "open",
 						branchName: "change",
 					}))
@@ -151,6 +202,25 @@ async function start() {
 				deleteDraftComment: mutate("aiReview.deleteDraftComment", () => ({ success: true })),
 			}),
 			reviewPath: router({
+				jobs: record("reviewPath.jobs", () => jobs),
+				startJob: mutate("reviewPath.startJob", (i) => {
+					const job = acceptJob(i);
+					if (process.env["SS_UI_TABS"] !== "1") {
+						snapshot.path = mappedPath(pr.headCommitOid!, "mapping");
+						snapshot.pathVersion++;
+					}
+					return job;
+				}),
+				askJob: mutate("reviewPath.askJob", acceptQuestion),
+				cancelJob: mutate("reviewPath.cancelJob", (i) => {
+					const job = jobs.find((j) => j.id === i.jobId);
+					if (job) {
+						job.state = "cancelled";
+						job.phase = "cancelled";
+						job.endedAt = new Date().toISOString();
+					}
+					return job;
+				}),
 				status: record("reviewPath.status", (i) =>
 					i.provider === "github" && i.owner === "fixture" && i.repo === "repo" && i.prNumber === 1
 						? {
@@ -199,12 +269,19 @@ async function start() {
 				}),
 				cancelQuestion: mutate("reviewPath.cancelQuestion", (i) => {
 					snapshot.questions.find((q: any) => q.runId === i.id).state = "cancelled";
+					for (const job of jobs.filter((j) => j.kind === "question")) job.state = "cancelled";
 					return snapshot;
 				}),
 				addContext: mutate("reviewPath.addContext", () => snapshot),
 				removeContext: mutate("reviewPath.removeContext", () => snapshot),
 			}),
 			workspaces: router({
+				getById: record("workspaces.getById", () => ({
+					id: "registered",
+					projectId: "project",
+					type: "review",
+					worktreePath: join(root, "repo"),
+				})),
 				getOrCreateReview: mutate("workspaces.getOrCreateReview", () => ({
 					id: "registered",
 					worktreePath: join(root, "repo"),
@@ -221,7 +298,25 @@ async function start() {
 		if (command === "resetFinding") {
 			draft.comments[0].status = "pending";
 		}
-		if (command === "mapped") snapshot.path = mappedPath(pr.headCommitOid!);
+		if (command === "mapped") {
+			snapshot.path = mappedPath(pr.headCommitOid!);
+			for (const job of jobs.filter((j) => j.kind === "mapping")) {
+				job.state = "completed";
+				job.phase = "completed";
+				job.endedAt = new Date().toISOString();
+			}
+		}
+		if (command === "jobState") {
+			const job = jobs.at(-1);
+			if (job) {
+				job.state = value;
+				job.phase =
+					value === "failed" ? "failed" : value === "completed" ? "completed" : "fetching";
+				job.error = value === "failed" ? "Controlled fetch failure" : undefined;
+				if (value === "completed") job.endedAt = new Date().toISOString();
+			}
+		}
+		if (command === "resize") win.setContentSize(value.width, value.height);
 		if (command === "mapping") snapshot.path = mappedPath(pr.headCommitOid!, "mapping");
 		if (command === "account") account = value;
 		if (command === "askError") askError = value;
@@ -238,14 +333,16 @@ async function start() {
 			};
 			snapshot.messages.push(q.answer);
 			snapshot.runs.at(-1).state = "completed";
+			for (const job of jobs.filter((j) => j.kind === "question")) job.state = "completed";
 		}
 		if (command === "failed") {
 			const q = snapshot.questions.at(-1);
 			q.state = "failed";
 			q.error = "Controlled agent failure";
 			snapshot.runs.at(-1).state = "failed";
+			for (const job of jobs.filter((j) => j.kind === "question")) job.state = "failed";
 		}
-		return { calls, forbidden, snapshot };
+		return { calls, forbidden, snapshot, jobs };
 	});
 	ipcMain.handle("fixture:input", (_, event) => win.webContents.sendInputEvent(event));
 	ipcMain.handle("fixture:capture", async (_, name) => {

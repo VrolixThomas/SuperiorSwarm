@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewPathQuestion } from "../../../../shared/review-path-runtime";
 import type { AskMessage, CodeReference } from "../../../../shared/review-path-types";
 import { MarkdownRenderer } from "../../MarkdownRenderer";
+import { useReviewDraft, useReviewUI } from "../ReviewUIContext";
 
 export interface AskTabProps {
 	messages: AskMessage[];
@@ -32,16 +33,21 @@ export function AskTab({
 	onAddComment,
 	initialQuestion = "",
 }: AskTabProps) {
-	const [question, setQuestion] = useState(initialQuestion);
+	const { active } = useReviewUI();
+	const [question, setQuestion] = useReviewDraft("ask:text", initialQuestion);
+	const previousInitial = useRef(initialQuestion);
 	const [copyStatus, setCopyStatus] = useState("");
 	const [sending, setSending] = useState(false);
 	const sendingRef = useRef(false);
 	const [sendError, setSendError] = useState<string>();
 	const input = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => {
-		setQuestion(initialQuestion);
-		input.current?.focus();
-	}, [initialQuestion]);
+		if (previousInitial.current !== initialQuestion) {
+			setQuestion(initialQuestion);
+			previousInitial.current = initialQuestion;
+		}
+		if (active) input.current?.focus();
+	}, [initialQuestion, active, setQuestion]);
 	const send = async (text = question, context = anchor ?? undefined, clearDraft = true) => {
 		if (!available || pending || sendingRef.current || !text.trim()) return;
 		sendingRef.current = true;

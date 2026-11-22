@@ -1,13 +1,13 @@
 import type * as monaco from "monaco-editor";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatPrIdentifier } from "../../../../shared/pr-identifier";
 import type { AskMessage } from "../../../../shared/review-path-types";
 import {
 	reviewDraftBindingVersion,
 	setReviewDraftBinding,
 } from "../../../lib/review-draft-binding";
-import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { trpc } from "../../../trpc/client";
+import { useReviewDraft, useReviewUIStore } from "../ReviewUIContext";
 import { useGutterPlusButton } from "../hooks/useGutterPlusButton";
 import { useSelectionActions } from "../hooks/useSelectionActions";
 import type { StepDiffProps } from "./StepDiff";
@@ -73,15 +73,22 @@ export function useStepComments(
 	}: Options
 ) {
 	const utils = trpc.useUtils();
-	const intent = useReviewModeStore((s) => s.intent);
-	const clearIntent = useReviewModeStore((s) => s.clearIntent);
-	const [initialBody, setInitialBody] = useState("");
+	const intent = useReviewUIStore((s) => s.intent);
+	const clearIntent = useReviewUIStore((s) => s.clearIntent);
+	const draftScope = `${commitSha}:${currentFilePath}`;
+	const [initialBody, setInitialBody] = useReviewDraft(`comment:${draftScope}:initial`, "");
 	const [commentError, setCommentError] = useState("");
-	const [pendingSide, setPendingSide] = useState<"LEFT" | "RIGHT">("RIGHT");
-	const [pendingLine, setPendingLine] = useState<number | null>(null);
+	const [pendingSide, setPendingSide] = useReviewDraft<"LEFT" | "RIGHT">(
+		`comment:${draftScope}:side`,
+		"RIGHT"
+	);
+	const [pendingLine, setPendingLine] = useReviewDraft<number | null>(
+		`comment:${draftScope}:line`,
+		null
+	);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: read-only transition closes any pending composer
 	useEffect(() => {
-		setPendingLine((line) => (currentFilePath === null || line !== null ? null : line));
+		if (readOnly || currentFilePath === null) setPendingLine(null);
 	}, [currentFilePath, readOnly, commitSha]);
 
 	const ask = useCallback((anchor: AskMessage["anchor"]) => onAsk?.(anchor), [onAsk]);
@@ -99,7 +106,14 @@ export function useStepComments(
 				setPendingLine(anchor.endLine);
 			}
 		},
-		[readOnly, validDiffLines, validOriginalDiffLines]
+		[
+			readOnly,
+			validDiffLines,
+			validOriginalDiffLines,
+			setInitialBody,
+			setPendingSide,
+			setPendingLine,
+		]
 	);
 	useSelectionActions(onAsk || onSelection ? editorInstance : null, {
 		filePath: currentFilePath ?? "",
@@ -114,8 +128,11 @@ export function useStepComments(
 		onComposerOpenChange?.(pendingLine !== null);
 		return () => onComposerOpenChange?.(false);
 	}, [pendingLine, onComposerOpenChange]);
+	const previousCancel = useRef(cancelCommentNonce);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new nonce is an explicit cancellation request
 	useEffect(() => {
+		if (previousCancel.current === cancelCommentNonce) return;
+		previousCancel.current = cancelCommentNonce;
 		setPendingLine(null);
 		setInitialBody("");
 	}, [cancelCommentNonce]);
@@ -134,6 +151,9 @@ export function useStepComments(
 			);
 		onCommentRequestHandled?.();
 	}, [
+		setPendingLine,
+		setInitialBody,
+		setPendingSide,
 		commentRequest,
 		currentFilePath,
 		editorInstance,
@@ -214,7 +234,7 @@ export function useStepComments(
 	const handleCancelNew = useCallback(() => {
 		setPendingLine(null);
 		setInitialBody("");
-	}, []);
+	}, [setInitialBody, setPendingLine]);
 
 	const startNewComment = useCallback(() => {
 		if (readOnly || !editorInstance) return;
@@ -229,13 +249,24 @@ export function useStepComments(
 			setPendingSide(side);
 			setPendingLine(line);
 		}
-	}, [editorInstance, readOnly, validDiffLines, validOriginalDiffLines]);
+	}, [
+		editorInstance,
+		readOnly,
+		validDiffLines,
+		validOriginalDiffLines,
+		setInitialBody,
+		setPendingSide,
+		setPendingLine,
+	]);
 
-	const startAtLine = useCallback((line: number) => {
-		setInitialBody("");
-		setPendingSide("RIGHT");
-		setPendingLine(line);
-	}, []);
+	const startAtLine = useCallback(
+		(line: number) => {
+			setInitialBody("");
+			setPendingSide("RIGHT");
+			setPendingLine(line);
+		},
+		[setInitialBody, setPendingSide, setPendingLine]
+	);
 	useGutterPlusButton(readOnly ? null : editorInstance, startAtLine, validDiffLines);
 
 	useEffect(() => {

@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef } from "react";
 
 interface SidePanelProps {
+	active?: boolean;
+	compact?: boolean;
 	mode: "threads" | "ask";
 	openCount: number;
 	onModeChange: (mode: "threads" | "ask") => void;
@@ -8,18 +10,33 @@ interface SidePanelProps {
 	children: ReactNode;
 }
 
-export function SidePanel({ mode, openCount, onModeChange, onClose, children }: SidePanelProps) {
+export function SidePanel({
+	active = true,
+	compact = false,
+	mode,
+	openCount,
+	onModeChange,
+	onClose,
+	children,
+}: SidePanelProps) {
 	const panel = useRef<HTMLElement>(null);
 	useEffect(() => {
+		if (!active) return;
 		const previous = document.activeElement;
 		panel.current?.focus();
 		return () => {
-			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+			if (
+				panel.current?.contains(document.activeElement) &&
+				previous instanceof HTMLElement &&
+				previous.isConnected
+			)
+				previous.focus();
 		};
-	}, []);
+	}, [active]);
 	return (
 		<aside
 			ref={panel}
+			style={compact ? { width: "100%" } : undefined}
 			tabIndex={-1}
 			aria-label={mode === "ask" ? "Ask agent" : "Review threads"}
 			onKeyDown={(event) => {

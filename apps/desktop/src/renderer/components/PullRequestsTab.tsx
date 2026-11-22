@@ -11,6 +11,7 @@ import { ConnectBanner } from "./ConnectBanner";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { PullRequestGroup } from "./PullRequestGroup";
 import type { MergedPR } from "./PullRequestItem";
+import { ReviewPRSidebar } from "./ReviewPRSidebar";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
@@ -67,7 +68,11 @@ function PRContextMenu({
 
 // ── Main Tab ─────────────────────────────────────────────────────────────────
 
-export function PullRequestsTab() {
+export function PullRequestsTab({ navigationInRail = false }: { navigationInRail?: boolean } = {}) {
+	return navigationInRail ? <ReviewPRSidebar /> : <LegacyPullRequestsTab />;
+}
+
+function LegacyPullRequestsTab() {
 	const utils = trpc.useUtils();
 	const [openModalPR, setOpenModalPR] = useState<LinkablePR | null>(null);
 	const [linkError, setLinkError] = useState<string | null>(null);

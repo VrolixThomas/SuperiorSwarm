@@ -17,11 +17,13 @@ import { DiffPanel } from "./components/DiffPanel";
 import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
+import { NavRail } from "./components/NavRail";
 import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
+import { ReviewAgentJobCoordinator } from "./components/review-mode/useReviewAgentJob";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoordinator";
@@ -42,7 +44,6 @@ import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
-import { shouldShowReviewMode, useReviewModeStore } from "./stores/review-mode-store";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, shouldHydrateTabStore, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
@@ -225,6 +226,9 @@ function AuthenticatedApp() {
 
 			paneState.resetCounters(maxPaneId, maxSplitId);
 			resetFileTabCounter(maxFileTabId);
+			const restored = useTabStore.getState();
+			if (restored.activeWorkspaceId)
+				restored.setActiveWorkspace(restored.activeWorkspaceId, restored.activeWorkspaceCwd);
 		}
 	}, [restoreQuery.data]);
 
@@ -451,9 +455,6 @@ function AuthenticatedApp() {
 	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
-	const activeReview = useReviewModeStore((s) => s.active);
-	// Both reading and agent tabs stay inside the full-window PR shell.
-	const showReviewWorkspace = shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -465,7 +466,7 @@ function AuthenticatedApp() {
 	// Global canvas routes do not use the repository diff panel.
 	useEffect(() => {
 		if (!diffPanelRef.current) return;
-		if (sidebarSegment === "tickets" || sidebarSegment === "hermes") {
+		if (sidebarSegment === "tickets" || sidebarSegment === "hermes" || sidebarSegment === "prs") {
 			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
 			return;
 		}
@@ -536,120 +537,121 @@ function AuthenticatedApp() {
 	return (
 		<>
 			<TicketRefreshCoordinator />
-			{sidebarView === "settings" ? (
-				<SettingsPage />
-			) : showReviewWorkspace ? (
-				<div className="h-screen min-w-0 overflow-hidden">
-					<MainContentArea savedScrollback={savedScrollback} />
-				</div>
-			) : (
-				<>
-					<Group
-						orientation="horizontal"
-						defaultLayout={defaultLayout}
-						onLayoutChanged={onLayoutChanged}
-						className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
-					>
-						<Panel
-							id="sidebar"
-							panelRef={sidebarPanelRef}
-							defaultSize="288px"
-							minSize="232px"
-							maxSize="360px"
-							collapsible
-							collapsedSize="56px"
-							onResize={() => {
-								const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
-								setSidebarCollapsed(isCollapsed);
-							}}
-							className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
+			<ReviewAgentJobCoordinator />
+			<NavRail />
+			<div className="ml-[72px] h-screen min-w-0">
+				{sidebarView === "settings" ? (
+					<SettingsPage />
+				) : (
+					<>
+						<Group
+							orientation="horizontal"
+							defaultLayout={defaultLayout}
+							onLayoutChanged={onLayoutChanged}
+							className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
 						>
-							<Sidebar
-								collapsed={sidebarCollapsed}
-								onExpand={() => sidebarPanelRef.current?.expand()}
-							/>
-						</Panel>
-
-						<Separator className="panel-resize-handle" />
-
-						<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
-							<MainContentArea savedScrollback={savedScrollback} />
-						</Panel>
-
-						<Separator className="panel-resize-handle" />
-						<Panel
-							id="diff"
-							panelRef={diffPanelRef}
-							defaultSize="19.4%"
-							minSize={200}
-							maxSize="40%"
-							collapsible
-							collapsedSize="0%"
-							onResize={() => {
-								const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
-								if (collapsed && rightPanelOpen) closeDiffPanel();
-							}}
-						>
-							<DiffPanel onClose={closeDiffPanel} />
-						</Panel>
-					</Group>
-					{!rightPanelOpen &&
-						sidebarSegment === "repos" &&
-						!activeWorkspaceId?.startsWith("xro-") && (
-							<button
-								type="button"
-								onClick={openRightPanel}
-								className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-								title="Open panel"
+							<Panel
+								id="sidebar"
+								panelRef={sidebarPanelRef}
+								defaultSize="288px"
+								minSize="232px"
+								maxSize="360px"
+								collapsible
+								collapsedSize="0px"
+								onResize={() => {
+									const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
+									setSidebarCollapsed(isCollapsed);
+								}}
+								className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
 							>
-								<svg
-									width="8"
-									height="14"
-									viewBox="0 0 8 14"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="1.5"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									aria-hidden="true"
+								<Sidebar
+									navigationInRail
+									collapsed={sidebarCollapsed}
+									onExpand={() => sidebarPanelRef.current?.expand()}
+								/>
+							</Panel>
+
+							<Separator className="panel-resize-handle" />
+
+							<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
+								<MainContentArea savedScrollback={savedScrollback} />
+							</Panel>
+
+							<Separator className="panel-resize-handle" />
+							<Panel
+								id="diff"
+								panelRef={diffPanelRef}
+								defaultSize="19.4%"
+								minSize={200}
+								maxSize="40%"
+								collapsible
+								collapsedSize="0%"
+								onResize={() => {
+									const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
+									if (collapsed && rightPanelOpen) closeDiffPanel();
+								}}
+							>
+								<DiffPanel onClose={closeDiffPanel} />
+							</Panel>
+						</Group>
+						{!rightPanelOpen &&
+							sidebarSegment === "repos" &&
+							!activeWorkspaceId?.startsWith("xro-") && (
+								<button
+									type="button"
+									onClick={openRightPanel}
+									className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+									title="Open panel"
 								>
-									<path d="M7 1L1 7l6 6" />
-								</svg>
-							</button>
+									<svg
+										width="8"
+										height="14"
+										viewBox="0 0 8 14"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="1.5"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										aria-hidden="true"
+									>
+										<path d="M7 1L1 7l6 6" />
+									</svg>
+								</button>
+							)}
+						<AddRepositoryModal />
+						<CreateCrossRepoOrchestratorModal />
+						<CreateWorktreeModal />
+						<CreateFolderWorkspaceModal />
+						<SharedFilesPanel />
+						<DaemonStatus />
+						<CommandPalette />
+						<SearchEverywherePopup />
+						<PRReviewKeyboardListener />
+						{activeProjectId && (
+							<BranchPalette
+								projectId={activeProjectId}
+								onOpenActionMenu={(branch, currentBranch, position, mergeRef, isRemote) => {
+									setActionMenu({ branch, currentBranch, position, mergeRef, isRemote });
+								}}
+							/>
 						)}
-					<AddRepositoryModal />
-					<CreateCrossRepoOrchestratorModal />
-					<CreateWorktreeModal />
-					<CreateFolderWorkspaceModal />
-					<SharedFilesPanel />
-					<DaemonStatus />
-					<CommandPalette />
-					<SearchEverywherePopup />
-					<PRReviewKeyboardListener />
-					{activeProjectId && (
-						<BranchPalette
-							projectId={activeProjectId}
-							onOpenActionMenu={(branch, currentBranch, position, mergeRef, isRemote) => {
-								setActionMenu({ branch, currentBranch, position, mergeRef, isRemote });
-							}}
-						/>
-					)}
-					{activeProjectId && actionMenu && (
-						<BranchActionMenu
-							projectId={activeProjectId}
-							branch={actionMenu.branch}
-							currentBranch={actionMenu.currentBranch}
-							position={actionMenu.position}
-							mergeRef={actionMenu.mergeRef}
-							isRemote={actionMenu.isRemote}
-							onClose={() => setActionMenu(null)}
-							onMerge={handleMerge}
-							onRebase={handleRebase}
-							isMerging={isMerging}
-						/>
-					)}
-				</>
-			)}
+						{activeProjectId && actionMenu && (
+							<BranchActionMenu
+								projectId={activeProjectId}
+								branch={actionMenu.branch}
+								currentBranch={actionMenu.currentBranch}
+								position={actionMenu.position}
+								mergeRef={actionMenu.mergeRef}
+								isRemote={actionMenu.isRemote}
+								onClose={() => setActionMenu(null)}
+								onMerge={handleMerge}
+								onRebase={handleRebase}
+								isMerging={isMerging}
+							/>
+						)}
+					</>
+				)}
+			</div>
 			<InstallingOverlay />
 			<UpdateToast />
 			<WhatsNewModal />

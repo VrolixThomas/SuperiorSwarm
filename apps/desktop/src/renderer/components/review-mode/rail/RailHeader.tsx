@@ -1,8 +1,10 @@
 import { useState } from "react";
+import type { ReviewAgentJob } from "../../../../shared/review-agent-job";
 import type { ReviewPathSource } from "../../../lib/review-path-source";
 import { Bot, LoaderCircle, MoreHorizontal } from "./RailIcons";
 
 export function RailHeader({
+	job,
 	mode,
 	onModeChange,
 	source,
@@ -10,6 +12,7 @@ export function RailHeader({
 	showViewed = true,
 	showAgentControls = true,
 }: {
+	job?: ReviewAgentJob;
 	mode: "path" | "files";
 	onModeChange: (mode: "path" | "files") => void;
 	source: ReviewPathSource;
@@ -19,6 +22,7 @@ export function RailHeader({
 }) {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const { path, status } = source;
+	const preparing = job?.state === "preparing" || job?.state === "queued";
 	return (
 		<div className="relative shrink-0 border-b border-[var(--border-subtle)] py-3 pl-4 pr-3.5">
 			<div className="flex items-center justify-between gap-2">
@@ -52,7 +56,7 @@ export function RailHeader({
 							onClick={source.stop}
 							className="rounded-[6px] border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-secondary)]"
 						>
-							Stop
+							{preparing ? "Cancel" : "Stop"}
 						</button>
 					) : (
 						path && (
@@ -93,9 +97,11 @@ export function RailHeader({
 							aria-hidden="true"
 						/>
 						<span className="truncate">
-							{path?.agent.label} is reading{" "}
+							{preparing
+								? "Preparing review workspace"
+								: `${path?.agent.label ?? job?.agent.label ?? "Agent"} is reading`}{" "}
 							<span className="font-mono text-[11px]">
-								{path?.progress?.currentFile?.split("/").pop() ?? "the PR"}
+								{preparing ? "" : (path?.progress?.currentFile?.split("/").pop() ?? "the PR")}
 							</span>
 						</span>
 					</>

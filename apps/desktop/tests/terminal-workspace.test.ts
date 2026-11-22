@@ -704,6 +704,47 @@ describe("owned reading-path terminal attachment", () => {
 		db.delete(schema.terminalSessions).run();
 		failed(await create(id, ws.id), "REVIEW_TERMINAL_OWNERSHIP_MISMATCH");
 	});
+	test.each([false, true])(
+		"logical review rejects ordinary shell create/restore (restored=%s)",
+		async (restored) => {
+			const ws = workspace();
+			db.update(schema.workspaces)
+				.set({ type: "review", worktreeId: null })
+				.where(eq(schema.workspaces.id, ws.id))
+				.run();
+			if (restored) {
+				ensureTerminalSessionRow({ id: "shell", workspaceId: ws.id, cwd: ws.repoPath });
+				live = true;
+			}
+			failed(await create("shell", ws.id), "REVIEW_WORKSPACE_NOT_PREPARED");
+		}
+	);
+	test.each([false, true])(
+		"review shell requires a separate registered checkout (isolated=%s)",
+		async (isolated) => {
+			const ws = workspace();
+			const checkout = isolated ? directory("review-checkout") : ws.repoPath;
+			db.insert(schema.worktrees)
+				.values({
+					id: "review-wt",
+					projectId: `project-${ws.id}`,
+					path: checkout,
+					branch: "pr",
+					baseBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			db.update(schema.workspaces)
+				.set({ type: "review", worktreeId: "review-wt" })
+				.where(eq(schema.workspaces.id, ws.id))
+				.run();
+			if (isolated) {
+				expect(await create("shell", ws.id)).toEqual({ wasAttached: false });
+				expect(created).toEqual([{ id: "shell", cwd: checkout }]);
+			} else failed(await create("shell", ws.id), "REVIEW_WORKSPACE_NOT_PREPARED");
+		}
+	);
 	test("ordinary missing terminal retains shell creation behavior", async () => {
 		const ws = workspace();
 		ensureTerminalSessionRow({ id: "ordinary-shell", workspaceId: ws.id, cwd: ws.repoPath });

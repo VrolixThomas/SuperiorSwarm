@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { act } from "react";
 import type { PRContext } from "../src/shared/github-types";
+import type { ReviewAgentJob } from "../src/shared/review-agent-job";
 import type { ReviewPathIdentity, ReviewPathSnapshot } from "../src/shared/review-path-runtime";
 import { inIsolatedFileBrowserTest } from "./helpers/isolated-file-browser-test";
 if (
-	inIsolatedFileBrowserTest(import.meta.path, "F4 Ask acknowledgement and per-launch hook delivery")
+	inIsolatedFileBrowserTest(import.meta.path, "F4 Ask acknowledgement and durable job delivery")
 ) {
 	const { renderBrowserTest } = await import("./helpers/file-browser-renderer");
 	const { useReviewPath } = await import("../src/renderer/lib/review-path-source");
@@ -37,12 +38,41 @@ if (
 		questions: [],
 		messages: [],
 	});
-	test("overlapping Map and Ask invoke both owned launch callbacks once", async () => {
-		const attached: string[] = [];
+	test("overlapping Map and Ask acknowledge durable background tabs without launching a PTY", async () => {
+		const { useTabStore } = await import("../src/renderer/stores/tab-store");
+		const { usePaneStore } = await import("../src/renderer/stores/pane-store");
+		const { observeReviewAgentJob } = await import("../src/renderer/lib/review-agent-jobs");
+		usePaneStore.setState({ layouts: {}, focusedPaneId: null });
+		useTabStore.setState({
+			workspaceMetadata: {},
+			activeWorkspaceId: null,
+			activeWorkspaceCwd: "",
+		});
+		const tabs = useTabStore.getState();
+		tabs.ensureReviewTab(identity.workspaceId, pr);
+		tabs.setActiveWorkspace(identity.workspaceId, pr.repoPath);
+		const focused = usePaneStore.getState().focusedPaneId;
+		const selected = tabs.getActiveTabId();
+		const callbacks: string[] = [];
+		let created = 0;
+		let acknowledged = false;
 		const releases = new Map<string, (result: unknown) => void>();
+		const makeJob = (id: string, kind: ReviewAgentJob["kind"]): ReviewAgentJob => ({
+			id,
+			identity,
+			agent: { id: "codex", label: "Codex" },
+			kind,
+			state: "queued",
+			phase: "queued",
+			startedAt: "2026-11-22T12:00:00Z",
+			updatedAt: "2026-11-22T12:00:00Z",
+			attempt: 1,
+			trigger: "manual",
+			activity: [],
+		});
 		function Harness() {
 			const onLaunch = (launch: { terminalId?: string }) => {
-				if (launch.terminalId) attached.push(launch.terminalId);
+				if (launch.terminalId) callbacks.push(launch.terminalId);
 			};
 			const path = useReviewPath(pr, { headCommitOid: identity.headSha }, { identity, onLaunch });
 			const ask = useAskAgent(pr, { identity, onLaunch });
@@ -51,7 +81,9 @@ if (
 					type="button"
 					onClick={() => {
 						path.start({ agentId: "codex", alsoReview: false });
-						void ask.send("Why?");
+						void ask.send("Why?").then((ok) => {
+							acknowledged = ok;
+						});
 					}}
 				>
 					Launch both
@@ -59,32 +91,68 @@ if (
 			);
 		}
 		const h = await renderBrowserTest(<Harness />, [], false, {
+			electron: {
+				terminal: {
+					create: () => {
+						created++;
+					},
+				},
+			},
 			request: (path) => {
 				if (path === "reviewPath.get") return snapshot(identity);
-				if (path === "reviewPath.start" || path === "reviewPath.ask")
+				if (path === "reviewPath.jobs") return [];
+				if (path === "reviewPath.startJob" || path === "reviewPath.askJob")
 					return new Promise((resolve) => releases.set(path, resolve));
+				if (path === "aiReview.getSettings") return { cliPreset: "codex" };
 				if (path.includes("Settings"))
 					return { autoMapOnReviewRequest: false, alsoReview: false, defaultRailMode: "auto" };
 				throw Error(path);
 			},
 		});
 		try {
+			const readsBefore = h.calls.filter((call) => call.path === "reviewPath.get").length;
 			await act(async () => h.container.querySelector("button")?.click());
 			await h.settle();
-			await act(async () =>
-				releases.get("reviewPath.ask")?.({
-					snapshot: { ...snapshot(identity), pathVersion: 2 },
-					launch: { terminalId: "ask-owned" },
-				})
-			);
-			await act(async () =>
-				releases.get("reviewPath.start")?.({
-					snapshot: { ...snapshot(identity), pathVersion: 1 },
-					launch: { terminalId: "map-owned" },
-				})
-			);
+			expect(releases.size).toBe(2);
+			const askJob = makeJob("f4-ask-job", "question");
+			const mapJob = makeJob("f4-map-job", "mapping");
+			await act(async () => releases.get("reviewPath.askJob")?.(askJob));
 			await h.settle();
-			expect(attached).toEqual(["ask-owned", "map-owned"]);
+			expect(acknowledged).toBe(true);
+			expect(
+				tabs.getTabsByWorkspace(identity.workspaceId).filter((t) => t.kind === "review-agent")
+			).toHaveLength(1);
+			await act(async () => releases.get("reviewPath.startJob")?.(mapJob));
+			await h.settle();
+			expect(h.calls.filter((call) => call.path === "reviewPath.get")).toHaveLength(readsBefore);
+			expect(
+				tabs
+					.getTabsByWorkspace(identity.workspaceId)
+					.filter((t) => t.kind === "review-agent")
+					.map((t) => t.jobId)
+					.sort()
+			).toEqual(["f4-ask-job", "f4-map-job"]);
+			expect(tabs.getActiveTabId()).toBe(selected);
+			expect(usePaneStore.getState().focusedPaneId).toBe(focused);
+			// Repeated polling attaches metadata to the same tab; it never creates a PTY.
+			for (const job of [askJob, mapJob]) {
+				const running = {
+					...job,
+					state: "running" as const,
+					terminalId: `review-path:${job.id}:1`,
+					cwd: "/isolated",
+				};
+				observeReviewAgentJob(running);
+				observeReviewAgentJob(running);
+			}
+			expect(
+				tabs.getTabsByWorkspace(identity.workspaceId).filter((t) => t.kind === "review-agent")
+			).toHaveLength(2);
+			expect(created).toBe(0);
+			expect(callbacks).toEqual([]);
+			expect(
+				h.calls.some((call) => call.path === "reviewPath.start" || call.path === "reviewPath.ask")
+			).toBe(false);
 		} finally {
 			await h.cleanup();
 		}
@@ -148,7 +216,9 @@ if (
 			request: (path, input) => {
 				if (path === "reviewPath.get")
 					return snapshot((input as { identity: ReviewPathIdentity }).identity);
-				if (path === "reviewPath.ask") throw Error("pre-persistence rejection");
+				if (path === "reviewPath.askJob") throw Error("pre-persistence rejection");
+				if (path === "reviewPath.jobs") return [];
+				if (path === "aiReview.getSettings") return { cliPreset: "codex" };
 				throw Error(path);
 			},
 		});
@@ -162,10 +232,10 @@ if (
 			expect(h.container.textContent).toContain("pre-persistence rejection");
 			await act(async () => h.container.querySelector("button")?.click());
 			await h.settle();
-			const attempts = h.calls.filter((call) => call.path === "reviewPath.ask");
+			const attempts = h.calls.filter((call) => call.path === "reviewPath.askJob");
 			expect(attempts).toHaveLength(2);
-			expect((attempts[0]?.input as { id: string }).id).toBe(
-				(attempts[1]?.input as { id: string }).id
+			expect((attempts[0]?.input as { requestId: string }).requestId).toBe(
+				(attempts[1]?.input as { requestId: string }).requestId
 			);
 			await h.rerender(<Harness identity={{ ...current, headSha: "b".repeat(40) }} />);
 			expect(h.container.textContent).not.toContain("pre-persistence rejection");

@@ -45,6 +45,7 @@ export function getReviewPathApplication() {
 			return {
 				identity: { ...identity, headSha: details.headCommitOid },
 				changedFiles: requireCompleteChangedFiles(details),
+				details,
 			};
 		},
 	});

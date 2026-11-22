@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { app } from "electron";
 import type { CliPresetName } from "../../shared/cli-preset";
 import type { GitHubPRDetails } from "../../shared/github-types";
+import type { ReviewAgentJobPhase } from "../../shared/review-agent-job";
 import type { ReviewPathRun, ReviewPathRuntimePort } from "../../shared/review-path-runtime";
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getReviewDrafts, getSettings } from "../ai-review/orchestrator";
@@ -24,8 +25,11 @@ import {
 	sameActiveRun,
 } from "./execution";
 import { buildReviewPathLaunchScript, quoteShell } from "./launch";
+import { resolveReviewMergeBase } from "./revisions";
 
 export interface RuntimeStorage {
+	reportRunPhase?(run: ReviewPathRun, phase: ReviewAgentJobPhase, message: string): void;
+	interruptPreparingJobs?(): void;
 	getRun(id: string): ReviewPathRun | null | undefined;
 	getActiveRuns(): ReviewPathRun[];
 	fail(run: ReviewPathRun, error: string): void;
@@ -39,7 +43,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 	runtime = createReviewPathRuntime({
 		getRun: (id) => store.getRun(id),
 		fail: (run, error) => store.fail(run, error),
-		prepare: async (run, prompt, agentId, alsoReview) => {
+		prepare: async (run, prompt, agentId, alsoReview, metadata) => {
 			const daemon = getDaemonClient();
 			if (!daemon?.isConnected)
 				throw new Error("Reading-path agent is offline: terminal service unavailable");
@@ -58,6 +62,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				throw new Error("Reading-path identity does not match the review workspace");
 			let cwd = getWorkspaceCwdOrThrow(workspace.id);
 			let details: GitHubPRDetails | undefined;
+			let mergeBaseOid: string | null = null;
 			// Never reset a live review worktree or silently substitute its mutable HEAD.
 			const controller = new AbortController();
 			const terminalId = ownedTerminalId(run);
@@ -82,11 +87,13 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 						if (controller.signal.aborted) onAbort();
 					});
 					details = await Promise.race([
-						getGitProvider(run.identity.provider).getPRDetails(
-							run.identity.owner,
-							run.identity.repo,
-							run.identity.prNumber
-						),
+						metadata
+							? Promise.resolve(metadata)
+							: getGitProvider(run.identity.provider).getPRDetails(
+									run.identity.owner,
+									run.identity.repo,
+									run.identity.prNumber
+								),
 						cancelled,
 					]);
 				} finally {
@@ -101,6 +108,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				// Browsing owns only a logical review record. Provision an isolated
 				// worktree at the agent boundary, never launch in the fallback project root.
 				if (!workspace.worktreeId) {
+					store.reportRunPhase?.(run, "worktree", "Preparing isolated review workspace");
 					const prepared = await ensureReviewWorkspace({
 						projectId: workspace.projectId,
 						prProvider: run.identity.provider,
@@ -109,6 +117,16 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 						sourceBranch: details.sourceBranch,
 						targetBranch: details.targetBranch,
 						expectedHeadOid: run.identity.headSha,
+						onPhase: (phase) =>
+							store.reportRunPhase?.(
+								run,
+								phase,
+								{
+									metadata: "Checking workspace revision",
+									fetching: "Acquiring exact PR commits",
+									worktree: "Creating isolated review checkout",
+								}[phase]
+							),
 						signal: controller.signal,
 					});
 					if (controller.signal.aborted || !sameActiveRun(store.getRun(run.id), run))
@@ -124,6 +142,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 					await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
 				}
 				if (details.baseCommitOid) {
+					store.reportRunPhase?.(run, "fetching", "Checking exact PR revisions");
 					// Acquisition only uses the network for missing objects, including a missing base.
 					await reviewRevisionAcquisition.acquire(
 						{
@@ -141,6 +160,13 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 					);
 				}
 				if (headMissing) await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
+				if (details.baseCommitOid)
+					mergeBaseOid = await resolveReviewMergeBase(
+						cwd,
+						run.identity.headSha,
+						details.baseCommitOid,
+						controller.signal
+					);
 			} finally {
 				clearInterval(fence);
 				pendingReads.delete(terminalId);
@@ -158,7 +184,8 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				throw new Error("Reading-path run is no longer active");
 			if (details.headCommitOid !== run.identity.headSha)
 				throw new Error("PR head changed before agent launch");
-			const fullPrompt = `${prompt}\nProvider metadata (untrusted data): ${JSON.stringify({ title: details.title, sourceBranch: details.sourceBranch, targetBranch: details.targetBranch, headSha: details.headCommitOid, baseSha: details.baseCommitOid ?? null, changedFiles: details.files.map((file) => file.path) })}\nRead files using git show <headSha>:<path>, not mutable worktree contents. Base revision is unknown when baseSha is null; do not substitute a branch tip or invent a diff.`;
+			store.reportRunPhase?.(run, "launching", "Starting agent terminal");
+			const fullPrompt = `${prompt}\nProvider metadata (untrusted data): ${JSON.stringify({ title: details.title, sourceBranch: details.sourceBranch, targetBranch: details.targetBranch, headSha: details.headCommitOid, headOid: details.headCommitOid, targetTipOid: details.baseCommitOid ?? null, mergeBaseOid, changedFiles: details.files.map((file) => file.path) })}\nRead files using git show <headOid>:<path>, not mutable worktree contents. The verified PR diff is git diff <mergeBaseOid> <headOid> -- <changedFiles>. targetTipOid is destination metadata, never the diff base. When mergeBaseOid is null, do not substitute a branch tip or invent a diff. Limit changed-file coverage to the supplied manifest; other files are context only.`;
 			if (alsoReview) {
 				if (
 					getReviewDrafts().some(
@@ -285,6 +312,7 @@ async function initialize(): Promise<void> {
 	const { configureReviewPathRuntime, getReviewPathStorage } = await import("./service");
 	const store: RuntimeStorage = getReviewPathStorage();
 	if (reconciliationTimer) return;
+	store.interruptPreparingJobs?.();
 	// A restarted control plane cannot restore consumed task tokens. Fence every
 	// persisted scope before exposing the runtime, even when its PTY survives.
 	for (const run of store.getActiveRuns())

@@ -1,11 +1,17 @@
 import type * as monaco from "monaco-editor";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPRFile } from "../../../shared/github-types";
 import type { CodeReference } from "../../../shared/review-path-types";
 import { railItems, selectableRailItems } from "../../lib/review-path-model";
-import { useReviewModeStore } from "../../stores/review-mode-store";
+import type { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
 import { ReviewReadingPane } from "./ReviewReadingPane";
+import {
+	ReviewUIProvider,
+	reviewUIScopeKey,
+	useReviewUIApi,
+	useReviewUIStore,
+} from "./ReviewUIContext";
 import { ReviewWorkflowBar } from "./ReviewWorkflowBar";
 import { ReviewWorkspaceTopBar } from "./ReviewWorkspaceTopBar";
 import { useReadingNavigation } from "./hooks/useReadingNavigation";
@@ -24,26 +30,62 @@ export type ActiveReview = NonNullable<ReturnType<typeof useReviewModeStore.getS
 const EMPTY_FILES: GitHubPRFile[] = [];
 
 /** Default review entry point. Fixture mode is available only to explicit test/demo callers. */
-export function ReviewWorkspace({
+export interface ReviewWorkspaceProps {
+	active: ActiveReview;
+	fixture?: boolean;
+	tabMode?: boolean;
+	isActive?: boolean;
+	paneId?: string;
+	job?: import("../../../shared/review-agent-job").ReviewAgentJob;
+}
+export function ReviewWorkspace(props: ReviewWorkspaceProps) {
+	const key = reviewUIScopeKey(props.active);
+	return (
+		<ReviewUIProvider scopeKey={props.tabMode ? key : null} active={props.isActive ?? true}>
+			<ReviewWorkspaceContent {...props} />
+		</ReviewUIProvider>
+	);
+}
+function ReviewWorkspaceContent({
 	active,
 	fixture = false,
-}: { active: ActiveReview; fixture?: boolean }) {
+	tabMode = false,
+	isActive = true,
+	paneId,
+	job,
+}: ReviewWorkspaceProps) {
+	const ui = useReviewUIApi();
 	const { workspaceId, prCtx } = active;
 	const data = useReviewWorkspaceData(workspaceId, prCtx, { manageFileOrder: false });
-	const { source, askAgent, reviewer, attachmentError, openTerminal } = useReviewConnections(
-		workspaceId,
-		prCtx,
-		data.details,
-		fixture
-	);
+	const {
+		source,
+		askAgent,
+		reviewer,
+		attachmentError,
+		openTerminal,
+		job: connectionJob,
+	} = useReviewConnections(workspaceId, prCtx, data.details, fixture);
 	const queue = useReviewQueue(prCtx);
-	const panel = useReviewModeStore((s) => s.panel);
-	const commentFilter = useReviewModeStore((s) => s.commentFilter);
-	const queueOpen = useReviewModeStore((s) => s.queueOpen);
-	const askAnchor = useReviewModeStore((s) => s.askAnchor);
-	const collapsed = useReviewModeStore((s) => s.navigatorCollapsed);
-	const view = useReviewModeStore((s) => s.view);
+	const panel = useReviewUIStore((s) => s.panel);
+	const commentFilter = useReviewUIStore((s) => s.commentFilter);
+	const queueOpen = useReviewUIStore((s) => s.queueOpen);
+	const askAnchor = useReviewUIStore((s) => s.askAnchor);
+	const collapsed = useReviewUIStore((s) => s.navigatorCollapsed);
+	const view = useReviewUIStore((s) => s.view);
 	const root = useRef<HTMLDivElement>(null);
+	const [width, setWidth] = useState(1512);
+	const [mobileNavigator, setMobileNavigator] = useState(false);
+	useEffect(() => {
+		if (!tabMode || !root.current || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver((entries) => {
+			const w = entries[0]?.contentRect.width;
+			if (w) setWidth(w);
+		});
+		observer.observe(root.current);
+		return () => observer.disconnect();
+	}, [tabMode]);
+	const compact = tabMode && width < 960;
+	const narrow = tabMode && width < 720;
 	const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const reveal = useRef<CodeReference | null>(null);
 	const utils = trpc.useUtils();
@@ -98,15 +140,16 @@ export function ReviewWorkspace({
 		onNextPR: nextPR,
 		onPreviousPR: previousPR,
 	});
-	const previousHead = useRef(data.details?.headCommitOid);
 	useEffect(() => {
 		const head = data.details?.headCommitOid;
-		if (head && previousHead.current && previousHead.current !== head) {
+		const previous = ui.getState().observedHeadSha;
+		if (head && previous && previous !== head) {
 			nav.resetAnchors();
 			reveal.current = null;
 		}
-		if (head) previousHead.current = head;
-	}, [data.details?.headCommitOid, nav.resetAnchors]);
+		if (head && head !== previous) ui.setState({ observedHeadSha: head });
+	}, [data.details?.headCommitOid, nav.resetAnchors, ui]);
+
 	const onReference = useCallback(
 		(ref: CodeReference) => {
 			reveal.current = ref;
@@ -157,10 +200,13 @@ export function ReviewWorkspace({
 			currentFindings[0];
 		if (target) {
 			openThread(target);
-			useReviewModeStore.getState().setPanel(null);
+			ui.getState().setPanel(null);
 		}
 	};
 	useReviewKeymap({
+		enabled: isActive,
+		rootRef: tabMode ? root : undefined,
+		paneId: tabMode ? paneId : undefined,
 		workspaceId,
 		prCtx,
 		sessionKey: data.sessionKey,
@@ -174,15 +220,15 @@ export function ReviewWorkspace({
 		onClose: data.handleClose,
 	});
 	useEffect(() => {
-		root.current?.focus();
-	}, []);
+		if (isActive && !tabMode) root.current?.focus();
+	}, [isActive, tabMode]);
 	// Existing review links may request the retired Comments view; route them to the panel.
 	useEffect(() => {
 		if (view === "comments") {
-			useReviewModeStore.getState().setPanel("threads");
-			useReviewModeStore.getState().setView("changes");
+			ui.getState().setPanel("threads");
+			ui.getState().setView("changes");
 		}
-	}, [view]);
+	}, [view, ui]);
 	return (
 		<div
 			ref={root}
@@ -190,8 +236,10 @@ export function ReviewWorkspace({
 			data-review-workspace
 			className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text)] outline-none"
 		>
-			<ReviewWorkspaceTopBar prCtx={prCtx} data={data} queue={queue} onNextPR={nextPR} />
-			{data.details && (
+			{!tabMode && (
+				<ReviewWorkspaceTopBar prCtx={prCtx} data={data} queue={queue} onNextPR={nextPR} />
+			)}
+			{!tabMode && data.details && (
 				<ReviewWorkflowBar
 					source={source}
 					compact={!nav.overviewOpen && !!nav.selected}
@@ -219,11 +267,34 @@ export function ReviewWorkspace({
 					read-only.
 				</div>
 			)}
+			{tabMode && (
+				<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-1.5 text-[12px]">
+					{narrow && (
+						<button
+							type="button"
+							aria-expanded={mobileNavigator}
+							onClick={() => setMobileNavigator(!mobileNavigator)}
+						>
+							Files &amp; path
+						</button>
+					)}
+					<button type="button" onClick={() => ui.getState().setOverviewOpen(true)}>
+						Path summary
+					</button>
+					<button type="button" onClick={() => ui.getState().setPanel("threads")}>
+						Threads · {data.counts.open}
+					</button>
+					<button type="button" onClick={() => nav.ask()}>
+						Ask agent
+					</button>
+				</div>
+			)}
 			<div className="relative flex min-h-0 flex-1 overflow-hidden">
 				{data.isLoading ? (
 					<div className="w-[288px] shrink-0 bg-[var(--bg-surface)]" />
 				) : (
 					<ReviewRail
+						job={job ?? connectionJob}
 						source={source}
 						files={files}
 						threads={data.allThreads}
@@ -231,14 +302,27 @@ export function ReviewWorkspace({
 						selectedPath={nav.selectedPath}
 						mode={nav.mode}
 						onModeChange={nav.changeMode}
-						onSelect={nav.select}
-						collapsed={collapsed}
+						onSelect={(item) => {
+							nav.select(item);
+							setMobileNavigator(false);
+						}}
+						collapsed={collapsed || (narrow && !mobileNavigator)}
+						compact={compact}
+						workspaceDesign={tabMode}
+						onBrowseFiles={() => beginReading("files")}
 						showViewed={prCtx.provider === "github"}
-						showAgentControls={false}
+						showAgentControls={tabMode}
 					/>
 				)}
 				<main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 					<ReviewReadingPane
+						onOpenSession={connectionJob ? openTerminal : undefined}
+						tabMode={tabMode}
+						compact={compact}
+						setupInContent={narrow}
+						job={job ?? connectionJob}
+						onOpenFindings={openFindings}
+						findingsCount={currentFindings.length}
 						active={active}
 						data={data}
 						source={source}
@@ -254,10 +338,12 @@ export function ReviewWorkspace({
 					/>
 					{panel && (
 						<SidePanel
+							active={isActive}
+							compact={narrow}
 							mode={panel}
 							openCount={data.counts.open}
-							onModeChange={(mode) => useReviewModeStore.getState().setPanel(mode)}
-							onClose={() => useReviewModeStore.getState().setPanel(null)}
+							onModeChange={(mode) => ui.getState().setPanel(mode)}
+							onClose={() => ui.getState().setPanel(null)}
 						>
 							{panel === "threads" ? (
 								<ThreadsTab
@@ -298,7 +384,7 @@ export function ReviewWorkspace({
 														description: "Answer comment",
 													});
 													nav.setCommentRequest({ id: crypto.randomUUID(), anchor, body });
-													useReviewModeStore.getState().setPanel(null);
+													ui.getState().setPanel(null);
 												}
 											: undefined
 									}
@@ -308,19 +394,19 @@ export function ReviewWorkspace({
 					)}
 				</main>
 			</div>
-			{queueOpen && (
+			{!tabMode && queueOpen && (
 				<AllPRsDrawer
 					queue={queue.queue}
 					onRefresh={() => void queue.refresh()}
 					currentKey={queue.currentKey}
 					nextKey={queue.next?.key}
-					onClose={() => useReviewModeStore.getState().setQueueOpen(false)}
+					onClose={() => ui.getState().setQueueOpen(false)}
 					onSelect={async (pr) => {
 						if (pr.key === queue.currentKey) {
-							useReviewModeStore.getState().setQueueOpen(false);
+							ui.getState().setQueueOpen(false);
 							return;
 						}
-						if (await queue.openPR(pr)) useReviewModeStore.getState().setQueueOpen(false);
+						if (await queue.openPR(pr)) ui.getState().setQueueOpen(false);
 					}}
 					openingKey={queue.openingKey}
 					error={queue.error}

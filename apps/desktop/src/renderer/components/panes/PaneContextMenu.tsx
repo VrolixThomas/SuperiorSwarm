@@ -7,6 +7,8 @@ interface PaneContextMenuProps {
 	onSplitRight: () => void;
 	onSplitDown: () => void;
 	onClosePane?: () => void;
+	onOpenBesideReview?: () => void;
+	onStopAgent?: () => void;
 	onClose: () => void;
 }
 
@@ -45,6 +47,8 @@ export function PaneContextMenu({
 	onSplitRight,
 	onSplitDown,
 	onClosePane,
+	onOpenBesideReview,
+	onStopAgent,
 	onClose,
 }: PaneContextMenuProps) {
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -71,7 +75,8 @@ export function PaneContextMenu({
 
 	// Clamp position so menu doesn't overflow the viewport
 	const menuWidth = 180;
-	const menuHeight = onClosePane ? 120 : 80;
+	const menuHeight =
+		80 + (onClosePane ? 40 : 0) + (onOpenBesideReview ? 28 : 0) + (onStopAgent ? 28 : 0);
 	const clampedX = Math.min(x, window.innerWidth - menuWidth - 8);
 	const clampedY = Math.min(y, window.innerHeight - menuHeight - 8);
 
@@ -124,6 +129,27 @@ export function PaneContextMenu({
 					</svg>
 				}
 			/>
+			{onOpenBesideReview && (
+				<MenuItem
+					label="Open beside Review"
+					icon="↔"
+					onClick={() => {
+						onOpenBesideReview();
+						onClose();
+					}}
+				/>
+			)}
+			{onStopAgent && (
+				<MenuItem
+					label="Stop agent"
+					variant="danger"
+					icon="■"
+					onClick={() => {
+						onStopAgent();
+						onClose();
+					}}
+				/>
+			)}
 			{onClosePane && (
 				<>
 					<div className="mx-1 my-1 h-px bg-[var(--border)]" />

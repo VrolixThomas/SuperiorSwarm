@@ -6,6 +6,7 @@ import type {
 	GitHubReviewThread,
 	UnifiedThread,
 } from "../../../../shared/github-types";
+import { ReviewUIProvider, useReviewUI } from "../ReviewUIContext";
 import { ReplyComposer } from "../thread/ReplyComposer";
 
 interface ZoneEntry {
@@ -75,11 +76,13 @@ function disposeZones(
 }
 
 function NewThreadWidget({
+	draftKey,
 	line,
 	initialBody = "",
 	onSave,
 	onCancel,
 }: {
+	draftKey: string;
 	line: number;
 	initialBody?: string;
 	onSave: (body: string) => void;
@@ -89,6 +92,7 @@ function NewThreadWidget({
 		<div className="mx-2 my-1 rounded-[6px] border border-[var(--accent)] bg-[var(--bg-surface)] p-2 text-[11px] shadow-lg">
 			<div className="mb-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">Line {line}</div>
 			<ReplyComposer
+				draftKey={draftKey}
 				initialValue={initialBody}
 				placeholder="Write a comment..."
 				ariaLabel="New comment"
@@ -121,6 +125,7 @@ export function useInlineCommentZones(
 	initialBody = "",
 	modelKey?: string
 ): void {
+	const context = useReviewUI();
 	const [modelVersion, setModelVersion] = useState(0);
 	const lastModelRef = useRef<monaco.editor.ITextModel | null>(null);
 	const lastModelKeyRef = useRef<string | undefined>(undefined);
@@ -177,11 +182,14 @@ export function useInlineCommentZones(
 
 		const renderLine = (lineThreads: UnifiedThread[], entry: ZoneEntry) => {
 			entry.root.render(
-				<div className="flex flex-col gap-0.5">
-					{lineThreads.map((thread) => (
-						<Fragment key={thread.id}>{renderThread(thread)}</Fragment>
-					))}
-				</div>
+				<ReviewUIProvider scopeKey={context.key} active={context.active}>
+					{" "}
+					<div className="flex flex-col gap-0.5">
+						{lineThreads.map((thread) => (
+							<Fragment key={thread.id}>{renderThread(thread)}</Fragment>
+						))}
+					</div>
+				</ReviewUIProvider>
 			);
 		};
 
@@ -278,12 +286,15 @@ export function useInlineCommentZones(
 				const zoneId = acc.addZone({ afterLineNumber: pendingLine, heightInLines, domNode });
 				const root = createRoot(inner);
 				root.render(
-					<NewThreadWidget
-						line={pendingLine}
-						initialBody={initialBody}
-						onSave={onSaveNew}
-						onCancel={onCancelNew}
-					/>
+					<ReviewUIProvider scopeKey={context.key} active={context.active}>
+						<NewThreadWidget
+							draftKey={`${modelKey}:${side}:${pendingLine}`}
+							line={pendingLine}
+							initialBody={initialBody}
+							onSave={onSaveNew}
+							onCancel={onCancelNew}
+						/>
+					</ReviewUIProvider>
 				);
 				const ro = new ResizeObserver(() => resizePendingZone());
 				ro.observe(inner);
@@ -300,12 +311,15 @@ export function useInlineCommentZones(
 			} else {
 				// Same pending line — refresh callbacks via re-render (cheap, in-place).
 				pending.root.render(
-					<NewThreadWidget
-						line={pendingLine}
-						initialBody={initialBody}
-						onSave={onSaveNew}
-						onCancel={onCancelNew}
-					/>
+					<ReviewUIProvider scopeKey={context.key} active={context.active}>
+						<NewThreadWidget
+							draftKey={`${modelKey}:${side}:${pendingLine}`}
+							line={pendingLine}
+							initialBody={initialBody}
+							onSave={onSaveNew}
+							onCancel={onCancelNew}
+						/>
+					</ReviewUIProvider>
 				);
 			}
 		});
@@ -320,6 +334,8 @@ export function useInlineCommentZones(
 		initialBody,
 		modelKey,
 		modelVersion,
+		context.key,
+		context.active,
 	]);
 
 	useEffect(() => {

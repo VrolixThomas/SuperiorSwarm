@@ -6,6 +6,7 @@ import { replaceEqualDeep } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { GitHubPRDetails, PRContext } from "../../shared/github-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
+import type { ReviewAgentJob } from "../../shared/review-agent-job";
 import type {
 	ReviewPathIdentity,
 	ReviewPathLaunchResult,
@@ -238,20 +239,26 @@ function useFixtureReviewPath(
 	};
 }
 
+export interface ReviewPathMutationResult {
+	snapshot?: ReviewPathSnapshot;
+	launch?: ReviewPathLaunchResult;
+	job?: ReviewAgentJob;
+}
 export interface ReviewPathTransport {
 	get(input: { identity: ReviewPathIdentity }): Promise<ReviewPathSnapshot>;
 	start(input: {
 		identity: ReviewPathIdentity;
 		agent: ReviewPath["agent"];
 		alsoReview: boolean;
-	}): Promise<{ snapshot: ReviewPathSnapshot; launch?: ReviewPathLaunchResult }>;
+	}): Promise<ReviewPathMutationResult>;
 	cancel(input: ReviewPathRunScope): Promise<ReviewPathSnapshot>;
 	ask(input: {
+		agent?: ReviewPath["agent"];
 		identity: ReviewPathIdentity;
 		id: string;
 		text: string;
 		anchor?: AskMessage["anchor"];
-	}): Promise<{ snapshot: ReviewPathSnapshot; launch?: ReviewPathLaunchResult }>;
+	}): Promise<ReviewPathMutationResult>;
 	cancelQuestion(input: ReviewPathRunScope): Promise<ReviewPathSnapshot>;
 	addContext(input: {
 		identity: ReviewPathIdentity;
@@ -327,11 +334,11 @@ export function createLiveReviewPathController(
 		}
 		for (const subscriber of subscribers) subscriber();
 	};
-	async function perform<
-		T extends
-			| ReviewPathSnapshot
-			| { snapshot: ReviewPathSnapshot; launch?: ReviewPathLaunchResult },
-	>(operation: () => Promise<T>, mutation?: string, id?: string): Promise<T | undefined> {
+	async function perform<T extends ReviewPathSnapshot | ReviewPathMutationResult>(
+		operation: () => Promise<T>,
+		mutation?: string,
+		id?: string
+	): Promise<T | undefined> {
 		const generation = ++sequence;
 		if (mutation) {
 			pendingMutations++;
@@ -346,15 +353,24 @@ export function createLiveReviewPathController(
 		}
 		try {
 			const result = await operation();
-			const incoming: ReviewPathSnapshot =
-				"snapshot" in result ? result.snapshot : (result as ReviewPathSnapshot);
-			if (reviewPathIdentityKey(incoming.identity) !== reviewPathIdentityKey(identity))
+			const incoming = "identity" in result ? (result as ReviewPathSnapshot) : result.snapshot;
+			const acknowledgedIdentity =
+				incoming?.identity ?? ("job" in result ? result.job?.identity : undefined);
+			if (
+				!acknowledgedIdentity ||
+				reviewPathIdentityKey(acknowledgedIdentity) !== reviewPathIdentityKey(identity)
+			)
 				throw new Error(
 					"Reading-path response identity mismatch. Refresh the PR to use its current head."
 				);
 			if (generation === sequence) {
 				pollFailures = 0;
-				publish({ ...state, snapshot: incoming, available: true, pollError: undefined });
+				publish({
+					...state,
+					...(incoming ? { snapshot: incoming } : {}),
+					available: true,
+					pollError: undefined,
+				});
 			}
 			// A later operation can supersede this snapshot, but not its owned launch result.
 			return mutation || generation === sequence ? result : undefined;
@@ -438,7 +454,11 @@ export function createLiveReviewPathController(
 				: Promise.resolve(undefined);
 		},
 		ask: (id: string, text: string, anchor?: AskMessage["anchor"]) =>
-			perform(() => transport.ask({ identity, id, text, anchor }), "ask", id),
+			perform(
+				() => transport.ask({ identity, id, text, anchor, agent: state.snapshot?.path?.agent }),
+				"ask",
+				id
+			),
 		cancelQuestion: (id: string) => {
 			const run = state.snapshot?.runs.find(
 				(run) => run.questionId === id && run.state === "running"
@@ -457,11 +477,35 @@ export function createLiveReviewPathController(
 // Lazy import keeps pure fixtures/tests independent from Electron IPC initialization.
 const liveTransport: ReviewPathTransport = {
 	get: async (input) => (await import("../trpc/client")).trpcVanilla.reviewPath.get.query(input),
-	start: async (input) =>
-		(await import("../trpc/client")).trpcVanilla.reviewPath.start.mutate(input),
+	start: async (input) => {
+		const { trpcVanilla } = await import("../trpc/client");
+		const job = await trpcVanilla.reviewPath.startJob.mutate({
+			...input,
+			requestId: crypto.randomUUID(),
+		});
+		(await import("./review-agent-jobs")).observeReviewAgentJob(job, true);
+		return { job };
+	},
 	cancel: async (input) =>
 		(await import("../trpc/client")).trpcVanilla.reviewPath.cancel.mutate(input),
-	ask: async (input) => (await import("../trpc/client")).trpcVanilla.reviewPath.ask.mutate(input),
+	ask: async (input) => {
+		const { trpcVanilla } = await import("../trpc/client");
+		const configured =
+			input.agent ??
+			(await trpcVanilla.aiReview.getSettings.query().then((settings) => ({
+				id: settings.cliPreset,
+				label: settings.cliPreset === "codex" ? "Codex" : "Claude Code",
+			})));
+		if (!configured) throw new Error("Choose a review agent before asking a question.");
+		const job = await trpcVanilla.reviewPath.askJob.mutate({
+			identity: input.identity,
+			requestId: input.id,
+			agent: configured,
+			question: { id: input.id, text: input.text, anchor: input.anchor },
+		});
+		(await import("./review-agent-jobs")).observeReviewAgentJob(job, true);
+		return { job };
+	},
 	cancelQuestion: async (input) =>
 		(await import("../trpc/client")).trpcVanilla.reviewPath.cancelQuestion.mutate(input),
 	addContext: async (input) =>

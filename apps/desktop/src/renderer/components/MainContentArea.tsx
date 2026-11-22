@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePaneStore } from "../stores/pane-store";
-import { shouldShowReviewMode, useReviewModeStore } from "../stores/review-mode-store";
+import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChip } from "./BranchChip";
@@ -9,8 +9,7 @@ import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionCon
 import { QuickActionPopover } from "./QuickActionPopover";
 import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
-import { ReviewAgentWorkspace } from "./review-mode/ReviewAgentWorkspace";
-import { ReviewModeShell } from "./review-mode/ReviewModeShell";
+import { PRReviewWorkspace } from "./review-mode/PRReviewWorkspace";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
 interface ContextMenuState {
@@ -25,11 +24,6 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	const cwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const layout = usePaneStore((s) => (activeWorkspaceId ? s.layouts[activeWorkspaceId] : null));
 	const activeReview = useReviewModeStore((s) => s.active);
-	const reviewView = useReviewModeStore((s) => s.view);
-	const reviewTabsOpen =
-		sidebarSegment === "prs" &&
-		activeReview?.workspaceId === activeWorkspaceId &&
-		reviewView === "terminal";
 
 	const [showQuickActionPopover, setShowQuickActionPopover] = useState(false);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -69,31 +63,18 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	if (sidebarSegment === "hermes") {
 		return <HermesSessionView />;
 	}
-	if (reviewTabsOpen && activeReview) {
+	if (sidebarSegment === "prs") {
+		if (activeReview && activeReview.workspaceId === activeWorkspaceId)
+			return (
+				<PRReviewWorkspace
+					active={activeReview}
+					layout={layout}
+					savedScrollback={savedScrollback}
+				/>
+			);
 		return (
-			<ReviewAgentWorkspace
-				active={activeReview}
-				layout={layout}
-				savedScrollback={savedScrollback}
-			/>
-		);
-	}
-
-	if (sidebarSegment === "prs" && !reviewTabsOpen) {
-		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview, reviewView)) {
-			return <ReviewModeShell />;
-		}
-
-		return (
-			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
-				<div className="max-w-[320px] px-6 text-center">
-					<div className="text-[13px] font-medium text-[var(--text-secondary)]">
-						Select a pull request
-					</div>
-					<div className="mt-1 text-[12px] leading-5 text-[var(--text-quaternary)]">
-						Open PRs stay available in the sidebar while you review.
-					</div>
-				</div>
+			<main className="flex h-full items-center justify-center text-[13px] text-[var(--text-secondary)]">
+				Select a pull request from the sidebar.
 			</main>
 		);
 	}

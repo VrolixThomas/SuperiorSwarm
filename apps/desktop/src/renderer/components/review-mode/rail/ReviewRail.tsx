@@ -6,6 +6,7 @@ import {
 	useState,
 } from "react";
 import type { UnifiedThread } from "../../../../shared/github-types";
+import type { ReviewAgentJob } from "../../../../shared/review-agent-job";
 import {
 	type RailFileItem,
 	countsByPath,
@@ -22,6 +23,10 @@ import { RailHeader } from "./RailHeader";
 
 export interface ReviewRailProps {
 	source: ReviewPathSource;
+	job?: ReviewAgentJob;
+	compact?: boolean;
+	workspaceDesign?: boolean;
+	onBrowseFiles?: () => void;
 	files: { path: string }[];
 	threads: UnifiedThread[];
 	viewed: ReadonlySet<string>;
@@ -36,6 +41,7 @@ export interface ReviewRailProps {
 const clamp = (width: number) => Math.min(360, Math.max(240, width));
 
 export function ReviewRail({
+	job,
 	source,
 	files,
 	threads,
@@ -47,6 +53,9 @@ export function ReviewRail({
 	collapsed = false,
 	showViewed = true,
 	showAgentControls = true,
+	compact = false,
+	workspaceDesign = false,
+	onBrowseFiles,
 }: ReviewRailProps) {
 	const defaultMode = useReviewPathSettingsStore((state) => state.defaultRailMode);
 	const mode = resolveRailMode(override, defaultMode, source.status);
@@ -111,10 +120,11 @@ export function ReviewRail({
 		<nav
 			ref={navRef}
 			aria-label={mode === "path" ? "Reading path" : "Changed files"}
-			style={{ width }}
+			style={{ width: compact ? 236 : width }}
 			className="relative flex min-h-0 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]"
 		>
 			<RailHeader
+				job={job}
 				mode={mode}
 				onModeChange={onModeChange}
 				source={source}
@@ -123,7 +133,11 @@ export function ReviewRail({
 				showAgentControls={showAgentControls}
 			/>
 			{showAgentControls && (source.status === "none" || source.status === "failed") && (
-				<MapPathCard source={source} />
+				<MapPathCard
+					source={source}
+					workspaceDesign={workspaceDesign}
+					onBrowseFiles={onBrowseFiles}
+				/>
 			)}
 			{mode === "path" ? (
 				<PathRail {...listProps} mapping={source.status === "mapping"} />
@@ -138,7 +152,7 @@ export function ReviewRail({
 				aria-valuenow={width}
 				aria-valuemin={240}
 				aria-valuemax={360}
-				onPointerDown={startResize}
+				onPointerDown={compact ? undefined : startResize}
 				onKeyDown={(event) => {
 					if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
 						event.preventDefault();

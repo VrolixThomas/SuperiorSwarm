@@ -1,5 +1,7 @@
 import type { Pane } from "../../../shared/pane-types";
 import { isReviewPathTerminal } from "../../../shared/terminal-create";
+import { usePaneStore } from "../../stores/pane-store";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { CrossRepoOrchestratorCanvas } from "../CrossRepoOrchestratorCanvas";
 import { DiffFileTab } from "../DiffFileTab";
@@ -9,7 +11,9 @@ import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { SolveReviewTab } from "../SolveReviewTab";
 import { Terminal } from "../Terminal";
+import { ReviewAgentTab } from "../review-mode/ReviewAgentTab";
 import { ReviewAgentTerminal } from "../review-mode/ReviewAgentTerminal";
+import { ReviewWorkspace } from "../review-mode/ReviewWorkspace";
 import { ReviewTab } from "../review/ReviewTab";
 
 export function PaneContent({
@@ -27,6 +31,9 @@ export function PaneContent({
 	);
 	const projectId = workspaceQuery.data?.projectId ?? null;
 
+	const metadata = useTabStore((s) => s.workspaceMetadata[workspaceId]);
+	const shellReady = metadata?.type !== "review" || !!metadata.reviewWorktreePath;
+	const focused = usePaneStore((s) => s.focusedPaneId === pane.id);
 	const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? null;
 	const terminalTabs = pane.tabs.filter((t) => t.kind === "terminal");
 
@@ -52,7 +59,7 @@ export function PaneContent({
 							initialContent={savedScrollback[tab.id]}
 							active={tab.id === pane.activeTabId}
 						/>
-					) : (
+					) : shellReady ? (
 						<Terminal
 							id={tab.id}
 							cwd={tab.kind === "terminal" ? tab.cwd : undefined}
@@ -60,11 +67,55 @@ export function PaneContent({
 							initialContent={savedScrollback[tab.id]}
 							active={tab.id === pane.activeTabId}
 						/>
+					) : (
+						<p className="p-6 text-[13px] text-[var(--text-secondary)]">
+							Start an agent to prepare an isolated review worktree before opening this shell.
+						</p>
 					)}
 				</div>
 			))}
 
-			{/* Non-terminal: mount only if active */}
+			{pane.tabs
+				.filter((t) => t.kind === "pr-review")
+				.map(
+					(tab) =>
+						tab.kind === "pr-review" && (
+							<div
+								key={tab.id}
+								className={`absolute inset-0 ${tab.id === pane.activeTabId ? "visible" : "invisible"}`}
+								inert={tab.id !== pane.activeTabId}
+							>
+								<ReviewWorkspace
+									active={{ workspaceId: tab.workspaceId, prCtx: tab.prCtx }}
+									tabMode
+									isActive={focused && tab.id === pane.activeTabId}
+									paneId={pane.id}
+								/>
+							</div>
+						)
+				)}
+			{pane.tabs
+				.filter((t) => t.kind === "review-agent")
+				.map(
+					(tab) =>
+						tab.kind === "review-agent" && (
+							<div
+								key={tab.id}
+								className={`absolute inset-0 ${tab.id === pane.activeTabId ? "visible" : "invisible"}`}
+								inert={tab.id !== pane.activeTabId}
+							>
+								<ReviewAgentTab
+									workspaceId={workspaceId}
+									jobId={tab.jobId}
+									active={tab.id === pane.activeTabId}
+									savedScrollback={savedScrollback}
+									legacyTerminalId={tab.terminalId}
+									legacyCwd={tab.cwd}
+								/>
+							</div>
+						)
+				)}
+			{/* Other documents mount only when active. */}
 			{activeTab?.kind === "diff-file" && (
 				<div className="absolute inset-0">
 					<DiffFileTab

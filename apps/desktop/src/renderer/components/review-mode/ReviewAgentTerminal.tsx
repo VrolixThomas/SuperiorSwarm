@@ -1,3 +1,4 @@
+import { revealReview } from "../../lib/review-agent-jobs";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
 import { Terminal } from "../Terminal";
@@ -66,11 +67,11 @@ export function ReviewAgentTerminal({
 							type="button"
 							onClick={() => {
 								useReviewModeStore.getState().setQueueOpen(false);
-								useReviewModeStore.getState().setView("changes");
+								revealReview(workspaceId);
 							}}
 							className="rounded-md bg-[var(--accent)] px-3 py-2 text-[12px] font-medium text-[var(--accent-foreground)]"
 						>
-							Back to PR review
+							Open reading path
 						</button>
 					)}
 					{!ended && !state.isPending && (

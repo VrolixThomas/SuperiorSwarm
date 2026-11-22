@@ -5,9 +5,9 @@ import type { GitHubPRDetails, PRContext, UnifiedThread } from "../../../../shar
 import type { AskMessage, CodeReference, FocusRange } from "../../../../shared/review-path-types";
 import { changesThreadsForFile } from "../../../lib/pr-review-threads";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
-import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { useTabStore } from "../../../stores/tab-store";
 import { trpc } from "../../../trpc/client";
+import { useReviewUIStore } from "../ReviewUIContext";
 import { useContextDefinition } from "../hooks/useContextDefinition";
 import { useFocusDecorations } from "../hooks/useFocusDecorations";
 import { useInlineCommentZones } from "../hooks/useInlineCommentZones";
@@ -21,6 +21,7 @@ import { useStepThreadRenderer } from "./useStepThreadRenderer";
 import { useStepViewport } from "./useStepViewport";
 
 export interface StepDiffProps {
+	forceUnified?: boolean;
 	filePath?: string | null;
 	header?: ReactNode;
 	focus?: FocusRange[];
@@ -51,6 +52,7 @@ function lineCount(content: string): number {
 }
 
 export function useStepDiff({
+	forceUnified = false,
 	workspaceId,
 	reviewDraftId,
 	header,
@@ -74,7 +76,8 @@ export function useStepDiff({
 	readOnly = false,
 }: StepDiffProps) {
 	const utils = trpc.useUtils();
-	const diffMode = useTabStore((s) => s.diffMode);
+	const preferredDiffMode = useTabStore((s) => s.diffMode);
+	const diffMode = forceUnified ? "inline" : preferredDiffMode;
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const setMarkdownPreviewMode = useTabStore((s) => s.setMarkdownPreviewMode);
@@ -86,8 +89,8 @@ export function useStepDiff({
 	);
 	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
 	const advanceFile = usePRReviewSessionStore((s) => s.advanceFile);
-	const publishedCommentsVisible = useReviewModeStore((s) => s.publishedCommentsVisible);
-	const togglePublishedComments = useReviewModeStore((s) => s.togglePublishedComments);
+	const publishedCommentsVisible = useReviewUIStore((s) => s.publishedCommentsVisible);
+	const togglePublishedComments = useReviewUIStore((s) => s.togglePublishedComments);
 	const [editor, setEditor] = useState<monaco.editor.IStandaloneDiffEditor | null>(null);
 	const currentFilePath =
 		filePath !== undefined ? filePath : (activeFilePath ?? fileOrder[0] ?? null);
@@ -249,7 +252,8 @@ export function useStepDiff({
 		modifiedContent,
 		activeThreadOnThisFile,
 		fallbackThreads,
-		setShowOutdated
+		setShowOutdated,
+		details.headCommitOid
 	);
 
 	return {

@@ -6,6 +6,7 @@ export interface PRReviewThreadRef {
 }
 
 export interface PRReviewSession {
+	drafts?: Record<string, unknown>;
 	activeFilePath: string | null;
 	activeThreadId: string | null;
 	scrollByFile: Map<string, number>;
@@ -25,6 +26,7 @@ export interface PRReviewSessionStore {
 	setOverviewScroll: (key: string, top: number) => void;
 	setFileOrder: (key: string, files: string[]) => void;
 	setThreadOrder: (key: string, refs: PRReviewThreadRef[]) => void;
+	setDraft: (key: string, name: string, value: unknown) => void;
 	dropSession: (key: string) => void;
 	dropSessionsForWorkspace: (workspaceId: string) => void;
 }
@@ -183,6 +185,12 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 			return next === state.sessions ? state : { sessions: next };
 		}),
 
+	setDraft: (key, name, value) =>
+		set((state) => ({
+			sessions: withSession(state, key, (s) =>
+				Object.is(s.drafts?.[name], value) ? s : { ...s, drafts: { ...s.drafts, [name]: value } }
+			),
+		})),
 	dropSession: (key) =>
 		set((state) => {
 			if (!state.sessions.has(key)) return state;

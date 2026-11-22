@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { GitHubPRFile } from "../../../../shared/github-types";
 import type {
 	AskMessage,
@@ -14,8 +14,8 @@ import {
 } from "../../../lib/review-path-model";
 import type { ReviewPathSource } from "../../../lib/review-path-source";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
-import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { useReviewPathSettingsStore } from "../../../stores/review-path-settings-store";
+import { useReviewDraft, useReviewUI, useReviewUIApi, useReviewUIStore } from "../ReviewUIContext";
 
 export function useReadingNavigation({
 	source,
@@ -36,23 +36,37 @@ export function useReadingNavigation({
 	onNextPR: () => void;
 	onPreviousPR: () => void;
 }) {
-	const railMode = useReviewModeStore((s) => s.railMode);
-	const overviewOpen = useReviewModeStore((s) => s.overviewOpen);
+	const ui = useReviewUIApi();
+	const { key: scopeKey } = useReviewUI();
+	const railMode = useReviewUIStore((s) => s.railMode);
+	const overviewOpen = useReviewUIStore((s) => s.overviewOpen);
 	const defaultMode = useReviewPathSettingsStore((s) => s.defaultRailMode);
 	const selectedPath = usePRReviewSessionStore(
 		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
 	);
-	const [transient, setTransient] = useState<ContextFileStep | null>(null);
-	const [selection, setSelection] = useState<AskMessage["anchor"] | null>(null);
-	const [question, setQuestion] = useState("");
-	const [composerOpen, setComposerOpen] = useState(false);
-	const [cancelCommentNonce, setCancelCommentNonce] = useState(0);
-	const [commentRequest, setCommentRequest] = useState<{
-		id: string;
-		anchor: NonNullable<AskMessage["anchor"]>;
-		body?: string;
-	}>();
-	const mode = resolveRailMode(railMode, defaultMode, source.status);
+	const [transient, setTransient] = useReviewDraft<ContextFileStep | null>("nav:transient", null);
+	const [selection, setSelection] = useReviewDraft<AskMessage["anchor"] | null>(
+		"nav:selection",
+		null
+	);
+	const [question, setQuestion] = useReviewDraft("nav:question", "");
+	const [composerOpen, setComposerOpen] = useReviewDraft("nav:composerOpen", false);
+	const [cancelCommentNonce, setCancelCommentNonce] = useReviewDraft("nav:cancelCommentNonce", 0);
+	const [commentRequest, setCommentRequest] = useReviewDraft<
+		| {
+				id: string;
+				anchor: NonNullable<AskMessage["anchor"]>;
+				body?: string;
+		  }
+		| undefined
+	>("nav:commentRequest", undefined);
+	const requestedMode = resolveRailMode(railMode, defaultMode, source.status);
+	const mode =
+		requestedMode === "path" &&
+		source.status === "mapping" &&
+		!source.path?.entries.some((entry) => entry.steps.length)
+			? "files"
+			: requestedMode;
 	const items = useMemo(
 		() => selectableRailItems(railItems(source.path, files, mode)),
 		[source.path, files, mode]
@@ -72,11 +86,11 @@ export function useReadingNavigation({
 	const select = useCallback(
 		(item: RailFileItem) => {
 			usePRReviewSessionStore.getState().selectFile(sessionKey, item.path);
-			useReviewModeStore.getState().setOverviewOpen(false);
-			useReviewModeStore.getState().setView("changes");
+			ui.getState().setOverviewOpen(false);
+			ui.getState().setView("changes");
 			setSelection(null);
 		},
-		[sessionKey]
+		[sessionKey, ui, setSelection]
 	);
 	const openReference = useCallback(
 		(ref: CodeReference) => {
@@ -95,7 +109,7 @@ export function useReadingNavigation({
 				select({ kind: "context", id: step.id, path: ref.path, changed: false, step });
 			}
 		},
-		[items, select]
+		[items, select, setTransient]
 	);
 	const advance = useCallback(
 		(direction: 1 | -1) => {
@@ -106,18 +120,24 @@ export function useReadingNavigation({
 		},
 		[items, overviewOpen, selectedPath, select]
 	);
-	const changeMode = useCallback((mode: "path" | "files") => {
-		useReviewModeStore.getState().setRailMode(mode);
-		useReviewPathSettingsStore.getState().setDefaultRailMode(mode);
-	}, []);
-	const ask = useCallback((anchor?: AskMessage["anchor"], text = "") => {
-		useReviewModeStore.getState().setAskAnchor(anchor ?? null);
-		useReviewModeStore.getState().setPanel("ask");
-		setQuestion(text);
-	}, []);
+	const changeMode = useCallback(
+		(mode: "path" | "files") => {
+			ui.getState().setRailMode(mode);
+			if (!scopeKey) useReviewPathSettingsStore.getState().setDefaultRailMode(mode);
+		},
+		[ui, scopeKey]
+	);
+	const ask = useCallback(
+		(anchor?: AskMessage["anchor"], text = "") => {
+			ui.getState().setAskAnchor(anchor ?? null);
+			ui.getState().setPanel("ask");
+			setQuestion(text);
+		},
+		[ui, setQuestion]
+	);
 	const onAction = useCallback(
 		(action: ReviewKeyAction) => {
-			const store = useReviewModeStore.getState();
+			const store = ui.getState();
 			switch (action) {
 				case "next":
 					advance(1);
@@ -172,6 +192,9 @@ export function useReadingNavigation({
 			}
 		},
 		[
+			ui,
+			setCancelCommentNonce,
+			setComposerOpen,
 			advance,
 			changeMode,
 			mode,
@@ -190,8 +213,8 @@ export function useReadingNavigation({
 		setSelection(null);
 		setCommentRequest(undefined);
 		setCancelCommentNonce((nonce) => nonce + 1);
-		useReviewModeStore.getState().setAskAnchor(null);
-	}, []);
+		ui.getState().setAskAnchor(null);
+	}, [ui, setSelection, setCommentRequest, setCancelCommentNonce]);
 	return {
 		resetAnchors,
 		mode,

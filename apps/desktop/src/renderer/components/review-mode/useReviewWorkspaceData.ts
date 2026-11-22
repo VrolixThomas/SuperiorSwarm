@@ -8,9 +8,9 @@ import {
 } from "../../lib/pr-review-threads";
 import { openThreadInChanges, openThreadInComments } from "../../lib/review-mode-nav";
 import { resetReviewSnapshotAcquisition } from "../../lib/snapshot-acquisition";
-import { useReviewModeStore } from "../../stores/review-mode-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { useReviewUIApi, useReviewUIStore } from "./ReviewUIContext";
 import type { ThreadCallbacks } from "./thread/ThreadCard";
 import { useReviewAgentActions } from "./useReviewAgentActions";
 import { useReviewData } from "./useReviewData";
@@ -20,9 +20,10 @@ export function useReviewWorkspaceData(
 	prCtx: PRContext,
 	options: { manageFileOrder?: boolean } = {}
 ) {
-	const setView = useReviewModeStore((s) => s.setView);
-	const setCommentFilter = useReviewModeStore((s) => s.setCommentFilter);
-	const closeReview = useReviewModeStore((s) => s.close);
+	const ui = useReviewUIApi();
+	const setView = useReviewUIStore((s) => s.setView);
+	const setCommentFilter = useReviewUIStore((s) => s.setCommentFilter);
+	const closeReview = useReviewUIStore((s) => s.close);
 	const [submitOpen, setSubmitOpen] = useState(false);
 	const utils = trpc.useUtils();
 	const {
@@ -112,7 +113,7 @@ export function useReviewWorkspaceData(
 			onOpenInChanges: (path, threadId) => openThreadInChanges(workspaceId, prCtx, path, threadId),
 			onOpenInComments: (path, threadId) => {
 				const thread = allThreads.find((candidate) => candidate.id === threadId);
-				const filter = useReviewModeStore.getState().commentFilter;
+				const filter = ui.getState().commentFilter;
 				if (thread && !matchesReviewFilter(thread, filter)) setCommentFilter("all");
 				openThreadInComments(workspaceId, prCtx, path, threadId);
 			},
@@ -166,6 +167,7 @@ export function useReviewWorkspaceData(
 			},
 		};
 	}, [
+		ui,
 		addReviewComment,
 		allThreads,
 		deleteDraftComment,

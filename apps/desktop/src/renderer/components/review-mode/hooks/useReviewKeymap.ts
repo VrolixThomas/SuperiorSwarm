@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { type RefObject, useCallback, useEffect, useMemo } from "react";
 import type { PRContext, UnifiedThread } from "../../../../shared/github-types";
 import {
 	canAcceptDraft,
@@ -11,12 +11,17 @@ import {
 } from "../../../lib/pr-review-threads";
 import { type ReviewKeyAction, mapReviewKey } from "../../../lib/review-keymap";
 import { openThreadInChanges } from "../../../lib/review-mode-nav";
+import { usePaneStore } from "../../../stores/pane-store";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
-import { type ReviewView, useReviewModeStore } from "../../../stores/review-mode-store";
+import type { ReviewView } from "../../../stores/review-mode-store";
 import { trpc } from "../../../trpc/client";
+import { useReviewUIStore } from "../ReviewUIContext";
 import type { ThreadCallbacks } from "../thread/ThreadCard";
 
 interface UseReviewKeymapOptions {
+	enabled?: boolean;
+	rootRef?: RefObject<HTMLElement | null>;
+	paneId?: string;
 	layout?: "path";
 	onAction?: (action: ReviewKeyAction) => boolean;
 	workspaceId: string;
@@ -75,6 +80,9 @@ function nextThreadRef(
 }
 
 export function useReviewKeymap({
+	enabled = true,
+	rootRef,
+	paneId,
 	layout,
 	onAction,
 	workspaceId,
@@ -96,14 +104,14 @@ export function useReviewKeymap({
 	);
 	const advanceFile = usePRReviewSessionStore((s) => s.advanceFile);
 	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
-	const setView = useReviewModeStore((s) => s.setView);
-	const toggleNavigator = useReviewModeStore((s) => s.toggleNavigator);
-	const drawerOpen = useReviewModeStore((s) => s.drawerOpen);
-	const setDrawerOpen = useReviewModeStore((s) => s.setDrawerOpen);
-	const close = useReviewModeStore((s) => s.close);
-	const sendIntent = useReviewModeStore((s) => s.sendIntent);
-	const commentFilter = useReviewModeStore((s) => s.commentFilter);
-	const publishedCommentsVisible = useReviewModeStore((s) => s.publishedCommentsVisible);
+	const setView = useReviewUIStore((s) => s.setView);
+	const toggleNavigator = useReviewUIStore((s) => s.toggleNavigator);
+	const drawerOpen = useReviewUIStore((s) => s.drawerOpen);
+	const setDrawerOpen = useReviewUIStore((s) => s.setDrawerOpen);
+	const close = useReviewUIStore((s) => s.close);
+	const sendIntent = useReviewUIStore((s) => s.sendIntent);
+	const commentFilter = useReviewUIStore((s) => s.commentFilter);
+	const publishedCommentsVisible = useReviewUIStore((s) => s.publishedCommentsVisible);
 	const isGitHubPR = prCtx.provider === "github";
 	const currentFilePath = activeFilePath ?? fileOrder[0] ?? null;
 
@@ -275,7 +283,14 @@ export function useReviewKeymap({
 
 	useEffect(() => {
 		function onKeyDown(event: KeyboardEvent) {
-			if (event.defaultPrevented) return;
+			if (!enabled || event.defaultPrevented) return;
+			if (paneId && usePaneStore.getState().focusedPaneId !== paneId) return;
+			if (
+				rootRef &&
+				event.target !== document.body &&
+				!(event.target instanceof Node && rootRef.current?.contains(event.target))
+			)
+				return;
 			if (isReviewEditableTarget(event.target)) return;
 
 			const action = mapReviewKey(event, view, { layout });
@@ -287,5 +302,5 @@ export function useReviewKeymap({
 
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [dispatchAction, view, layout]);
+	}, [dispatchAction, view, layout, enabled, rootRef, paneId]);
 }

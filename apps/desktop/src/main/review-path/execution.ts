@@ -1,4 +1,5 @@
 import type { CliPresetName } from "../../shared/cli-preset";
+import type { GitHubPRDetails } from "../../shared/github-types";
 import type { ReviewPathRun, ReviewPathRuntimePort } from "../../shared/review-path-runtime";
 import { buildMappingPrompt, buildQuestionPrompt } from "./prompt";
 
@@ -16,7 +17,8 @@ export interface ReviewPathExecutionDeps {
 		run: ReviewPathRun,
 		prompt: string,
 		agentId?: string,
-		alsoReview?: boolean
+		alsoReview?: boolean,
+		metadata?: GitHubPRDetails
 	) => Promise<OwnedReviewPathLaunch>;
 	launch: (
 		launch: OwnedReviewPathLaunch,
@@ -50,14 +52,20 @@ export function createReviewPathRuntime(deps: ReviewPathExecutionDeps): ReviewPa
 	function active(run: ReviewPathRun) {
 		return !cancelled.has(key(run)) && sameActiveRun(deps.getRun(run.id), run);
 	}
-	async function start(run: ReviewPathRun, prompt: string, agentId?: string, alsoReview = false) {
+	async function start(
+		run: ReviewPathRun,
+		prompt: string,
+		agentId?: string,
+		alsoReview = false,
+		metadata?: GitHubPRDetails
+	) {
 		const id = key(run);
 		const existing = launches.get(id);
 		if (existing) return existing;
 		if (!active(run)) throw new Error("Reading-path run is no longer active");
 		const pending = (async () => {
 			try {
-				const launch = await deps.prepare(run, prompt, agentId, alsoReview);
+				const launch = await deps.prepare(run, prompt, agentId, alsoReview, metadata);
 				if (launch.terminalId !== id) throw new Error("Unexpected reading-path terminal ownership");
 				if (!active(run)) throw new Error("Reading-path run is no longer active");
 				await deps.launch(
@@ -90,10 +98,10 @@ export function createReviewPathRuntime(deps: ReviewPathExecutionDeps): ReviewPa
 		await deps.stop(key(run));
 	}
 	return {
-		startMapping: ({ run, agent, alsoReview }) =>
-			start(run, buildMappingPrompt(run, alsoReview), agent.id, alsoReview),
+		startMapping: ({ run, agent, alsoReview, metadata }) =>
+			start(run, buildMappingPrompt(run, alsoReview), agent.id, alsoReview, metadata),
 		stopMapping: stop,
-		ask: ({ run, question }) => {
+		ask: ({ run, question, agent, metadata }) => {
 			if (
 				run.kind !== "question" ||
 				run.questionId !== question.id ||
@@ -102,7 +110,7 @@ export function createReviewPathRuntime(deps: ReviewPathExecutionDeps): ReviewPa
 				question.state !== "pending"
 			)
 				return Promise.reject(new Error("Question identity does not match its owned run"));
-			return start(run, buildQuestionPrompt(run, question));
+			return start(run, buildQuestionPrompt(run, question), agent?.id, false, metadata);
 		},
 		cancelQuestion: stop,
 	};

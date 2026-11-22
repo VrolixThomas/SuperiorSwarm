@@ -5,8 +5,8 @@ import type {
 	UnifiedThread,
 } from "../../../../shared/github-types";
 import { threadAuthor, threadDate } from "../../../lib/pr-review-threads";
-import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { MarkdownRenderer } from "../../MarkdownRenderer";
+import { useReviewDraft, useReviewUIStore } from "../ReviewUIContext";
 import { ReplyComposer } from "./ReplyComposer";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadStatusChip } from "./ThreadStatusChip";
@@ -207,10 +207,13 @@ export function ThreadCard({
 	const isAIDraft = aiThread !== null;
 	const isInlineResolvedGitHub =
 		variant === "inline" && githubThread !== null && githubThread.isResolved;
-	const [composer, setComposer] = useState<"reply" | "edit" | null>(null);
+	const [composer, setComposer] = useReviewDraft<"reply" | "edit" | null>(
+		`thread:${thread.id}:composer`,
+		null
+	);
 	const [collapsed, setCollapsed] = useState(isInlineResolvedGitHub ? defaultCollapsed : false);
-	const intent = useReviewModeStore((state) => state.intent);
-	const clearIntent = useReviewModeStore((state) => state.clearIntent);
+	const intent = useReviewUIStore((state) => state.intent);
+	const clearIntent = useReviewUIStore((state) => state.clearIntent);
 	const paddingClassName = variant === "full" ? "px-4" : "px-3";
 	const bodyPaddingClassName = variant === "full" ? "px-4 py-3" : "px-3 py-2.5";
 	const dateLabel = relativeDate(threadDate(thread));
@@ -238,7 +241,7 @@ export function ThreadCard({
 		}
 
 		clearIntent();
-	}, [clearIntent, intent, isAIDraft, thread.id, updateCollapsed]);
+	}, [clearIntent, intent, isAIDraft, thread.id, updateCollapsed, setComposer]);
 
 	if (collapsed && githubThread !== null) {
 		return (
@@ -363,6 +366,7 @@ export function ThreadCard({
 			{composer === "edit" && aiThread !== null && (
 				<div className={`border-t border-[var(--border-subtle)] pb-3 pt-2 ${paddingClassName}`}>
 					<ReplyComposer
+						draftKey={`${thread.id}:${composer}`}
 						placeholder="Edit comment"
 						ariaLabel="Edit comment"
 						submitLabel="Save"
@@ -380,6 +384,7 @@ export function ThreadCard({
 			{composer === "reply" && githubThread !== null && (
 				<div className={`border-t border-[var(--border-subtle)] pb-3 pt-2 ${paddingClassName}`}>
 					<ReplyComposer
+						draftKey={`${thread.id}:${composer}`}
 						placeholder="Reply..."
 						ariaLabel="Reply to thread"
 						submitLabel="Reply"

@@ -10,7 +10,8 @@ export function useStepViewport(
 	modifiedContent: string,
 	activeThreadOnThisFile: UnifiedThread | null,
 	fallbackThreads: UnifiedThread[],
-	setShowOutdated: (show: boolean) => void
+	setShowOutdated: (show: boolean) => void,
+	revision?: string
 ) {
 	const markdownPaneRef = useRef<HTMLDivElement>(null);
 	const fallbackThreadsRef = useRef<HTMLDivElement>(null);
@@ -43,10 +44,20 @@ export function useStepViewport(
 	useEffect(() => {
 		const editor = editorInstance?.getModifiedEditor();
 		if (!editor || currentFilePath === null) return;
+		const draftKey = `editorSelection:${revision ?? ""}:${currentFilePath}`;
+		const storedSelection = usePRReviewSessionStore.getState().sessions.get(sessionKey)?.drafts?.[
+			draftKey
+		] as monaco.ISelection | undefined;
+		if (storedSelection) editor.setSelection(storedSelection);
+		const selectionSub = editor.onDidChangeCursorSelection((event) =>
+			usePRReviewSessionStore.getState().setDraft(sessionKey, draftKey, event.selection)
+		);
 		const top = getScroll(sessionKey, currentFilePath);
 		if (top != null) editor.setScrollTop(top);
 		let raf = 0;
+		let latestTop = editor.getScrollTop();
 		const sub = editor.onDidScrollChange(() => {
+			latestTop = editor.getScrollTop();
 			cancelAnimationFrame(raf);
 			raf = requestAnimationFrame(() => {
 				setScroll(sessionKey, currentFilePath, editor.getScrollTop());
@@ -54,9 +65,19 @@ export function useStepViewport(
 		});
 		return () => {
 			cancelAnimationFrame(raf);
+			setScroll(sessionKey, currentFilePath, latestTop);
 			sub.dispose();
+			selectionSub.dispose();
 		};
-	}, [currentFilePath, editorInstance, getScroll, sessionKey, setScroll, modifiedContent]);
+	}, [
+		currentFilePath,
+		editorInstance,
+		getScroll,
+		sessionKey,
+		setScroll,
+		modifiedContent,
+		revision,
+	]);
 
 	useEffect(() => {
 		if (!activeThreadOnThisFile) return;

@@ -29,6 +29,39 @@ async function call<T>(fn: () => T | Promise<T>): Promise<T> {
 }
 export function createReviewPathRouter(application: () => ReviewPathApplication) {
 	return router({
+		jobs: publicProcedure
+			.input(z.object({ workspaceId: z.string().min(1) }).strict())
+			.query(({ input }) => call(() => application().jobs(input.workspaceId))),
+		startJob: publicProcedure
+			.input(
+				z
+					.object({
+						identity: reviewPathIdentitySchema,
+						agent: z.object({ id: z.string().min(1), label: z.string().min(1) }).strict(),
+						alsoReview: z.boolean(),
+						requestId: z.string().min(1).max(256),
+						retryJobId: z.string().min(1).optional(),
+						trigger: z.enum(["manual", "auto"]).optional(),
+					})
+					.strict()
+			)
+			.mutation(({ input }) => call(() => application().startJob(input))),
+		askJob: publicProcedure
+			.input(
+				z
+					.object({
+						identity: reviewPathIdentitySchema,
+						agent: z.object({ id: z.string().min(1), label: z.string().min(1) }).strict(),
+						requestId: z.string().min(1).max(256),
+						retryJobId: z.string().min(1).optional(),
+						question: questionInputSchema,
+					})
+					.strict()
+			)
+			.mutation(({ input }) => call(() => application().askJob(input))),
+		cancelJob: publicProcedure
+			.input(z.object({ workspaceId: z.string().min(1), jobId: z.string().min(1) }).strict())
+			.mutation(({ input }) => call(() => application().cancelJob(input.workspaceId, input.jobId))),
 		terminalState: publicProcedure
 			.input(reviewPathTerminalStateInputSchema)
 			.query(({ input }) => call(() => readReviewPathTerminalState(getDb(), input))),

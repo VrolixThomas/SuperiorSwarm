@@ -55,7 +55,7 @@ export function OverviewView({
 				? "Merged"
 				: "Closed";
 	return (
-		<div className="mx-auto w-full max-w-[1120px] px-[32px] py-[28px]">
+		<div className="@container mx-auto w-full max-w-[1120px] px-[32px] py-[28px]">
 			<header className="mb-[24px] border-b border-[var(--border-subtle)] pb-[24px]">
 				<div className="mb-[10px] flex flex-wrap items-center gap-[8px] text-[12px] text-[var(--text-tertiary)]">
 					<span>
@@ -80,7 +80,7 @@ export function OverviewView({
 					</span>
 				</div>
 			</header>
-			<div className="grid gap-[28px] min-[1100px]:grid-cols-[minmax(0,1fr)_250px]">
+			<div className="grid gap-[28px] @[780px]:grid-cols-[minmax(0,1fr)_250px]">
 				<div className="min-w-0 space-y-[24px]">
 					<section
 						aria-label="Changes"
@@ -112,7 +112,7 @@ export function OverviewView({
 							)}
 						</div>
 						<p className="mt-[12px] border-t border-[var(--border-subtle)] pt-[12px] text-[12px] leading-[18px] text-[var(--text-tertiary)]">
-							Use the review controls above to start an agent, or browse these files yourself.
+							Start an agent review for a guided reading path, or browse these files yourself.
 							<kbd className="ml-1 rounded bg-[var(--bg-overlay)] px-[4px]">j</kbd> opens the first
 							file.
 						</p>

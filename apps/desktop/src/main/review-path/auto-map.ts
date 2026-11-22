@@ -10,7 +10,7 @@ export interface AutoMapDeps {
 	start(
 		identity: ReviewPathIdentity,
 		alsoReview: boolean
-	): Promise<{ claimed: boolean; reviewIncluded: boolean }>;
+	): Promise<{ claimed: boolean; reviewIncluded: boolean; reviewQueued?: boolean }>;
 	markReviewed(pr: CachedPR): void;
 }
 export function createAutoMapper(deps: AutoMapDeps) {
@@ -52,7 +52,7 @@ export function createAutoMapper(deps: AutoMapDeps) {
 			);
 			// Even a durable duplicate map claim must suppress a second legacy review launch.
 			if (result.reviewIncluded) deps.markReviewed(pr);
-			return result.reviewIncluded;
+			return result.reviewIncluded || Boolean(result.reviewQueued);
 		})().finally(() => pending.delete(key));
 		pending.set(key, result);
 		return result;

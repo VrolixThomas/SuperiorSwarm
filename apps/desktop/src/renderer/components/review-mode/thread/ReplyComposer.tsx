@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { useReviewDraft, useReviewUI } from "../ReviewUIContext";
 
 interface ReplyComposerProps {
+	draftKey?: string;
 	placeholder: string;
 	initialValue?: string;
 	autoFocus?: boolean;
@@ -11,6 +13,7 @@ interface ReplyComposerProps {
 }
 
 export function ReplyComposer({
+	draftKey = "composer",
 	placeholder,
 	initialValue = "",
 	autoFocus = false,
@@ -19,7 +22,8 @@ export function ReplyComposer({
 	onSubmit,
 	onCancel,
 }: ReplyComposerProps) {
-	const [body, setBody] = useState(initialValue);
+	const { active } = useReviewUI();
+	const [body, setBody] = useReviewDraft(`composer:${draftKey}`, initialValue);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const initialValueRef = useRef(initialValue);
 	const dirtyRef = useRef(false);
@@ -30,14 +34,14 @@ export function ReplyComposer({
 		if (initialValueRef.current === initialValue) return;
 		initialValueRef.current = initialValue;
 		if (!dirtyRef.current) setBody(initialValue);
-	}, [initialValue]);
+	}, [initialValue, setBody]);
 
 	useEffect(() => {
-		if (!autoFocus) return;
+		if (!autoFocus || !active) return;
 
 		textareaRef.current?.focus();
 		textareaRef.current?.select();
-	}, [autoFocus]);
+	}, [autoFocus, active]);
 
 	return (
 		<div onMouseDown={(event) => event.stopPropagation()}>

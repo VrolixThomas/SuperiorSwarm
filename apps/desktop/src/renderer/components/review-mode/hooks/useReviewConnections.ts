@@ -1,24 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GitHubPRDetails, PRContext } from "../../../../shared/github-types";
-import type {
-	ReviewPathIdentity,
-	ReviewPathLaunchResult,
-} from "../../../../shared/review-path-runtime";
-import {
-	attachReadingPathTerminal,
-	registerReviewTerminal,
-} from "../../../lib/review-connected-terminal";
-import {
-	reviewPathIdentityKey,
-	useLiveReviewPath,
-	useReviewPath,
-} from "../../../lib/review-path-source";
+import { isReviewAgentJobActive } from "../../../../shared/review-agent-job";
+import type { ReviewPathIdentity } from "../../../../shared/review-path-runtime";
+import { observeReviewAgentJob, selectReviewAgentJob } from "../../../lib/review-agent-jobs";
+import { useLiveReviewPath, useReviewPath } from "../../../lib/review-path-source";
 import { rememberReviewPath } from "../../../lib/review-path-status-cache";
-import { openReviewTerminalTab } from "../../../lib/review-terminal-tab";
-import { useReviewModeStore } from "../../../stores/review-mode-store";
-import { trpcVanilla } from "../../../trpc/client";
-import { trpc } from "../../../trpc/client";
+import { useTabStore } from "../../../stores/tab-store";
+import { trpc, trpcVanilla } from "../../../trpc/client";
 import { useAskAgent } from "../panel/useAskAgent";
+import { useReviewAgentJobs } from "../useReviewAgentJob";
 import { useCurrentReviewer } from "./useCurrentReviewer";
 
 export function useReviewConnections(
@@ -28,47 +18,7 @@ export function useReviewConnections(
 	fixture: boolean
 ) {
 	const [attachmentError, setAttachmentError] = useState<string>();
-	const { mutateAsync: attach } = trpc.workspaces.attachTerminal.useMutation();
 	const utils = trpc.useUtils();
-	const scopeKey = JSON.stringify([
-		workspaceId,
-		prCtx.provider,
-		prCtx.owner,
-		prCtx.repo,
-		prCtx.number,
-		details?.headCommitOid,
-	]);
-	const currentScope = useRef<string | null>(scopeKey);
-	currentScope.current = scopeKey;
-	useEffect(() => {
-		currentScope.current = scopeKey;
-		setAttachmentError(undefined);
-		return () => {
-			currentScope.current = null;
-		};
-	}, [scopeKey]);
-	const onLaunch = useCallback(
-		(launch: ReviewPathLaunchResult) => {
-			const isCurrent = () => currentScope.current === scopeKey;
-			if (!isCurrent()) return;
-			setAttachmentError(undefined);
-			void attachReadingPathTerminal(workspaceId, launch, attach, isCurrent, scopeKey)
-				.then((ok) => {
-					if (ok && isCurrent())
-						void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
-					if (!ok && isCurrent())
-						setAttachmentError("The agent terminal did not match this review workspace.");
-				})
-				.catch(
-					(error) =>
-						isCurrent() &&
-						setAttachmentError(
-							error instanceof Error ? error.message : "Could not attach the agent terminal."
-						)
-				);
-		},
-		[workspaceId, attach, scopeKey, utils]
-	);
 	const identity = useMemo<ReviewPathIdentity | undefined>(
 		() =>
 			details?.headCommitOid && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(details.headCommitOid)
@@ -84,97 +34,22 @@ export function useReviewConnections(
 		[workspaceId, prCtx.provider, prCtx.owner, prCtx.repo, prCtx.number, details?.headCommitOid]
 	);
 	const live = useLiveReviewPath(fixture ? undefined : identity);
+	const jobs = useReviewAgentJobs(workspaceId, !fixture);
+	const matching = jobs.data?.filter((job) => job.identity.headSha === identity?.headSha) ?? [];
+	const job = matching.filter((job) => job.kind === "mapping").at(-1);
+	const latestJob = selectReviewAgentJob(matching);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a new revision clears errors from the previous action scope.
+	useEffect(() => {
+		setAttachmentError(undefined);
+	}, [identity]);
 	useEffect(() => {
 		if (live.state.snapshot) rememberReviewPath(live.state.snapshot);
 	}, [live.state.snapshot]);
-	const latestRun = live.state.snapshot?.runs
-		.filter(
-			(run) => identity && reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity)
-		)
-		.sort((a, b) => b.version - a.version)[0];
-	const ownedRun =
-		latestRun?.terminalId === `review-path:${latestRun?.id}:${latestRun?.version}`
-			? latestRun
-			: undefined;
-	const recordedTerminal = useReviewModeStore((state) => state.terminals[workspaceId]);
-	const terminal =
-		(recordedTerminal?.reviewScopeKey && recordedTerminal.reviewScopeKey !== scopeKey) ||
-		(latestRun && recordedTerminal?.tabId !== latestRun.terminalId)
-			? undefined
-			: recordedTerminal;
-	const recover = useCallback(async () => {
-		if (!identity || !ownedRun?.terminalId) return;
-		const isCurrent = () => currentScope.current === scopeKey;
-		try {
-			const status = await trpcVanilla.reviewPath.status.query(identity);
-			if (!isCurrent()) return;
-			if (!status || reviewPathIdentityKey(status.identity) !== reviewPathIdentityKey(identity))
-				throw new Error("The recorded agent terminal is unavailable. Its session may have ended.");
-			// A recorded run remains inspectable after its PTY ends. The workspace
-			// tab checks terminalState before mounting any terminal; this is display
-			// metadata, never permission to recreate the old agent.
-			const descriptor = status.terminal ?? {
-				terminalId: ownedRun.terminalId,
-				reviewWorkspaceId: workspaceId,
-				worktreePath: prCtx.repoPath,
-			};
-			if (
-				!descriptor.terminalId ||
-				descriptor.reviewWorkspaceId !== workspaceId ||
-				!descriptor.worktreePath ||
-				!live.state.snapshot?.runs.some(
-					(run) =>
-						run.terminalId === descriptor.terminalId &&
-						reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity)
-				)
-			)
-				throw new Error("The agent terminal did not match this review workspace.");
-			// Recovery is read-only: the durable run/session already owns this descriptor.
-			const recovered = {
-				workspaceId,
-				tabId: descriptor.terminalId,
-				cwd: descriptor.worktreePath,
-				reviewScopeKey: scopeKey,
-			};
-			registerReviewTerminal(recovered);
-			void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
-			setAttachmentError(undefined);
-			return recovered;
-		} catch (error) {
-			if (isCurrent())
-				setAttachmentError(
-					error instanceof Error ? error.message : "Could not recover the agent terminal."
-				);
-		}
-	}, [
-		identity,
-		ownedRun?.terminalId,
-		scopeKey,
-		workspaceId,
-		live.state.snapshot,
-		utils,
-		prCtx.repoPath,
-	]);
-	const recoveryAttempt = useRef("");
+	const terminalId = latestJob?.terminalId;
 	useEffect(() => {
-		const attempt = `${scopeKey}:${ownedRun?.terminalId ?? ""}`;
-		if (
-			!ownedRun?.terminalId ||
-			terminal?.tabId === ownedRun.terminalId ||
-			recoveryAttempt.current === attempt
-		)
-			return;
-		recoveryAttempt.current = attempt;
-		void recover();
-	}, [scopeKey, ownedRun?.terminalId, terminal?.tabId, recover]);
-	const openTerminal =
-		terminal || ownedRun?.terminalId
-			? async () => {
-					const target = terminal ?? (await recover());
-					if (target && currentScope.current === scopeKey) openReviewTerminalTab(target);
-				}
-			: undefined;
-	const pathSource = useReviewPath(prCtx, details, { fixture, identity, onLaunch });
+		if (terminalId) void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
+	}, [terminalId, workspaceId, utils]);
+	const pathSource = useReviewPath(prCtx, details, { fixture, identity });
 	const source =
 		!fixture && !identity
 			? {
@@ -184,7 +59,59 @@ export function useReviewConnections(
 						: "The provider could not resolve the full PR revision. Refresh this PR or check its connection.",
 				}
 			: pathSource;
-	const askAgent = useAskAgent(prCtx, { fixture, identity, onLaunch });
+	const jobSource =
+		!fixture && job
+			? {
+					...source,
+					starting: job.state === "queued" || job.state === "preparing",
+					agentSessionStarted: !!job.terminalId,
+					status: isReviewAgentJobActive(job)
+						? ("mapping" as const)
+						: job.state === "failed"
+							? ("failed" as const)
+							: source.status,
+					unavailableReason: job.error ?? source.unavailableReason,
+					stop: () => {
+						void trpcVanilla.reviewPath.cancelJob
+							.mutate({ workspaceId, jobId: job.id })
+							.then(() => jobs.refetch())
+							.catch((error) => setAttachmentError(error.message));
+					},
+					retry: () => {
+						void trpcVanilla.reviewPath.startJob
+							.mutate({
+								identity: job.identity,
+								agent: job.agent,
+								alsoReview: job.alsoReview ?? false,
+								requestId: crypto.randomUUID(),
+								retryJobId: job.id,
+							})
+							.then((next) => {
+								observeReviewAgentJob(next, true);
+								return jobs.refetch();
+							})
+							.catch((error) => setAttachmentError(error.message));
+					},
+				}
+			: source;
+	const askAgent = useAskAgent(prCtx, { fixture, identity });
 	const reviewer = useCurrentReviewer(prCtx, !fixture);
-	return { source, askAgent, reviewer, attachmentError, openTerminal, terminal };
+	const openTerminal = latestJob
+		? async () => {
+				observeReviewAgentJob(latestJob, true);
+				useTabStore.getState().revealReviewAgentTab(workspaceId, { jobId: latestJob.id });
+			}
+		: undefined;
+	const terminal = latestJob?.terminalId
+		? { workspaceId, tabId: latestJob.terminalId, cwd: latestJob.cwd ?? "" }
+		: undefined;
+	return {
+		source: jobSource,
+		askAgent,
+		reviewer,
+		attachmentError,
+		openTerminal,
+		terminal,
+		job,
+	};
 }

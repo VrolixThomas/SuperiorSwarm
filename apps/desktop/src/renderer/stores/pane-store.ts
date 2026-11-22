@@ -99,6 +99,56 @@ function pickNextActiveTab(tabs: TabItem[], removedId: string): string | null {
 	return remaining[Math.min(idx, remaining.length - 1)]?.id ?? null;
 }
 
+/** Upgrade saved attached views without inventing a fresh backend job or PTY. */
+export function normalizeReviewLayout(layout: LayoutNode, workspaceId: string): LayoutNode {
+	const seen = new Set<string>();
+	const terminalIds = new Set(
+		getAllPanes(layout).flatMap((p) =>
+			p.tabs.flatMap((t) => (t.kind === "review-agent" && t.terminalId ? [t.terminalId] : []))
+		)
+	);
+	return updateAllPanesInTree(layout, (pane) => {
+		const aliases = new Map<string, string>();
+		const tabs = pane.tabs.flatMap((saved) => {
+			let tab = saved;
+			if (saved.workspaceId !== workspaceId) return [];
+			if (saved.kind === "terminal" && saved.id.startsWith("review-path:")) {
+				if (terminalIds.has(saved.id)) {
+					const current = getAllPanes(layout)
+						.flatMap((p) => p.tabs)
+						.find((t) => t.kind === "review-agent" && t.terminalId === saved.id);
+					if (current) aliases.set(saved.id, current.id);
+					return [];
+				}
+				const match = /^review-path:(.+):(\d+)$/.exec(saved.id);
+				const jobId = `legacy:${match?.[1] ?? saved.id.slice("review-path:".length)}`;
+				tab = {
+					kind: "review-agent",
+					id: `review-agent:${jobId}`,
+					workspaceId,
+					jobId,
+					agentLabel: saved.title,
+					title: saved.title,
+					terminalId: saved.id,
+					cwd: saved.cwd,
+				};
+			}
+			if (tab.kind === "pr-review")
+				tab = { ...tab, id: `pr-review:${workspaceId}`, title: "Review" };
+			aliases.set(saved.id, tab.id);
+			if (seen.has(tab.id)) return [];
+			seen.add(tab.id);
+			return [tab];
+		});
+		const active = aliases.get(pane.activeTabId ?? "") ?? pane.activeTabId;
+		return {
+			...pane,
+			tabs,
+			activeTabId: tabs.some((t) => t.id === active) ? active : (tabs[0]?.id ?? null),
+		};
+	});
+}
+
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface PaneStore {
@@ -114,6 +164,12 @@ interface PaneStore {
 		direction: "horizontal" | "vertical",
 		tabToMove?: TabItem
 	): string;
+	splitPaneForCommand(
+		workspaceId: string,
+		paneId: string,
+		direction: "horizontal" | "vertical",
+		tab?: TabItem
+	): string;
 	closePane(workspaceId: string, paneId: string): void;
 	setPaneRatio(workspaceId: string, splitId: string, ratio: number): void;
 	swapSplitChildren(workspaceId: string, splitId: string): void;
@@ -124,7 +180,12 @@ interface PaneStore {
 	getFocusedPane(workspaceId: string): Pane | null;
 
 	// Tab operations
-	addTabToPane(workspaceId: string, paneId: string, tab: TabItem): void;
+	addTabToPane(
+		workspaceId: string,
+		paneId: string,
+		tab: TabItem,
+		options?: { activate?: boolean }
+	): void;
 	removeTabFromPane(workspaceId: string, paneId: string, tabId: string): void;
 	moveTabBetweenPanes(
 		workspaceId: string,
@@ -176,7 +237,13 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
 	splitPane: (workspaceId, paneId, direction, tabToMove) => {
 		const root = get().layouts[workspaceId];
-		if (!root) return "";
+		if (!root || !findPaneById(root, paneId)) return "";
+		if (
+			tabToMove &&
+			(tabToMove.workspaceId !== workspaceId ||
+				!findPaneById(root, paneId)?.tabs.some((t) => t.id === tabToMove.id))
+		)
+			return "";
 
 		const newPane = createDefaultPane(tabToMove ? [tabToMove] : []);
 		const newPaneId = newPane.id;
@@ -221,6 +288,25 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 		return newPaneId;
 	},
 
+	splitPaneForCommand: (workspaceId, paneId, direction, requested) => {
+		const root = get().layouts[workspaceId];
+		const pane = root && findPaneById(root, paneId);
+		if (!pane) return "";
+		const hasReview = getAllPanes(root).some((p) => p.tabs.some((t) => t.kind === "pr-review"));
+		let tab = requested ?? pane.tabs.find((t) => t.id === pane.activeTabId);
+		if (tab?.kind === "pr-review") {
+			tab =
+				(pane.recentTabIds ?? [])
+					.map((id) => pane.tabs.find((t) => t.id === id))
+					.find((t) => t && t.kind !== "pr-review") ??
+				pane.tabs.find((t) => t.kind !== "pr-review");
+		}
+		const id = get().splitPane(workspaceId, paneId, direction, tab);
+		const updated = get().layouts[workspaceId];
+		const split = updated && findParentSplit(updated, id);
+		if (hasReview && split) get().setPaneRatio(workspaceId, split.id, 0.6);
+		return id;
+	},
 	closePane: (workspaceId, paneId) => {
 		const root = get().layouts[workspaceId];
 		if (!root) return;
@@ -234,7 +320,15 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 		// Sibling is the other child
 		const sibling = parent.children[0].id === paneId ? parent.children[1] : parent.children[0];
 
-		const newRoot = replaceNodeInTree(root, parent.id, sibling);
+		let newRoot = replaceNodeInTree(root, parent.id, sibling);
+		const pinned = findPaneById(root, paneId)?.tabs.filter((t) => t.kind === "pr-review") ?? [];
+		const destination = getAllPanes(sibling)[0];
+		if (pinned.length && destination)
+			newRoot = updatePaneInTree(newRoot, destination.id, (p) => ({
+				...p,
+				tabs: [...pinned, ...p.tabs.filter((t) => !pinned.some((pin) => pin.id === t.id))],
+				activeTabId: pinned[0]?.id ?? p.activeTabId,
+			}));
 
 		// Update focus if the closed pane was focused
 		const focusedPaneId = get().focusedPaneId;
@@ -252,7 +346,14 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 		if (!root) return;
 
 		const split = findSplitById(root, splitId);
-		if (!split) return;
+		if (
+			!split ||
+			!Number.isFinite(ratio) ||
+			ratio < 0 ||
+			ratio > 1 ||
+			Math.abs(split.ratio - ratio) < 0.0001
+		)
+			return;
 
 		const updated: SplitNode = { ...split, ratio };
 		const newRoot = replaceNodeInTree(root, splitId, updated);
@@ -301,14 +402,28 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
 	// ── Tab operations ───────────────────────────────────────────────────
 
-	addTabToPane: (workspaceId, paneId, tab) => {
+	addTabToPane: (workspaceId, paneId, tab, options) => {
 		const root = get().layouts[workspaceId];
-		if (!root) return;
+		if (!root || tab.workspaceId !== workspaceId) return;
+		if (
+			getAllPanes(root).some(
+				(p) =>
+					p.id !== paneId &&
+					p.tabs.some(
+						(t) => t.id === tab.id || (tab.kind === "pr-review" && t.kind === "pr-review")
+					)
+			)
+		)
+			return;
 
 		const newRoot = updatePaneInTree(root, paneId, (pane) => ({
 			...pane,
-			tabs: [...pane.tabs, tab],
-			activeTabId: tab.id,
+			tabs: pane.tabs.some((t) => t.id === tab.id) ? pane.tabs : [...pane.tabs, tab],
+			activeTabId: options?.activate === false ? pane.activeTabId : tab.id,
+			recentTabIds:
+				options?.activate === false
+					? pane.recentTabIds
+					: [tab.id, ...(pane.recentTabIds ?? []).filter((id) => id !== tab.id)],
 		}));
 		set((s) => ({ layouts: { ...s.layouts, [workspaceId]: newRoot } }));
 	},
@@ -318,7 +433,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 		if (!root) return;
 
 		const pane = findPaneById(root, paneId);
-		if (!pane) return;
+		if (!pane || pane.tabs.find((t) => t.id === tabId)?.kind === "pr-review") return;
 
 		const filteredTabs = pane.tabs.filter((t) => t.id !== tabId);
 
@@ -352,7 +467,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 		if (!root) return;
 
 		const sourcePane = findPaneById(root, sourcePaneId);
-		if (!sourcePane) return;
+		if (!sourcePane || sourcePaneId === targetPaneId || !findPaneById(root, targetPaneId)) return;
 
 		const tab = sourcePane.tabs.find((t) => t.id === tabId);
 		if (!tab) return;
@@ -499,7 +614,8 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
 		const newRoot = updatePaneInTree(root, paneId, (pane) => ({
 			...pane,
-			activeTabId: tabId,
+			activeTabId: pane.tabs.some((t) => t.id === tabId) ? tabId : pane.activeTabId,
+			recentTabIds: [tabId, ...(pane.recentTabIds ?? []).filter((id) => id !== tabId)],
 		}));
 		set((s) => ({ layouts: { ...s.layouts, [workspaceId]: newRoot } }));
 	},
@@ -562,7 +678,9 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 	// ── Persistence ──────────────────────────────────────────────────────
 
 	hydrateLayout: (workspaceId, layout) => {
-		set((s) => ({ layouts: { ...s.layouts, [workspaceId]: layout } }));
+		set((s) => ({
+			layouts: { ...s.layouts, [workspaceId]: normalizeReviewLayout(layout, workspaceId) },
+		}));
 	},
 
 	clearLayout: (workspaceId) => {

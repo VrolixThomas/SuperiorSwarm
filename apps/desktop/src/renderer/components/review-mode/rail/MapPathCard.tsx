@@ -11,7 +11,11 @@ const LABELS: Record<CliPresetName, string> = {
 	opencode: "OpenCode",
 };
 
-export function MapPathCard({ source }: { source: ReviewPathSource }) {
+export function MapPathCard({
+	source,
+	workspaceDesign = false,
+	onBrowseFiles,
+}: { source: ReviewPathSource; workspaceDesign?: boolean; onBrowseFiles?: () => void }) {
 	const settings = useReviewPathSettingsStore();
 	const {
 		data: aiSettings,
@@ -38,7 +42,7 @@ export function MapPathCard({ source }: { source: ReviewPathSource }) {
 			<p className="mt-1.5 text-[12px] leading-[17px] text-[var(--text-secondary)]">
 				Your agent orders these files from each entry point to its tests.
 			</p>
-			<div className="mt-3 flex flex-wrap gap-1.5">
+			<div className={`mt-3 flex gap-1.5 ${workspaceDesign ? "flex-col" : "flex-wrap"}`}>
 				<button
 					type="button"
 					disabled={disabled}
@@ -47,13 +51,17 @@ export function MapPathCard({ source }: { source: ReviewPathSource }) {
 					onClick={() => source.start({ agentId, alsoReview: settings.alsoReview })}
 					className="h-8 rounded-[6px] bg-[var(--accent)] px-3 text-[12px] font-semibold text-[var(--accent-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
 				>
-					{source.status === "failed" ? "Retry mapping" : "Map this PR"}
+					{source.status === "failed"
+						? "Retry mapping"
+						: workspaceDesign
+							? "Start agent review"
+							: "Map this PR"}
 				</button>
 				<select
 					aria-label="Mapping agent"
 					value={agentId}
 					onChange={(event) => setSelectedAgent(event.target.value)}
-					className="min-w-0 max-w-full flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 text-[12px] text-[var(--text)]"
+					className="h-8 min-w-0 max-w-full flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 text-[12px] text-[var(--text)]"
 				>
 					{CLI_PRESET_NAMES.map((id) => (
 						<option key={id} value={id}>
@@ -62,6 +70,15 @@ export function MapPathCard({ source }: { source: ReviewPathSource }) {
 					))}
 				</select>
 			</div>
+			{workspaceDesign && onBrowseFiles && (
+				<button
+					type="button"
+					className="mt-3 text-[12px] text-[var(--text-secondary)]"
+					onClick={onBrowseFiles}
+				>
+					Browse files →
+				</button>
+			)}
 			{(reason || source.path?.error) && (
 				<p id={reasonId} className="mt-2 text-[11px] text-[var(--text-secondary)]">
 					{reason ?? source.path?.error}

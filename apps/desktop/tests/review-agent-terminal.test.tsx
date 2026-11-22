@@ -14,6 +14,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "agent workspace session lifecyc
 	const { ReviewAgentTerminal } = await import(
 		"../src/renderer/components/review-mode/ReviewAgentTerminal"
 	);
+	const { useTabStore } = await import("../src/renderer/stores/tab-store");
 	const { useReviewModeStore } = await import("../src/renderer/stores/review-mode-store");
 	const props = { id: "review-path:run:1", workspaceId: "review", cwd: "/old-path", active: true };
 	test("a completed session shows its outcome instead of trying to create a terminal", async () => {
@@ -34,6 +35,9 @@ if (inIsolatedFileBrowserTest(import.meta.path, "agent workspace session lifecyc
 			},
 			view: "terminal",
 		});
+		const review = useReviewModeStore.getState().active;
+		if (review)
+			useTabStore.getState().activateReviewWorkspace(review.workspaceId, "/review", review.prCtx);
 		const h = await renderBrowserTest(<ReviewAgentTerminal {...props} />, [], false, {
 			request: () => ({
 				status: "ended",
@@ -47,7 +51,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "agent workspace session lifecyc
 			expect(mounts).toBe(0);
 			expect(h.calls.every((call) => call.path === "reviewPath.terminalState")).toBe(true);
 			await act(async () => h.container.querySelector("button")?.click());
-			expect(useReviewModeStore.getState().view).toBe("changes");
+			expect(useTabStore.getState().getActiveTabId()).toBe("pr-review:review");
 		} finally {
 			await h.cleanup();
 		}

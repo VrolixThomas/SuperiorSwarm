@@ -77,3 +77,36 @@ test("workspace and head identity fence response data", async () => {
 		reviewPathIdentityKey({ ...identity, workspaceId: "other" })
 	);
 });
+
+test("durable acceptance releases Start before a pending metadata snapshot and keeps existing data", async () => {
+	const api = transport(async () => snapshot);
+	const c = createLiveReviewPathController(identity, api);
+	await c.refresh();
+	let release: ((snapshot: ReviewPathSnapshot) => void) | undefined;
+	api.get = () =>
+		new Promise((resolve) => {
+			release = resolve;
+		});
+	const reading = c.refresh();
+	api.start = async () => ({
+		job: {
+			id: "queued",
+			identity,
+			agent: { id: "codex", label: "Codex" },
+			kind: "mapping",
+			state: "queued",
+			phase: "queued",
+			attempt: 1,
+			trigger: "manual",
+			startedAt: null,
+			updatedAt: null,
+			activity: [],
+		},
+	});
+	const accepted = await c.start({ id: "codex", label: "Codex" }, true);
+	expect(accepted?.job?.id).toBe("queued");
+	expect(c.getSnapshot().pending).toBe(false);
+	expect(c.getSnapshot().snapshot).toEqual(snapshot);
+	release?.(snapshot);
+	await reading;
+});

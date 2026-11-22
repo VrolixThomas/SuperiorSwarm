@@ -1,6 +1,12 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
+	type ReviewAgentJob,
+	type ReviewAgentJobPhase,
+	type StartReviewAgentJobInput,
+	isReviewAgentJobActive,
+} from "../../shared/review-agent-job";
+import {
 	type ReviewPathIdentity,
 	type ReviewPathQuestion,
 	type ReviewPathRun,
@@ -34,8 +40,19 @@ import {
 
 type Db = ReturnType<typeof getDb>;
 interface Document extends ReviewPathSnapshot {
+	jobData?: {
+		version: 1;
+		jobs: ReviewAgentJob[];
+		runIds?: string[];
+		requests: Record<string, { jobId: string; fingerprint: string }>;
+	};
 	/** Durable provider-observation fence, defaulting to zero for older documents. */
 	metadataGeneration?: number;
+	/** Latest outstanding observation, independent of intervening run mutations. */
+	metadataPendingGeneration?: number;
+	/** High-water mark: a later reservation cannot erase an accepted conflicting head. */
+	metadataAcceptedGeneration?: number;
+	metadataRequestedHead?: string;
 	changedFiles: string[];
 	nextVersion: number;
 	autoClaims: Record<string, string>;
@@ -77,6 +94,40 @@ export class ReviewPathStorage {
 				};
 	}
 	private save(doc: Document) {
+		// Run mutations (including capability-only completion) update the same durable job.
+		const currentMapping = doc.runs.filter((run) => run.kind === "mapping").at(-1);
+		for (const job of doc.jobData?.jobs ?? []) {
+			const run = doc.runs.find((r) => r.id === job.runId && r.version === job.runVersion);
+			if (!run || !isReviewAgentJobActive(job)) continue;
+			if (run.terminalId) job.terminalId = run.terminalId;
+			if (
+				job.kind === "mapping" &&
+				currentMapping?.id === run.id &&
+				doc.path?.headSha === job.identity.headSha
+			) {
+				if (JSON.stringify(job.progress) !== JSON.stringify(doc.path.progress)) {
+					job.progress = doc.path.progress;
+					job.updatedAt = now();
+					if (job.progress?.placed)
+						job.activity.push({
+							at: job.updatedAt,
+							phase: "mapping",
+							message: `${job.progress.placed} of ${job.progress.total} files placed`,
+						});
+				}
+			}
+			if (run.state !== "running") {
+				job.state = run.state;
+				job.phase = run.state;
+				job.error = run.error;
+				job.updatedAt = job.endedAt = now();
+				job.activity.push({
+					at: job.updatedAt,
+					phase: job.phase,
+					message: run.error ?? `Agent ${run.state}`,
+				});
+			}
+		}
 		this.db
 			.insert(reviewPathDocuments)
 			.values({
@@ -98,6 +149,194 @@ export class ReviewPathStorage {
 			return result;
 		});
 	}
+	/** Read-only projection; old runs explicitly retain unknown timing. */
+	jobs(workspaceId: string): ReviewAgentJob[] {
+		return this.documents(workspaceId)
+			.flatMap((doc) => {
+				const jobs = doc.jobData?.jobs ?? [];
+				const currentMapping = doc.runs.filter((run) => run.kind === "mapping").at(-1);
+				return [
+					...jobs,
+					...doc.runs
+						.filter(
+							(r) => !jobs.some((j) => j.runId === r.id) && !doc.jobData?.runIds?.includes(r.id)
+						)
+						.map(
+							(run) =>
+								({
+									id: `legacy:${run.id}`,
+									identity: run.identity,
+									agent: doc.path?.agent ?? { id: "unknown", label: "Agent" },
+									kind: run.kind,
+									progress:
+										currentMapping?.id === run.id && doc.path?.headSha === run.identity.headSha
+											? doc.path.progress
+											: undefined,
+									alsoReview: run.alsoReview,
+									question: run.questionId ? this.legacyQuestion(doc, run.questionId) : undefined,
+									state: run.state,
+									phase:
+										run.state === "running"
+											? run.kind === "mapping"
+												? "mapping"
+												: "answering"
+											: run.state,
+									startedAt: null,
+									updatedAt: null,
+									endedAt: run.state === "running" ? undefined : null,
+									attempt: 1,
+									runId: run.id,
+									runVersion: run.version,
+									terminalId: run.terminalId,
+									error: run.error,
+									trigger: "manual",
+									activity: [],
+								}) satisfies ReviewAgentJob
+						),
+				];
+			})
+			.sort(
+				(a, b) =>
+					(a.startedAt ? Date.parse(a.startedAt) : 0) - (b.startedAt ? Date.parse(b.startedAt) : 0)
+			);
+	}
+	private legacyQuestion(doc: Document, id: string): ReviewAgentJob["question"] {
+		const question = doc.questions.find((q) => q.id === id);
+		return question
+			? { id, text: question.message.text, anchor: question.message.anchor }
+			: undefined;
+	}
+	acceptJob(input: StartReviewAgentJobInput, question?: ReviewAgentJob["question"]) {
+		return this.transaction(input.identity, (doc) => {
+			doc.jobData ??= { version: 1, jobs: [], requests: {} };
+			const data = doc.jobData;
+			const requestKey = hash(input.requestId);
+			const fingerprint = JSON.stringify({
+				identity: input.identity,
+				agent: input.agent,
+				alsoReview: input.alsoReview,
+				retryJobId: input.retryJobId,
+				trigger: input.trigger ?? "manual",
+				question,
+			});
+			const prior = data.requests[requestKey];
+			if (prior) {
+				if (prior.fingerprint !== fingerprint)
+					throw new Error("Job request ID reused with a different intent");
+				const job = data.jobs.find((j) => j.id === prior.jobId);
+				if (!job) throw new Error("Saved review job is unavailable");
+				return { job, accepted: false };
+			}
+			const kind = question ? "question" : "mapping";
+			let retry = input.retryJobId ? data.jobs.find((j) => j.id === input.retryJobId) : undefined;
+			if (!retry && input.retryJobId?.startsWith("legacy:")) {
+				const legacy = this.jobs(input.identity.workspaceId).find((j) => j.id === input.retryJobId);
+				if (legacy && reviewPathKey(legacy.identity) === reviewPathKey(input.identity)) {
+					retry = legacy;
+					data.jobs.push(legacy);
+					if (legacy.runId) {
+						data.runIds ??= [];
+						data.runIds.push(legacy.runId);
+					}
+				}
+			}
+			if (
+				input.retryJobId &&
+				(!retry || retry.kind !== kind || retry.identity.headSha !== input.identity.headSha)
+			)
+				throw new Error("Retry job scope mismatch");
+			if (retry && !["failed", "cancelled"].includes(retry.state))
+				throw new Error("Only failed or cancelled jobs can be retried");
+			if (input.trigger === "auto") {
+				const existing = data.jobs
+					.filter((j) => j.kind === kind && j.identity.headSha === input.identity.headSha)
+					.at(-1);
+				if (existing) {
+					data.requests[requestKey] = { jobId: existing.id, fingerprint };
+					return { job: existing, accepted: false };
+				}
+			}
+			// Acceptance is only an intent. A stale renderer must not revoke a
+			// verified run before provider metadata authorizes the replacement.
+			if (kind === "mapping")
+				for (const old of data.jobs) {
+					if (
+						old.kind !== "mapping" ||
+						old.runId ||
+						old.identity.headSha !== input.identity.headSha ||
+						!isReviewAgentJobActive(old)
+					)
+						continue;
+					old.state = old.phase = "superseded";
+					old.endedAt = old.updatedAt = now();
+				}
+			const at = now();
+			const job: ReviewAgentJob = {
+				id: retry?.id ?? randomUUID(),
+				identity: input.identity,
+				agent: input.agent,
+				kind,
+				alsoReview: retry?.alsoReview ?? input.alsoReview,
+				state: "queued",
+				phase: "queued",
+				startedAt: at,
+				updatedAt: at,
+				attempt: (retry?.attempt ?? 0) + 1,
+				trigger: input.trigger ?? "manual",
+				question,
+				activity: [{ at, phase: "queued", message: "Request accepted" }],
+			};
+			if (retry) data.jobs[data.jobs.indexOf(retry)] = job;
+			else data.jobs.push(job);
+			data.requests[requestKey] = { jobId: job.id, fingerprint };
+			return { job, accepted: true };
+		});
+	}
+	updateJob(
+		job: ReviewAgentJob,
+		patch: Partial<
+			Pick<
+				ReviewAgentJob,
+				"state" | "phase" | "runId" | "runVersion" | "terminalId" | "cwd" | "error"
+			>
+		>,
+		message?: string
+	): ReviewAgentJob | undefined {
+		return this.transaction(job.identity, (doc) => {
+			const data = doc.jobData;
+			const current = data?.jobs.find((j) => j.id === job.id && j.attempt === job.attempt);
+			if (!data || !current || !isReviewAgentJobActive(current)) return;
+			if (patch.runId) {
+				data.runIds ??= [];
+				data.runIds.push(patch.runId);
+			}
+			const at = now();
+			Object.assign(current, patch, { updatedAt: at });
+			if (!isReviewAgentJobActive(current)) current.endedAt = current.updatedAt;
+			if (message) current.activity.push({ at, phase: current.phase, message });
+			return current;
+		});
+	}
+	reportRunPhase(run: ReviewPathRun, phase: ReviewAgentJobPhase, message: string) {
+		const job = this.jobs(run.identity.workspaceId).find(
+			(j) => j.runId === run.id && j.runVersion === run.version
+		);
+		if (job) this.updateJob(job, { phase }, message);
+	}
+	interruptPreparingJobs() {
+		for (const doc of this.documents())
+			for (const job of doc.jobData?.jobs ?? [])
+				if (isReviewAgentJobActive(job))
+					this.updateJob(
+						job,
+						{
+							state: "failed",
+							phase: "failed",
+							error: "Agent interrupted by application restart. Retry to start a new attempt.",
+						},
+						"Application restarted"
+					);
+	}
 	private snapshot(doc: Document): ReviewPathSnapshot {
 		return {
 			identity: doc.identity,
@@ -114,7 +353,12 @@ export class ReviewPathStorage {
 	}
 	/** Reserve before awaiting provider metadata, across all application/storage instances. */
 	reserveMetadata(identity: ReviewPathIdentity): number {
-		return this.transaction(identity, (doc) => this.advanceMetadata(doc));
+		return this.transaction(identity, (doc) => {
+			const generation = this.advanceMetadata(doc);
+			doc.metadataPendingGeneration = generation;
+			doc.metadataRequestedHead = identity.headSha;
+			return generation;
+		});
 	}
 	private advanceMetadata(doc: Document) {
 		doc.metadataGeneration = (doc.metadataGeneration ?? 0) + 1;
@@ -130,9 +374,44 @@ export class ReviewPathStorage {
 		if (reviewPathKey(requested) !== reviewPathKey(resolved))
 			throw new Error("Resolved review path scope mismatch");
 		return this.transaction(requested, (doc) => {
-			if (doc.metadataGeneration !== generation) return false;
+			if (doc.metadataPendingGeneration !== generation) return false;
+			doc.metadataPendingGeneration = undefined;
+			doc.metadataAcceptedGeneration = Math.max(doc.metadataAcceptedGeneration ?? 0, generation);
 			this.head(doc, resolved);
 			this.advanceMetadata(doc);
+			return true;
+		});
+	}
+	/** A read and job checking the same requested head may share its observation.
+	 * Never let a delayed result replace a different head that was already accepted.
+	 */
+	acceptJobMetadata(
+		requested: ReviewPathIdentity,
+		resolved: ReviewPathIdentity,
+		generation: number
+	): boolean {
+		reviewPathIdentitySchema.parse(resolved);
+		if (reviewPathKey(requested) !== reviewPathKey(resolved))
+			throw new Error("Resolved review path scope mismatch");
+		return this.transaction(requested, (doc) => {
+			if (doc.metadataPendingGeneration === generation) {
+				doc.metadataPendingGeneration = undefined;
+				doc.metadataAcceptedGeneration = Math.max(doc.metadataAcceptedGeneration ?? 0, generation);
+				this.head(doc, resolved);
+				this.advanceMetadata(doc);
+				return true;
+			}
+			if (
+				resolved.headSha !== requested.headSha ||
+				doc.metadataRequestedHead !== requested.headSha ||
+				((doc.metadataAcceptedGeneration ?? 0) > generation &&
+					doc.identity.headSha !== requested.headSha) ||
+				(doc.metadataPendingGeneration === undefined && doc.identity.headSha !== requested.headSha)
+			)
+				return false;
+			// Keep the newer read's reservation valid. If it observes a later head,
+			// it must still be able to fence this exact-revision run after launch.
+			this.head(doc, resolved);
 			return true;
 		});
 	}
@@ -186,7 +465,8 @@ export class ReviewPathStorage {
 	}
 	private head(doc: Document, identity: ReviewPathIdentity) {
 		if (doc.identity.headSha !== identity.headSha) {
-			this.advanceMetadata(doc);
+			if (doc.metadataRequestedHead !== identity.headSha) doc.metadataPendingGeneration = undefined;
+			doc.metadataAcceptedGeneration = this.advanceMetadata(doc);
 			this.invalidate(doc);
 			doc.identity = identity;
 			if (doc.path) {
@@ -212,10 +492,11 @@ export class ReviewPathStorage {
 			.flatMap((d) => d.runs)
 			.filter((r) => r.state === "running");
 	}
-	private documents(): Document[] {
+	private documents(workspaceId?: string): Document[] {
 		return this.db
 			.select()
 			.from(reviewPathDocuments)
+			.where(workspaceId ? eq(reviewPathDocuments.workspaceId, workspaceId) : undefined)
 			.all()
 			.map((r) => JSON.parse(r.payload));
 	}

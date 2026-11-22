@@ -368,7 +368,9 @@ export class ReviewRevisionAcquisition {
 				);
 			return { oid, remote };
 		});
-		for (const { oid, remote } of plan) {
+		const grouped = new Map<string, string[]>();
+		for (const { oid, remote } of plan) grouped.set(remote, [...(grouped.get(remote) ?? []), oid]);
+		for (const [remote, oids] of grouped) {
 			const authorization = await this.options.getAuthorization?.(remote, input);
 			if ((await realpath(await this.options.resolveRoot(input))) !== root)
 				throw new Error("Review workspace changed while acquiring revisions. Reopen the PR.");
@@ -376,18 +378,19 @@ export class ReviewRevisionAcquisition {
 			await (this.options.fetchObjects ?? fetchRevisionObjects)(
 				root,
 				remote,
-				[oid],
+				oids,
 				signal,
 				authorization
 			);
-			try {
-				if ((await readGit(root, ["cat-file", "-t", oid], signal)).toString().trim() !== "commit")
-					throw Error("not a commit");
-			} catch {
-				throw new Error(
-					"Review exact commit is still unavailable after fetching. Refresh and retry."
-				);
-			}
+			for (const oid of oids)
+				try {
+					if ((await readGit(root, ["cat-file", "-t", oid], signal)).toString().trim() !== "commit")
+						throw Error("not a commit");
+				} catch {
+					throw new Error(
+						"Review exact commit is still unavailable after fetching. Refresh and retry."
+					);
+				}
 		}
 		if ((await realpath(await this.options.resolveRoot(input))) !== root)
 			throw new Error("Review workspace changed while acquiring revisions. Reopen the PR.");
