@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import type { TicketQueueAccount } from "../../shared/ticket-queue";
 import type { TicketIssue } from "../../shared/tickets";
+import { openOwnedChat } from "../lib/owned-chat-launch";
 import {
 	TICKET_BRANCH_TYPES,
 	type TicketBranchType,
@@ -13,9 +15,18 @@ import { trpc } from "../trpc/client";
 interface Props {
 	issue: TicketIssue | null;
 	onClose: () => void;
+	queueStart?: {
+		id: string;
+		revision: number;
+		account: TicketQueueAccount;
+		defaultAgent: "claude" | "codex";
+	};
 }
 
-export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
+export function CreateBranchFromIssueModal({ issue, onClose, queueStart }: Props) {
+	const [completionError, setCompletionError] = useState<string | null>(null);
+	const [createdWorkspaceId, setCreatedWorkspaceId] = useState<string | null>(null);
+	const startChat = trpc.agentLaunch.startChat.useMutation();
 	const [selectedProjectId, setSelectedProjectId] = useState("");
 	const [branchType, setBranchType] = useState<TicketBranchType>("feature");
 	const [branchSuffix, setBranchSuffix] = useState("");
@@ -41,7 +52,41 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	});
 
 	const createMutation = trpc.workspaces.create.useMutation({
-		onSuccess: (workspace) => {
+		onSuccess: async (workspace) => {
+			if (queueStart && issue) {
+				setCreatedWorkspaceId(workspace.id);
+				try {
+					await linkTicketMutation.mutateAsync({
+						provider: issue.provider,
+						ticketId: issue.id,
+						workspaceId: workspace.id,
+						queueAccount: queueStart.account,
+					});
+					await utils.workspaces.listByProject.invalidate();
+					const launch = await startChat.mutateAsync({
+						workspaceId: workspace.id,
+						provider: queueStart.defaultAgent,
+						initialPrompt:
+							`Start work on ${issue.identifier}: ${issue.title}.\nTicket: ${issue.url}\nRead the ticket requirements and inspect this workspace. Implement the requested work; ask me if requirements need clarification.`.slice(
+								0,
+								4_000
+							),
+					});
+					await openOwnedChat(launch, {
+						activateWorkspace: (id, cwd) => useTabStore.getState().setActiveWorkspace(id, cwd),
+						addTerminal: (id, cwd, title, terminalId) =>
+							useTabStore.getState().addTerminalTab(id, cwd, title, terminalId),
+						createTerminal: (id, cwd, owner) => window.electron.terminal.create(id, cwd, owner),
+						writeTerminal: (id, text) => window.electron.terminal.write(id, text),
+					});
+					onClose();
+				} catch (error) {
+					setCompletionError(
+						`Workspace created. ${error instanceof Error ? error.message : "Could not finish linking or starting the chat."} Open the workspace to continue; no second workspace was created.`
+					);
+				}
+				return;
+			}
 			if (issue) {
 				linkTicketMutation.mutate({
 					provider: issue.provider,
@@ -68,7 +113,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	// Pre-select the only ready project automatically
 	useEffect(() => {
 		if (projectsQuery.data && !selectedProjectId) {
-			const ready = projectsQuery.data.filter((p) => p.status === "ready");
+			const ready = projectsQuery.data.filter((p) => p.status === "ready" && p.kind === "repo");
 			if (ready.length === 1 && ready[0]) setSelectedProjectId(ready[0].id);
 		}
 	}, [projectsQuery.data, selectedProjectId]);
@@ -112,6 +157,8 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	useEffect(() => {
 		if (!issue) {
 			setSelectedProjectId("");
+			setCompletionError(null);
+			setCreatedWorkspaceId(null);
 			setBranchType("feature");
 			setBranchSuffix("");
 			setBaseBranch("");
@@ -121,8 +168,13 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 
 	if (!issue) return null;
 
-	const readyProjects = projectsQuery.data?.filter((p) => p.status === "ready") ?? [];
-	const canSubmit = !!branchSuffix.trim() && !!selectedProjectId && !createMutation.isPending;
+	const readyProjects =
+		projectsQuery.data?.filter((p) => p.status === "ready" && p.kind === "repo") ?? [];
+	const canSubmit =
+		!!branchSuffix.trim() &&
+		!!selectedProjectId &&
+		!createMutation.isPending &&
+		!createdWorkspaceId;
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -131,6 +183,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 			projectId: selectedProjectId,
 			branch: `${branchType}/${branchSuffix.trim()}`,
 			baseBranch: baseBranch || undefined,
+			queueTicket: queueStart ? { id: queueStart.id, revision: queueStart.revision } : undefined,
 		});
 	};
 
@@ -275,6 +328,18 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 						</div>
 					</div>
 
+					{queueStart && (
+						<p className="text-[12px] text-[var(--text-secondary)]">
+							Creates a linked workspace and opens{" "}
+							{queueStart.defaultAgent === "codex" ? "Codex" : "Claude"} after you confirm. Folders
+							and orchestrators can view this ticket; creating a branch requires a repository.
+						</p>
+					)}
+					{completionError && (
+						<p role="alert" className="text-[12px] text-[var(--term-red)]">
+							{completionError}
+						</p>
+					)}
 					{/* Submit */}
 					<button
 						type="submit"

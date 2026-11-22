@@ -154,6 +154,16 @@ function adfText(value: unknown): string {
 		(Array.isArray(node.content) ? node.content.map(adfText).join("\n") : "")
 	);
 }
+function validateComments(comments: TicketQueueComment[]): TicketQueueComment[] {
+	if (
+		comments.some(
+			(comment) =>
+				!comment.id || typeof comment.body !== "string" || !Number.isFinite(comment.createdAt)
+		)
+	)
+		throw new Error("Incomplete ticket comment metadata");
+	return [...new Map(comments.map((comment) => [comment.id, comment])).values()];
+}
 export async function fetchTicketQueueComments(
 	account: TicketQueueAccount,
 	ticketId: string,
@@ -173,13 +183,15 @@ export async function fetchTicketQueueComments(
 			)) as { issue: { comments: Connection<Comment> } };
 			return data.issue.comments;
 		});
-		return comments.map((comment) => ({
-			id: comment.id,
-			authorId: comment.user?.id ?? null,
-			author: comment.user?.name ?? "Unknown author",
-			body: comment.body.slice(0, 4000),
-			createdAt: Date.parse(comment.createdAt),
-		}));
+		return validateComments(
+			comments.map((comment) => ({
+				id: comment.id,
+				authorId: comment.user?.id ?? null,
+				author: comment.user?.name ?? "Unknown author",
+				body: comment.body.slice(0, 4000),
+				createdAt: Date.parse(comment.createdAt),
+			}))
+		);
 	}
 	const result: TicketQueueComment[] = [];
 	for (let startAt = 0, pages = 0; pages < 200; pages++) {
@@ -207,7 +219,7 @@ export async function fetchTicketQueueComments(
 			}))
 		);
 		startAt += data.comments.length;
-		if (startAt >= data.total) return result;
+		if (startAt >= data.total) return validateComments(result);
 		if (!data.comments.length) throw new Error("Incomplete Jira comment pagination");
 	}
 	throw new Error("Jira comment pagination limit reached");

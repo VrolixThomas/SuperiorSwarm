@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { ActivityQueueItem, ExternalQueueItem } from "../../shared/activity-queue";
 import {
 	type TicketQueueAccount,
@@ -7,6 +8,8 @@ import {
 	ticketAccountKey,
 	ticketQueueSourceId,
 } from "../../shared/ticket-queue";
+import { getDb } from "../db";
+import { workspaces } from "../db/schema";
 import type { ActivityQueueService } from "./service";
 
 interface TicketSnapshot {
@@ -25,9 +28,26 @@ function readSnapshot(value: unknown): TicketSnapshot | null {
 	const snapshot = value as TicketSnapshot;
 	return snapshot.version === 1 &&
 		snapshot.account &&
+		["linear", "jira"].includes(snapshot.account.provider) &&
+		typeof snapshot.account.accountId === "string" &&
+		typeof snapshot.account.siteId === "string" &&
 		snapshot.fact &&
+		typeof snapshot.fact.id === "string" &&
+		typeof snapshot.eligible === "boolean" &&
+		typeof snapshot.intake === "boolean" &&
+		typeof snapshot.feedbackBaseline === "boolean" &&
 		Array.isArray(snapshot.seenComments) &&
-		Array.isArray(snapshot.pendingComments)
+		snapshot.seenComments.every((id) => typeof id === "string") &&
+		Array.isArray(snapshot.pendingComments) &&
+		snapshot.pendingComments.every(
+			(comment) =>
+				comment &&
+				typeof comment.id === "string" &&
+				typeof comment.body === "string" &&
+				typeof comment.author === "string" &&
+				Number.isFinite(comment.createdAt) &&
+				(comment.authorId === null || typeof comment.authorId === "string")
+		)
 		? snapshot
 		: null;
 }
@@ -79,7 +99,13 @@ export function observeTicketPoll(
 					.filter((comment) => comment.authorId === account.accountId)
 					.map((comment) => comment.createdAt)
 			);
-			pending = pending.filter((comment) => comment.createdAt >= latestSelf);
+			pending = [
+				...new Map(
+					pending
+						.filter((comment) => comment.createdAt >= latestSelf)
+						.map((comment) => [comment.id, comment])
+				).values(),
+			].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
 			seen = [...new Set([...seen, ...fact.comments.map((comment) => comment.id)])];
 			feedbackBaseline = true;
 		}
@@ -176,6 +202,13 @@ export function markTicketPollUnavailable(
 export function describeTicketQueueItem(item: ActivityQueueItem): ExternalQueueItem | null {
 	if (item.target.type !== "ticket") return null;
 	const start = item.kind === "ticket-start";
+	const workspace = item.target.workspaceId
+		? getDb()
+				.select({ id: workspaces.id, name: workspaces.name })
+				.from(workspaces)
+				.where(eq(workspaces.id, item.target.workspaceId))
+				.get()
+		: undefined;
 	return {
 		...item,
 		category: "tickets",
@@ -196,7 +229,8 @@ export function describeTicketQueueItem(item: ActivityQueueItem): ExternalQueueI
 			projectId: item.projectId,
 			projectName: item.projectName ?? item.target.groupId,
 			projectTint: 1,
-			workspaceId: item.target.workspaceId,
+			workspaceId: workspace?.id,
+			workspaceName: workspace?.name,
 		},
 	};
 }
