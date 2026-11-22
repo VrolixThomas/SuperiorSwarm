@@ -23,3 +23,9 @@ SS_KEEP_QUEUE_FIXTURE=1 bun test tests/combined-queue-electron.test.ts
 ```
 
 The fixture owns the GUI while running and preserves its synthetic artifact directory. Source/type checks report no diagnostics in the new test files; repository-wide TypeScript still has its existing failures. No live app/global trust/user lockfile changed, and nothing was pushed.
+
+## Foreground fix verified
+
+`QueueView` adds only `text-[var(--text)]` to the existing Later/shortcuts dialog. The native regression now checks a direct option button against the computed production theme foreground. With the final fixture's production CSS variable body (rather than its earlier inherited `#eee` override), the unpatched code fails **black vs rgb(245,245,247)**; the patched code passes and the final screenshot was inspected. The initial green attempt merely exposed that hardcoded fixture-body expectation mismatch; it was not another production defect.
+
+The entire final mixed-source sequence passes in **4.39 seconds**, including counts, grouping, receipt isolation, all eight Open buttons, native keyboard navigation, mixed Peek/jump and narrow details. No other production change was needed in this lane. See `color-red.txt`, `color-green.txt`, `final-later-colors.json`, and `final-later-popover.png`. Parent owns final merged desktop build; this change uses an existing production text utility and the fixture bundles the actual changed component.

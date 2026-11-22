@@ -1,0 +1,59 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/combined-queue-electron.test.ts:
+renderer 1 %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools
+You might need to use a local HTTP server (instead of file://): https://react.dev/link/react-devtools-faq font-weight:bold 17053 file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-combined-CywgvD/renderer.js
+15:44:50.454 › [ipc] sending trpc:workspaces.getById
+15:44:50.461 › [ipc] sending trpc:workspaces.getById
+renderer 2 %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged. 2 node:electron/js2c/sandbox_bundle
+15:44:50.461 › [ipc] sending trpc:workspaces.getById
+15:44:50.484 › [ipc] sending trpc:aiReview.getReviewDrafts
+15:44:50.485 › [ipc] sending trpc:prPoller.getCachedPRs
+15:44:50.485 › [ipc] sending trpc:activityQueue.ticketSettings
+15:44:50.490 › [ipc] sending trpc:activityQueue.viewList
+15:44:50.507 › [ipc] sending trpc:activityQueue.workspaceReplyCapability
+15:44:50.538 › [ipc] sending trpc:activityQueue.workspaceReplyCapability
+later isolation AssertionError [ERR_ASSERTION]: Later options must inherit the theme foreground
++ actual - expected
+
++ 'rgb(0, 0, 0)'
+- 'rgb(245, 245, 247)'
+       ^
+
+    at run (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-combined-CywgvD/main/main.js:12351:10) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'rgb(0, 0, 0)',
+  expected: 'rgb(245, 245, 247)',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+15:44:50.804 › [ipc] sending trpc:activityQueue.viewList
+
+Combined queue fixture: /private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-combined-CywgvD
+119 | 					clearTimeout(timer);
+120 | 					if (code !== 0) console.error(output);
+121 | 					done(code);
+122 | 				});
+123 | 			});
+124 | 			expect(code).toBe(0);
+                      ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/test/combined-queue-ui/apps/desktop/tests/combined-queue-electron.test.ts:124:17)
+(fail) mixed workspace, ticket, PR and hook attention shares one native queue [2949.73ms]
+
+ 0 pass
+ 1 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [3.15s]

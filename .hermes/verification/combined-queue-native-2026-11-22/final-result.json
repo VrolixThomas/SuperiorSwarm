@@ -1,0 +1,26 @@
+{
+  "mixedSources": 8,
+  "counts": true,
+  "receipts": true,
+  "navigation": true,
+  "peek": true,
+  "noNetwork": true,
+  "noShellReplacement": true,
+  "popoverStyle": {
+    "theme": "dark",
+    "foreground": "rgb(245, 245, 247)",
+    "background": "rgb(31, 31, 34)",
+    "expected": "rgb(245, 245, 247)"
+  },
+  "contexts": [
+    "repository",
+    "folder",
+    "project orchestrator"
+  ],
+  "seams": [
+    "controlled provider events over real shell PTYs",
+    "synthetic external observations",
+    "review workspace provisioning returns preselected fixture destination",
+    "hook output reconciled without command execution"
+  ]
+}

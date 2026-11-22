@@ -690,7 +690,7 @@ export function QueueScreen({
 			{mode !== "list" && (
 				<dialog
 					open
-					className="absolute m-0 left-auto right-5 top-[108px] z-20 w-[300px] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-xl"
+					className="absolute m-0 left-auto right-5 top-[108px] z-20 w-[300px] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-[var(--text)] shadow-xl"
 					aria-label={mode === "later" ? "Set aside until" : "Keyboard shortcuts"}
 				>
 					<div className="mb-2 flex items-center justify-between px-2">

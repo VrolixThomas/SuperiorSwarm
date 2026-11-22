@@ -81,7 +81,7 @@ test.skipIf(process.platform !== "darwin")(
 			if (renderer.exitCode !== 0) throw new Error(renderer.stderr.toString());
 			writeFileSync(
 				join(root, "index.html"),
-				'<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><link rel="stylesheet" href="./index.css"></head><body style="background:#171717;color:#eee"><div id="root"></div><script type="module" src="./renderer.js"></script></body></html>'
+				'<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><link rel="stylesheet" href="./index.css"></head><body style="background:var(--bg-base);color:var(--text)"><div id="root"></div><script type="module" src="./renderer.js"></script></body></html>'
 			);
 			const electronDir = dirname(require.resolve("electron/package.json"));
 			const electronPath = join(

@@ -465,11 +465,16 @@ async function run() {
 		background: string;
 		expected: string;
 	}>(
-		`(()=>{const d=document.querySelector('[aria-label="Set aside until"]');return {theme:document.documentElement.dataset.theme,foreground:getComputedStyle(d.querySelector('button:last-of-type')).color,background:getComputedStyle(d).backgroundColor,expected:getComputedStyle(document.body).color};})()`
+		`(()=>{const d=document.querySelector('[aria-label="Set aside until"]');return {theme:document.documentElement.dataset.theme,foreground:getComputedStyle(d.querySelector(':scope > button:last-of-type')).color,background:getComputedStyle(d).backgroundColor,expected:getComputedStyle(document.body).color};})()`
 	);
 	writeFileSync(join(root, "later-colors.json"), JSON.stringify(popoverStyle, null, 2));
 	await new Promise((r) => setTimeout(r, 100));
 	await wc.capturePage().then((i) => writeFileSync(join(root, "later-popover.png"), i.toPNG()));
+	assert.equal(
+		popoverStyle.foreground,
+		popoverStyle.expected,
+		"Later options must inherit the theme foreground"
+	);
 	await click("Until it changes");
 	await until(() => rows(7));
 	await until(() => js<boolean>("document.querySelector('[aria-label=\"Queue 7\"]')!==null"));

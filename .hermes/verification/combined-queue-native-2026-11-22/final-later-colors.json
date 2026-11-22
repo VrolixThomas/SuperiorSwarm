@@ -1,0 +1,6 @@
+{
+  "theme": "dark",
+  "foreground": "rgb(245, 245, 247)",
+  "background": "rgb(31, 31, 34)",
+  "expected": "rgb(245, 245, 247)"
+}
