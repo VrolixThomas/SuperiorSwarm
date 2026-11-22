@@ -759,6 +759,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		if (state.activeWorkspaceId === workspaceId) {
 			set({ activeWorkspaceId: null, activeWorkspaceCwd: "", rightPanel: PANEL_CLOSED });
 		}
+		useReviewModeStore.getState().dropQueueOriginsForWorkspace(workspaceId);
 		usePRReviewSessionStore.getState().dropSessionsForWorkspace(workspaceId);
 		useSolveSessionStore.getState().dropSessionsForWorkspace(workspaceId);
 	},
@@ -1542,6 +1543,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	getBaseBranch: (workspaceId) => get().baseBranchByWorkspace[workspaceId],
 
 	hydrate: (sessions, activeTab, activeWs, activeCwd, extraState) => {
+		useReviewModeStore
+			.getState()
+			.restoreQueueState(extraState?.["queueReviewOrigins"], extraState?.["queueReviewDraftText"]);
 		let baseBranchByWorkspace: Record<string, string> = {};
 		if (extraState?.["baseBranchByWorkspace"]) {
 			try {

@@ -1,0 +1,107 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/tab-store-xro-workspace.test.ts:
+(pass) openXroWorkspace > sets active workspace and builds terminal-left / canvas-right split [0.76ms]
+(pass) openXroWorkspace > reattaches without spawning a second coordinator [0.21ms]
+(pass) openXroWorkspace > re-open after closing only the coordinator terminal does not duplicate the canvas tab [0.25ms]
+
+tests/tab-store-swap-pr-review-file.test.ts:
+(pass) swapPRReviewFile > opens Review Mode changes view when no legacy pr-review-file tab exists [0.22ms]
+(pass) swapPRReviewFile > legacy openPRReviewFile and swapPRReviewFile keep using one Review Mode surface
+
+tests/review-mode-store.test.ts:
+(pass) review-mode-store > starts with review mode defaults [0.05ms]
+(pass) review-mode-store > Review Mode is visible only in the PR segment for its active workspace
+(pass) review-mode-store > open of a different workspace resets view, filter, drawer, intent
+(pass) review-mode-store > open of the already-active workspace preserves view, filter, drawer
+(pass) review-mode-store > reopen after close preserves view and filter for the same workspace
+(pass) review-mode-store > terminals survive open/close/open cycles and workspace switches [0.20ms]
+(pass) review-mode-store > setTerminal replaces the terminal for its own workspace only
+(pass) review-mode-store > terminal drawer height is resizable within usable bounds [0.04ms]
+(pass) review-mode-store > close clears active PR, drawer, and intent
+(pass) review-mode-store > sendIntent bumps nonce for identical intents [0.07ms]
+(pass) review-mode-store > toggleNavigator flips navigatorCollapsed
+(pass) review-mode-store > published comment visibility survives view and workspace switches [0.02ms]
+
+tests/tab-store.test.ts:
+(pass) diffContextsEqual > working-tree contexts with same repoPath are equal
+(pass) diffContextsEqual > working-tree contexts with different repoPath are not equal [0.09ms]
+(pass) diffContextsEqual > different types are not equal
+(pass) diffContextsEqual > branch contexts with same branches are equal
+(pass) diffContextsEqual > branch contexts with different headBranch are not equal
+(pass) diffContextsEqual > pr contexts with same prId are equal
+(pass) diffContextsEqual > pr contexts with different prId are not equal
+(pass) diffContextsEqual > commit: true when same commitHash and repoPath
+(pass) diffContextsEqual > commit: false when commitHash differs
+(pass) toggleDiffPanel > opens panel when closed [0.11ms]
+(pass) toggleDiffPanel > closes panel when toggling same context [0.03ms]
+(pass) toggleDiffPanel > switches context when toggling different context [0.02ms]
+(pass) toggleDiffPanel > switches to different PR instead of closing [0.03ms]
+(pass) toggleDiffPanel > closes same PR when toggling again [0.02ms]
+(pass) toggleDiffPanel > switches to different branch instead of closing
+(pass) toggleDiffPanel > switches from explorer mode to diff when toggling diff panel [0.06ms]
+(pass) closeDiffPanel > closes an open panel [0.02ms]
+(pass) closeDiffPanel > is a no-op when already closed
+(pass) setActiveWorkspace > opens the diff panel with working-tree context for the new cwd [0.07ms]
+(pass) setActiveWorkspace > opens the diff panel with null diffCtx when cwd is empty
+(pass) workspace history > goes back and forward through previously active workspaces [0.32ms]
+(pass) workspace history > clears forward history after a new manual workspace selection [0.13ms]
+(pass) workspace history > removes cleaned up workspaces from back and forward history [0.26ms]
+(pass) workspace history > preserves back history when navigating through an empty sidebar segment [0.11ms]
+(pass) closeDiff > closes panel when repoPath matches [0.11ms]
+(pass) closeDiff > does not close panel when repoPath differs
+(pass) closeDiff > removes diff-file tabs for matching workspace and repoPath [0.12ms]
+(pass) closeDiff > does not remove diff-file tabs for non-matching workspace [0.06ms]
+(pass) openExplorer > opens panel in explorer mode [0.03ms]
+(pass) openExplorer > toggles closed when already in explorer mode
+(pass) openExplorer > preserves diffCtx when switching from diff to explorer [0.05ms]
+(pass) togglePanelMode > switches from explorer to diff when diffCtx exists [0.04ms]
+(pass) togglePanelMode > does not switch to diff when no diffCtx
+(pass) togglePanelMode > switches from diff to explorer [0.03ms]
+(pass) openFile > opens a new file tab [0.08ms]
+(pass) openFile > deduplicates by repoPath + filePath [0.07ms]
+(pass) openFile > opens different files as separate tabs [0.03ms]
+(pass) openFile > updates initialPosition on existing tab [0.09ms]
+(pass) addTerminalTab > adds a terminal tab to the focused pane
+(pass) addTerminalTab > sets the new tab as active [0.11ms]
+(pass) addTerminalTab > uses a main-process terminal ID and deduplicates a replayed dispatch [0.07ms]
+(pass) review workspace activation > setActiveWorkspace with review type opens Review Mode in the main panel [0.06ms]
+(pass) review workspace activation > activateReviewWorkspace registers metadata before selecting the PR segment [0.09ms]
+(pass) review workspace activation > legacy PR panel opener uses the same PR-segment activation transition
+(pass) review workspace activation > setActiveWorkspace with non-review type uses default diff panel
+(pass) review workspace activation > switching Projects, Tickets, and PRs restores each segment without leaking Review Mode [0.22ms]
+(pass) hydrate > restores sessions into pane-store [0.25ms]
+(pass) hydrate > restores a persisted ticket scope [0.05ms]
+(pass) hydrate > reopens Review Mode for a persisted active PR workspace [0.03ms]
+(pass) ticket canvas state > initial state has activeTicketProject 'all'
+(pass) ticket canvas state > changing projects resets a selected iteration scope
+(pass) ticket canvas state > setActiveTicketProject changes project and resets detail
+(pass) ticket canvas state > setSelectedTicket opens detail panel
+(pass) ticket canvas state > setSelectedTicket(null) closes detail panel
+(pass) ticket canvas state > closeTicketDetail clears selection
+(pass) markdownPreviewMode > defaults to 'off'
+(pass) markdownPreviewMode > setMarkdownPreviewMode sets 'split'
+(pass) markdownPreviewMode > setMarkdownPreviewMode sets 'rendered'
+(pass) markdownPreviewMode > setMarkdownPreviewMode resets to 'off'
+(pass) openDiffFile with commit contexts > same file from two different commits opens two tabs [0.27ms]
+(pass) openDiffFile with commit contexts > same file, same commit dedups to a single tab [0.06ms]
+(pass) openDiffFile with commit contexts > commit tab is distinct from working-tree tab for same file [0.06ms]
+(pass) queue destination > opening Queue preserves each workspace route for return [0.05ms]
+(pass) queue destination > a queue route restores without borrowing the previously active workspace [0.02ms]
+
+tests/session-navigation-persistence.test.ts:
+(pass) session navigation persistence > collects and persists task-first Agents state without terminals or layouts [0.07ms]
+(pass) session navigation persistence > round-trips both Agents panes [0.13ms]
+(pass) session navigation persistence > persists clearing an Agents-only route when navigating to an empty repo view [0.11ms]
+(pass) session navigation persistence > persists clearing an empty Agents route without weakening the pristine repo gate
+(pass) session navigation persistence > falls back safely for malformed and unavailable saved selections [0.07ms]
+(pass) session navigation persistence > keeps the existing repo and workspace persistence gate
+
+tests/review-mode-nav.test.ts:
+(pass) review mode thread navigation > opening a thread in Changes selects it and makes published comments visible [0.07ms]
+(pass) review mode thread navigation > returning to Comments preserves the filter and selected thread
+
+ 89 pass
+ 0 fail
+ 262 expect() calls
+Ran 89 tests across 6 files. [49.00ms]

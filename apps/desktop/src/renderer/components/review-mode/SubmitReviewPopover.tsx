@@ -45,6 +45,31 @@ export function SubmitReviewPopover({
 	const origin = useReviewModeStore((s) => s.queueOrigin);
 	const draftKey = `${origin?.id ?? `${prCtx.provider}:${prCtx.owner}/${prCtx.repo}#${prCtx.number}`}:review`;
 	const [body, setBody] = useState(() => useReviewModeStore.getState().draftText[draftKey] ?? "");
+	const submissionIdentity = JSON.stringify([
+		origin,
+		prCtx.provider,
+		prCtx.owner,
+		prCtx.repo,
+		prCtx.number,
+		draftId,
+	]);
+	const latestIdentity = useRef(submissionIdentity);
+	latestIdentity.current = submissionIdentity;
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
+	const appliedIdentity = useRef(submissionIdentity);
+	useEffect(() => {
+		if (appliedIdentity.current === submissionIdentity) return;
+		appliedIdentity.current = submissionIdentity;
+		setBody(useReviewModeStore.getState().draftText[draftKey] ?? "");
+		setOutcome(null);
+		setSubmitting(false);
+	}, [submissionIdentity, draftKey]);
 	const [submitting, setSubmitting] = useState(false);
 	const [outcome, setOutcome] = useState<SubmitOutcome | null>(null);
 	const utils = trpc.useUtils();
@@ -87,6 +112,10 @@ export function SubmitReviewPopover({
 
 	const handleSubmit = async () => {
 		if (!canSubmit) return;
+		const submittedKey = draftKey;
+		const submittedBody = body;
+		const submittedVersion = useReviewModeStore.getState().draftVersions[submittedKey];
+		const isCurrent = () => mounted.current && latestIdentity.current === submissionIdentity;
 		setSubmitting(true);
 		setOutcome(null);
 		try {
@@ -96,6 +125,12 @@ export function SubmitReviewPopover({
 				);
 				const result = receipt.outcome;
 				if (!result) throw new Error("Publication result is unavailable.");
+				const cleared =
+					result.success &&
+					useReviewModeStore
+						.getState()
+						.clearDraftText(submittedKey, submittedBody, submittedVersion);
+				if (!isCurrent()) return;
 				setOutcome({
 					posted: result.postedCount,
 					failed: result.failedCount,
@@ -104,14 +139,14 @@ export function SubmitReviewPopover({
 					verdictSubmitted: result.verdictSubmitted,
 					skippedVerdict: false,
 				});
-				if (result.success) {
-					useReviewModeStore.getState().setDraftText(draftKey, "");
+				if (cleared) {
 					onSubmitted();
 				}
 				return;
 			}
 			if (draftId) {
 				const result = await publishDraftReview.mutateAsync({ draftId, verdict, body });
+				if (!isCurrent()) return;
 				const mapped: SubmitOutcome = {
 					posted: result.postedCount,
 					failed: result.failedCount,
@@ -150,6 +185,7 @@ export function SubmitReviewPopover({
 				verdict,
 				body: body.trim(),
 			});
+			if (!isCurrent()) return;
 			setOutcome({
 				posted: 0,
 				failed: 0,
@@ -160,6 +196,7 @@ export function SubmitReviewPopover({
 			});
 			onSubmitted();
 		} catch (err) {
+			if (!isCurrent()) return;
 			setOutcome({
 				posted: 0,
 				failed: 1,
@@ -169,7 +206,7 @@ export function SubmitReviewPopover({
 				skippedVerdict: false,
 			});
 		} finally {
-			setSubmitting(false);
+			if (isCurrent()) setSubmitting(false);
 		}
 	};
 

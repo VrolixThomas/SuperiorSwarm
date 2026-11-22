@@ -3,6 +3,7 @@ import type { SessionSaveData } from "../shared/types";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
+import { useReviewModeStore } from "./stores/review-mode-store";
 import { type TabItem, serializeHermesSessionSelection, useTabStore } from "./stores/tab-store";
 
 export type SessionSnapshot = SessionSaveData & {
@@ -100,6 +101,9 @@ export function collectSessionSnapshot(): SessionSnapshot {
 	}));
 
 	const state: Record<string, string> = {};
+	const review = useReviewModeStore.getState();
+	state["queueReviewOrigins"] = JSON.stringify(review.queueOrigins);
+	state["queueReviewDraftText"] = JSON.stringify(review.draftText);
 	if (activeTabId) state["activeTabId"] = activeTabId;
 	if (activeWorkspaceId) state["activeWorkspaceId"] = activeWorkspaceId;
 	if (activeWorkspaceCwd) state["activeWorkspaceCwd"] = activeWorkspaceCwd;

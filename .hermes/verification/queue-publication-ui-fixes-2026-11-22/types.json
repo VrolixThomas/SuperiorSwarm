@@ -1,0 +1,10 @@
+{
+  "renderer": {
+    "diagnostics": 69,
+    "ownedDiagnostics": []
+  },
+  "tests": {
+    "diagnostics": 210,
+    "ownedDiagnostics": []
+  }
+}

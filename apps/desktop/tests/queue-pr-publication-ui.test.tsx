@@ -156,7 +156,8 @@ test("elapsed reservation dispatches once despite repeated Send", async () => {
 	expect(prepares).toBe(1);
 	expect(dispatches).toBe(1);
 });
-test("opening an ordinary review removes the prior queue origin", async () => {
+test("explicit close followed by a new ordinary review removes the prior queue origin", async () => {
+	useReviewModeStore.getState().close();
 	useReviewModeStore.getState().open("workspace", prCtx);
 	await mount();
 	expect((document.querySelector("button") as HTMLButtonElement).disabled).toBe(true);

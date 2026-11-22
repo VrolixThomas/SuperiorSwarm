@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type {
 	AIDraftThread,
 	GitHubReviewThread,
@@ -200,6 +200,19 @@ export function ThreadCard({
 	const isAIDraft = aiThread !== null;
 	const isInlineResolvedGitHub =
 		variant === "inline" && githubThread !== null && githubThread.isResolved;
+	const origin = useReviewModeStore((state) => state.queueOrigin);
+	const replyDraftKey = `${origin?.id ?? "review"}:${thread.id}`;
+	const replyIdentity = JSON.stringify([origin, thread.id]);
+	const latestReplyIdentity = useRef(replyIdentity);
+	latestReplyIdentity.current = replyIdentity;
+	const composerEpoch = useRef(0);
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
 	const [composer, setComposer] = useState<"reply" | "edit" | null>(null);
 	const [collapsed, setCollapsed] = useState(isInlineResolvedGitHub ? defaultCollapsed : false);
 	const intent = useReviewModeStore((state) => state.intent);
@@ -335,7 +348,10 @@ export function ThreadCard({
 					<ThreadActions
 						thread={thread}
 						callbacks={callbacks}
-						onStartReply={() => setComposer("reply")}
+						onStartReply={() => {
+							composerEpoch.current++;
+							setComposer("reply");
+						}}
 						onStartEdit={() => setComposer("edit")}
 						showOpenInChanges={variant === "full"}
 						showOpenInComments={variant === "inline"}
@@ -364,33 +380,33 @@ export function ThreadCard({
 				<div className={`border-t border-[var(--border-subtle)] pb-3 pt-2 ${paddingClassName}`}>
 					<ReplyComposer
 						placeholder="Reply..."
-						initialValue={
-							useReviewModeStore.getState().draftText[
-								`${useReviewModeStore.getState().queueOrigin?.id ?? "review"}:${githubThread.id}`
-							] ?? ""
-						}
+						key={replyIdentity}
+						initialValue={useReviewModeStore.getState().draftText[replyDraftKey] ?? ""}
 						onDraftChange={(body) =>
-							useReviewModeStore
-								.getState()
-								.setDraftText(
-									`${useReviewModeStore.getState().queueOrigin?.id ?? "review"}:${githubThread.id}`,
-									body
-								)
+							useReviewModeStore.getState().setDraftText(replyDraftKey, body)
 						}
 						ariaLabel="Reply to thread"
 						submitLabel="Reply"
 						autoFocus
 						onSubmit={async (body) => {
+							const submittedKey = replyDraftKey;
+							const submittedDraft = useReviewModeStore.getState().draftText[submittedKey] ?? body;
+							const version = useReviewModeStore.getState().draftVersions[submittedKey];
+							const epoch = composerEpoch.current;
 							await callbacks.onReply?.(githubThread.id, body);
-							useReviewModeStore
+							const unchanged = useReviewModeStore
 								.getState()
-								.setDraftText(
-									`${useReviewModeStore.getState().queueOrigin?.id ?? "review"}:${githubThread.id}`,
-									""
-								);
-							setComposer(null);
+								.clearDraftText(submittedKey, submittedDraft, version);
+							if (
+								unchanged &&
+								mounted.current &&
+								latestReplyIdentity.current === replyIdentity &&
+								composerEpoch.current === epoch
+							)
+								setComposer(null);
 						}}
 						onCancel={() => {
+							composerEpoch.current++;
 							callbacks.onReplyCancel?.();
 							setComposer(null);
 						}}
