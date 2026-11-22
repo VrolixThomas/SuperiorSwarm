@@ -329,7 +329,7 @@ interface TabStore {
 	// Workspace
 	setWorkspaceMetadata: (id: string, meta: WorkspaceMetadata) => void;
 	cleanupWorkspace: (workspaceId: string) => void;
-	setSidebarSegment: (segment: SidebarSegment) => void;
+	setSidebarSegment: (segment: SidebarSegment, options?: { restoreWorkspace?: boolean }) => void;
 	changeHermesConnection: (connectionId: string) => void;
 	selectHermesSession: (selection: HermesSessionSelection | null) => void;
 	forgetHermesSession: (selection: HermesSessionSelection) => void;
@@ -763,9 +763,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		useSolveSessionStore.getState().dropSessionsForWorkspace(workspaceId);
 	},
 
-	setSidebarSegment: (segment) => {
+	setSidebarSegment: (segment, options) => {
 		set({ sidebarSegment: segment });
-		const entry = segment === "queue" ? null : get().activeWorkspaceBySegment[segment];
+		const entry =
+			segment === "queue" || options?.restoreWorkspace === false
+				? null
+				: get().activeWorkspaceBySegment[segment];
 		if (entry) {
 			get().setActiveWorkspace(entry.id, entry.cwd);
 		} else {

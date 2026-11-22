@@ -1,0 +1,137 @@
+apps/desktop/tests/queue-hook-open.test.ts:78:24 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    76 │ 	});
+    77 │ 	await openQueueItem(item);
+  > 78 │ 	expect(urls).toEqual([prepared.url!]);
+       │ 	                      ^^^^^^^^^^^^^
+    79 │ 	expect(useTabStore.getState().sidebarSegment).toBe("queue");
+    80 │ 	expect(useProjectStore.getState().selectedProjectId).toBe("project-b");
+  
+
+apps/desktop/tests/queue-hook-launch.test.ts:138:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    136 │ 			const queue = new ActivityQueueService();
+    137 │ 			const id = projectHookSourceId(projectId, "check", "test");
+  > 138 │ 			const revision = queue.read(id)!.revision;
+        │ 			                 ^^^^^^^^^^^^^^^
+    139 │ 			const result = await fixProjectHook(
+    140 │ 				{ id, revision, workspaceId },
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    136 136 │   			const queue = new ActivityQueueService();
+    137 137 │   			const id = projectHookSourceId(projectId, "check", "test");
+    138     │ - → → → const·revision·=·queue.read(id)!.revision;
+        138 │ + → → → const·revision·=·queue.read(id)?.revision;
+    139 139 │   			const result = await fixProjectHook(
+    140 140 │   				{ id, revision, workspaceId },
+  
+
+apps/desktop/tests/queue-hook-launch.test.ts:157:32 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    155 │ 			expect(result.status).toBe("prepared");
+    156 │ 			expect(scriptPath).toBeDefined();
+  > 157 │ 			const script = readFileSync(scriptPath!, "utf8");
+        │ 			                            ^^^^^^^^^^^
+    158 │ 			expect(script).toContain(`cd '${root}'`);
+    159 │ 			expect(script).toContain(
+  
+
+apps/desktop/tests/queue-hook-action-review.test.ts:44:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    42 │ 			const queue = new ActivityQueueService();
+    43 │ 			const id = projectHookSourceId(projectId, "check", "test");
+  > 44 │ 			const revision = queue.read(id)!.revision;
+       │ 			                 ^^^^^^^^^^^^^^^
+    45 │ 			let dispatched = 0;
+    46 │ 			let confirmations = 0;
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    42 42 │   			const queue = new ActivityQueueService();
+    43 43 │   			const id = projectHookSourceId(projectId, "check", "test");
+    44    │ - → → → const·revision·=·queue.read(id)!.revision;
+       44 │ + → → → const·revision·=·queue.read(id)?.revision;
+    45 45 │   			let dispatched = 0;
+    46 46 │   			let confirmations = 0;
+  
+
+apps/desktop/tests/activity-queue-hook-source.test.ts:126:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    124 │ 	trust();
+    125 │ 	await refreshProjectHookQueue(projectId, true);
+  > 126 │ 	const first = queue().read(sourceId())!;
+        │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    127 │ 	queue().acknowledge({ id: sourceId(), revision: first.revision });
+    128 │ 	await refreshProjectHookQueue(projectId, true);
+  
+
+apps/desktop/tests/activity-queue-hook-source.test.ts:142:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    140 │ 	trust();
+    141 │ 	await refreshProjectHookQueue(projectId, true);
+  > 142 │ 	const first = queue().read(sourceId())!;
+        │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    143 │ 	writeFileSync(
+    144 │ 		join(root, "results.jsonl"),
+  
+
+apps/desktop/tests/activity-queue-hook-source.test.ts:243:38 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    241 │ 	expect(queue().list().items).toHaveLength(2);
+    242 │ 	expect(projectHookSourceId("a:b", "c", "d")).not.toBe(projectHookSourceId("a", "b:c", "d"));
+  > 243 │ 	expect(describeProjectHookQueueItem(queue().list().items[0]!)?.nextAction).toContain("fix");
+        │ 	                                    ^^^^^^^^^^^^^^^^^^^^^^^^
+    244 │ 	setProjectHooksEnabled(false);
+    245 │ 	expect(isProjectHookQueueItemCurrent(queue().list().items[0]!)).toBe(false);
+  
+
+apps/desktop/tests/activity-queue-hook-source.test.ts:245:39 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    243 │ 	expect(describeProjectHookQueueItem(queue().list().items[0]!)?.nextAction).toContain("fix");
+    244 │ 	setProjectHooksEnabled(false);
+  > 245 │ 	expect(isProjectHookQueueItemCurrent(queue().list().items[0]!)).toBe(false);
+        │ 	                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+    246 │ });
+    247 │ test("Open never acknowledges; Fix confirms exact revision/root and retains queue receipt", async () => {
+  
+
+apps/desktop/tests/activity-queue-hook-source.test.ts:256:46 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    254 │ 	mkdirSync(child);
+    255 │ 	getDb().update(workspaces).set({ folderPath: child }).where(eq(workspaces.id, nested)).run();
+  > 256 │ 	const receipt = { id: sourceId(), revision: queue().read(sourceId())!.revision };
+        │ 	                                            ^^^^^^^^^^^^^^^^^^^^^^^^^
+    257 │ 	exactProjectHook(receipt);
+    258 │ 	expect(queue().list().items).toHaveLength(1);
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    254 254 │   	mkdirSync(child);
+    255 255 │   	getDb().update(workspaces).set({ folderPath: child }).where(eq(workspaces.id, nested)).run();
+    256     │ - → const·receipt·=·{·id:·sourceId(),·revision:·queue().read(sourceId())!.revision·};
+        256 │ + → const·receipt·=·{·id:·sourceId(),·revision:·queue().read(sourceId())?.revision·};
+    257 257 │   	exactProjectHook(receipt);
+    258 258 │   	expect(queue().list().items).toHaveLength(1);
+  
+
+Checked 9 files in 30ms. No fixes applied.
+Found 9 warnings.

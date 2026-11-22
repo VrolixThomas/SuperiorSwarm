@@ -1,0 +1,14 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-hook-ui.test.tsx:
+(pass) trust submits the reviewed snapshot even if polling discovers a changed config [14.78ms]
+(pass) disabled hooks expose opt-in but do not show trust or run controls [1.21ms]
+(pass) Fix shows context and requires explicit click with exact revision and selected target [2.13ms]
+(pass) confirmed Fix creates the exact prepared terminal before writing its script once [2.04ms]
+(pass) cancelled Fix never creates a terminal or sends a script [0.73ms]
+(pass) failed exact terminal creation never writes or claims that the agent started [1.22ms]
+
+ 6 pass
+ 0 fail
+ 27 expect() calls
+Ran 6 tests across 1 file. [149.00ms]

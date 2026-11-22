@@ -1,0 +1,11 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-hook-open.test.ts:
+(pass) Open project hook does not restore another project's saved workspace or right panel [0.25ms]
+(pass) explicit ordinary segment navigation still restores its saved workspace [0.27ms]
+(pass) hook URL Open leaves selected workspace unchanged and does not acknowledge [0.06ms]
+
+ 3 pass
+ 0 fail
+ 9 expect() calls
+Ran 3 tests across 1 file. [31.00ms]

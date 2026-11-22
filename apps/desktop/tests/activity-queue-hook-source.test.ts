@@ -37,6 +37,7 @@ import { ActivityQueueService } from "../src/main/activity-queue/service";
 import { getDb } from "../src/main/db";
 import { appSettings, projects, workspaces } from "../src/main/db/schema";
 import { activityQueueSources } from "../src/main/db/schema-activity-queue";
+import type { SpawnArgs } from "../src/main/services/workspace-service";
 import { seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
 const temp = mkdtempSync(join(tmpdir(), "queue-hooks-test-"));
@@ -259,14 +260,20 @@ test("Open never acknowledges; Fix confirms exact revision/root and retains queu
 	let dispatched = 0;
 	const deps = {
 		confirm: async () => true,
-		dispatch: async (input: { prompt: string; skipPermissions?: boolean }) => {
-			expect(input.prompt).toBe(row.fixPrompt);
-			expect(input.skipPermissions).toBe(false);
+		spawn: async (input: SpawnArgs) => {
+			expect(input.launchScriptContent).toContain(row.fixPrompt);
+			expect(input.agent?.skipPermissions).toBe(false);
 			dispatched++;
-			return { sessionId: "fixture", terminalId: "fixture", status: "started" as const };
+			return {
+				sessionId: "fixture",
+				terminalId: "fixture",
+				launch: { cwd: root, scriptPath: "/fixture/script.sh", title: "Fix" },
+			};
 		},
 	};
-	expect(await fixProjectHook({ ...receipt, workspaceId }, deps)).toEqual({ status: "started" });
+	expect(await fixProjectHook({ ...receipt, workspaceId }, deps)).toMatchObject({
+		status: "prepared",
+	});
 	expect(dispatched).toBe(1);
 	expect(queue().list().items).toHaveLength(1);
 	await expect(

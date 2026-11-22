@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { CLI_PRESET_NAMES, type CliPresetName } from "../../shared/cli-preset";
+import type { OwnedChatLaunch } from "../../shared/owned-chat";
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { requestConfirm } from "../control-plane/confirm-bridge";
 import { getDb } from "../db";
 import { aiReviewSettings, workspaces } from "../db/schema";
-import { dispatchAgent } from "../services/workspace-service";
+import { type SpawnFn, buildLaunchScript, defaultSpawnFn } from "../services/workspace-service";
 import { isProjectHookQueueItemCurrent, listProjectHookStatus } from "./hook-source";
 import { ActivityQueueService } from "./service";
 
@@ -13,6 +15,7 @@ export function exactProjectHook(input: { id: string; revision: number }) {
 	if (
 		!source?.candidate ||
 		source.revision !== input.revision ||
+		source.acknowledgedRevision === source.revision ||
 		source.candidate.target.type !== "project-hook"
 	)
 		throw new Error("This check changed. Refresh the queue.");
@@ -50,7 +53,7 @@ export function projectHookFixTargets(input: { id: string; revision: number }) {
 const pending = new Set<string>();
 export async function fixProjectHook(
 	input: { id: string; revision: number; workspaceId: string },
-	deps = { confirm: requestConfirm, dispatch: dispatchAgent }
+	deps: { confirm?: typeof requestConfirm; spawn?: SpawnFn } = {}
 ) {
 	if (pending.has(input.id)) throw new Error("A fix launch is already awaiting confirmation.");
 	pending.add(input.id);
@@ -77,7 +80,7 @@ export async function fixProjectHook(
 				?.cliPreset ?? "claude";
 		if (!CLI_PRESET_NAMES.includes(configured as CliPresetName))
 			throw new Error("Configure a supported default agent first.");
-		const allowed = await deps.confirm({
+		const allowed = await (deps.confirm ?? requestConfirm)({
 			kind: "dispatch",
 			workspaceName: workspace.name,
 			branch: null,
@@ -96,15 +99,45 @@ export async function fixProjectHook(
 			!projectHookFixTargets(input).some((value) => value.id === input.workspaceId)
 		)
 			throw new Error("Check or project changed during confirmation. Refresh before retrying.");
-		await deps.dispatch({
-			projectId: target.projectId,
+		const provider = configured as CliPresetName;
+		const providerSessionId = provider === "claude" ? randomUUID() : null;
+		const queueLaunchId = randomUUID();
+		// Hook fixes are personal tasks, never replacements for an orchestrator's dispatch target.
+		// Start a fresh provider conversation, leaving workspace cliSessionId unchanged.
+		const prompt = target.fixPrompt.startsWith("-")
+			? `Project check fix:\n${target.fixPrompt}`
+			: target.fixPrompt;
+		const prepared = await (deps.spawn ?? defaultSpawnFn)({
 			workspaceId: input.workspaceId,
-			cliPreset: configured as CliPresetName,
-			prompt: target.fixPrompt,
-			skipPermissions: false,
+			cwd: current.root,
+			title: `Fix: ${source.candidate?.title}`,
+			openInRenderer: false,
+			launchScriptContent: buildLaunchScript({
+				cwd: current.root,
+				cliPreset: provider,
+				cliSessionId: providerSessionId,
+				queueLaunchId,
+				prompt,
+				skipPermissions: false,
+			}),
+			agent: {
+				provider,
+				providerSessionId,
+				queueLaunchId,
+				managed: false,
+				initialPrompt: true,
+				skipPermissions: false,
+			},
 		});
-		// Launching is not resolution; the next complete hook run owns cleanup.
-		return { status: "started" as const };
+		if (!prepared.launch) throw new Error("Fix startup returned no terminal launch.");
+		const launch: OwnedChatLaunch = {
+			workspaceId: input.workspaceId,
+			terminalId: prepared.terminalId,
+			...prepared.launch,
+		};
+		// The renderer creates this exact terminal before sending its script once.
+		// Preparation is not resolution; the next complete hook run owns cleanup.
+		return { status: "prepared" as const, launch };
 	} finally {
 		pending.delete(input.id);
 	}

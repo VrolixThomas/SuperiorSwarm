@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
 import type { ExternalQueueItem } from "../src/shared/activity-queue";
+import type { OwnedChatLaunch } from "../src/shared/owned-chat";
 import type { QueueHookProjectStatus } from "../src/shared/queue-hooks";
 
 const browser = new Window({ url: "http://localhost" });
@@ -19,10 +20,23 @@ const { createRoot } = await import("react-dom/client");
 let enabled = true;
 let project: QueueHookProjectStatus;
 const calls: { method: string; input: unknown }[] = [];
+type FixResult = { status: "cancelled" } | { status: "prepared"; launch: OwnedChatLaunch };
+let fixResult: FixResult | undefined;
+let pendingFix = Promise.resolve();
 const mutation = (method: string) => ({
-	useMutation: () => ({
+	useMutation: (options?: {
+		onSuccess?: (result: FixResult) => void | Promise<void>;
+		onError?: () => void;
+	}) => ({
 		isPending: false,
-		mutate: (input: unknown) => calls.push({ method, input }),
+		mutate: (input: unknown) => {
+			calls.push({ method, input });
+			if (method === "fix" && fixResult) {
+				pendingFix = Promise.resolve(options?.onSuccess?.(fixResult)).catch(() =>
+					options?.onError?.()
+				);
+			}
+		},
 	}),
 });
 mock.module("../src/renderer/trpc/client", () => ({
@@ -46,6 +60,8 @@ const { QueueHookActions } = await import("../src/renderer/components/queue/Queu
 let root: Root;
 beforeEach(() => {
 	enabled = true;
+	fixResult = undefined;
+	pendingFix = Promise.resolve();
 	calls.length = 0;
 	project = {
 		projectId: "project",
@@ -122,4 +138,110 @@ test("Fix shows context and requires explicit click with exact revision and sele
 	item.stale = true;
 	await act(render);
 	expect(button("Fix with agent…").disabled).toBe(true);
+});
+
+const preparedLaunch: OwnedChatLaunch = {
+	workspaceId: "workspace",
+	terminalId: "prepared-hook-terminal",
+	cwd: "/project-root",
+	title: "Fix synthetic check",
+	scriptPath: "/tmp/fixture-hook-launch.sh",
+};
+const hookItem = {
+	id: "hook:project:checks:launch",
+	revision: 7,
+	stale: false,
+	target: {
+		type: "project-hook",
+		projectId: "project",
+		hookId: "checks",
+		key: "launch",
+		fixPrompt: "Fix the synthetic check",
+	},
+} as ExternalQueueItem;
+function terminalActions(create: () => Promise<unknown>, writes: string[]) {
+	Object.defineProperty(browser, "electron", {
+		configurable: true,
+		value: {
+			terminal: {
+				create: async (id: string, cwd: string, owner: string) => {
+					expect([id, cwd, owner]).toEqual([
+						preparedLaunch.terminalId,
+						preparedLaunch.cwd,
+						preparedLaunch.workspaceId,
+					]);
+					return create();
+				},
+				write: async (id: string, text: string) => {
+					expect(id).toBe(preparedLaunch.terminalId);
+					writes.push(text);
+					return true;
+				},
+			},
+		},
+	});
+}
+test("confirmed Fix creates the exact prepared terminal before writing its script once", async () => {
+	fixResult = { status: "prepared", launch: preparedLaunch };
+	let release: (() => void) | undefined;
+	const creation = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let creates = 0;
+	const writes: string[] = [];
+	terminalActions(async () => {
+		creates++;
+		return creation;
+	}, writes);
+	await act(() => root.render(<QueueHookActions item={hookItem} refresh={async () => {}} />));
+	await act(() => button("Fix with agent…").click());
+	expect(creates).toBe(1);
+	expect(writes).toEqual([]);
+	await act(async () => {
+		release?.();
+		await pendingFix;
+	});
+	expect(writes).toHaveLength(1);
+	expect(writes[0]).toContain(preparedLaunch.scriptPath);
+	expect(writes[0]?.endsWith("\r")).toBe(true);
+	const { useTabStore } = await import("../src/renderer/stores/tab-store");
+	expect(useTabStore.getState()).toMatchObject({
+		activeWorkspaceId: preparedLaunch.workspaceId,
+		activeWorkspaceCwd: preparedLaunch.cwd,
+		sidebarSegment: "repos",
+	});
+	expect(document.body.textContent).toContain("Agent started.");
+	await act(() => root.render(<QueueHookActions item={hookItem} refresh={async () => {}} />));
+	expect(writes).toHaveLength(1);
+});
+test("cancelled Fix never creates a terminal or sends a script", async () => {
+	fixResult = { status: "cancelled" };
+	let creates = 0;
+	const writes: string[] = [];
+	terminalActions(async () => {
+		creates++;
+	}, writes);
+	await act(() => root.render(<QueueHookActions item={hookItem} refresh={async () => {}} />));
+	await act(async () => {
+		button("Fix with agent…").click();
+		await pendingFix;
+	});
+	expect(creates).toBe(0);
+	expect(writes).toEqual([]);
+	expect(document.body.textContent).toContain("Launch cancelled.");
+});
+test("failed exact terminal creation never writes or claims that the agent started", async () => {
+	fixResult = { status: "prepared", launch: preparedLaunch };
+	const writes: string[] = [];
+	terminalActions(async () => {
+		throw Error("synthetic create failure");
+	}, writes);
+	await act(() => root.render(<QueueHookActions item={hookItem} refresh={async () => {}} />));
+	await act(async () => {
+		button("Fix with agent…").click();
+		await pendingFix;
+	});
+	expect(writes).toEqual([]);
+	expect(document.body.textContent).not.toContain("Agent started.");
+	expect(document.body.textContent).toContain("launch failed");
 });

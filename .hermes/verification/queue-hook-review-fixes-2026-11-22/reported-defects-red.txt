@@ -1,0 +1,39 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-hook-action-review.test.ts:
+{"result":{"status":"started"},"dispatched":1,"acknowledged":true}
+60 | 				result,
+61 | 				dispatched,
+62 | 				acknowledged: queue.read(id)?.acknowledgedRevision === revision,
+63 | 			})
+64 | 		);
+65 | 		expect(dispatched).toBe(0);
+                          ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-action-review.test.ts:65:22)
+(fail) a hook dismissed during its confirmation must not still launch a fix [29.48ms]
+
+tests/queue-hook-open.test.ts:
+{"project":"project-a","workspace":"workspace-b","segment":"repos","cwd":"/project-b"}
+28 | 			workspace: useTabStore.getState().activeWorkspaceId,
+29 | 			segment: useTabStore.getState().sidebarSegment,
+30 | 			cwd: useTabStore.getState().activeWorkspaceCwd,
+31 | 		})
+32 | 	);
+33 | 	expect(useTabStore.getState().activeWorkspaceId).not.toBe("workspace-b");
+                                                           ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "workspace-b"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-open.test.ts:33:55)
+(fail) Open project hook does not reveal a previously active unrelated workspace [0.89ms]
+
+ 0 pass
+ 2 fail
+ 2 expect() calls
+Ran 2 tests across 2 files. [207.00ms]

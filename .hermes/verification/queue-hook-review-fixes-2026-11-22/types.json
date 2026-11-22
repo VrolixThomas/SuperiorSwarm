@@ -1,0 +1,14 @@
+{
+  "main": {
+    "globalErrors": 60,
+    "ownedPathErrors": []
+  },
+  "renderer": {
+    "globalErrors": 81,
+    "ownedPathErrors": []
+  },
+  "tests": {
+    "globalErrors": 222,
+    "ownedPathErrors": []
+  }
+}

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { ExternalQueueItem } from "../../../shared/activity-queue";
+import { openOwnedChat } from "../../lib/owned-chat-launch";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 
 export function QueueHookActions({
@@ -13,12 +15,19 @@ export function QueueHookActions({
 		enabled: item.target.type === "project-hook" && Boolean(item.target.fixPrompt),
 	});
 	const fix = trpc.queueHooks.fix.useMutation({
-		onSuccess: (result) => {
-			setMessage(
-				result.status === "started"
-					? "Agent started. This item stays until a successful check resolves it or you mark it Done."
-					: "Launch cancelled."
-			);
+		onSuccess: async (result) => {
+			if (result.status === "prepared") {
+				await openOwnedChat(result.launch, {
+					activateWorkspace: (id, cwd) => useTabStore.getState().navigateToWorkspace(id, cwd),
+					addTerminal: (id, cwd, title, terminalId) =>
+						useTabStore.getState().addTerminalTab(id, cwd, title, terminalId),
+					createTerminal: (id, cwd, owner) => window.electron.terminal.create(id, cwd, owner),
+					writeTerminal: (id, text) => window.electron.terminal.write(id, text),
+				});
+				setMessage(
+					"Agent started. This item stays until a successful check resolves it or you mark it Done."
+				);
+			} else setMessage("Launch cancelled.");
 			void refresh().catch(() => {});
 		},
 		onError: () => {

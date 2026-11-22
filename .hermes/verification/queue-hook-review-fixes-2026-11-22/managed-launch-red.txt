@@ -1,0 +1,92 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-hook-launch.test.ts:
+139 | 			const revision = queue.read(id)!.revision;
+140 | 			const result = await fixProjectHook(
+141 | 				{ id, revision, workspaceId },
+142 | 				{ confirm: async () => true, dispatch: (input) => dispatchAgent(input, { spawnFn: spawn }) }
+143 | 			);
+144 | 			expect(manager.getSession(priorTerminal)?.managed).toBe(true);
+                                                            ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-launch.test.ts:144:55)
+(fail) claude hook Fix in repo prepares a fresh unmanaged chat without replacing the orchestrator [37.42ms]
+139 | 			const revision = queue.read(id)!.revision;
+140 | 			const result = await fixProjectHook(
+141 | 				{ id, revision, workspaceId },
+142 | 				{ confirm: async () => true, dispatch: (input) => dispatchAgent(input, { spawnFn: spawn }) }
+143 | 			);
+144 | 			expect(manager.getSession(priorTerminal)?.managed).toBe(true);
+                                                            ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-launch.test.ts:144:55)
+(fail) claude hook Fix in folder prepares a fresh unmanaged chat without replacing the orchestrator [16.39ms]
+139 | 			const revision = queue.read(id)!.revision;
+140 | 			const result = await fixProjectHook(
+141 | 				{ id, revision, workspaceId },
+142 | 				{ confirm: async () => true, dispatch: (input) => dispatchAgent(input, { spawnFn: spawn }) }
+143 | 			);
+144 | 			expect(manager.getSession(priorTerminal)?.managed).toBe(true);
+                                                            ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-launch.test.ts:144:55)
+(fail) claude hook Fix in orchestrator prepares a fresh unmanaged chat without replacing the orchestrator [15.93ms]
+139 | 			const revision = queue.read(id)!.revision;
+140 | 			const result = await fixProjectHook(
+141 | 				{ id, revision, workspaceId },
+142 | 				{ confirm: async () => true, dispatch: (input) => dispatchAgent(input, { spawnFn: spawn }) }
+143 | 			);
+144 | 			expect(manager.getSession(priorTerminal)?.managed).toBe(true);
+                                                            ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-launch.test.ts:144:55)
+(fail) codex hook Fix in repo prepares a fresh unmanaged chat without replacing the orchestrator [14.72ms]
+139 | 			const revision = queue.read(id)!.revision;
+140 | 			const result = await fixProjectHook(
+141 | 				{ id, revision, workspaceId },
+142 | 				{ confirm: async () => true, dispatch: (input) => dispatchAgent(input, { spawnFn: spawn }) }
+143 | 			);
+144 | 			expect(manager.getSession(priorTerminal)?.managed).toBe(true);
+                                                            ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-launch.test.ts:144:55)
+(fail) codex hook Fix in folder prepares a fresh unmanaged chat without replacing the orchestrator [13.59ms]
+139 | 			const revision = queue.read(id)!.revision;
+140 | 			const result = await fixProjectHook(
+141 | 				{ id, revision, workspaceId },
+142 | 				{ confirm: async () => true, dispatch: (input) => dispatchAgent(input, { spawnFn: spawn }) }
+143 | 			);
+144 | 			expect(manager.getSession(priorTerminal)?.managed).toBe(true);
+                                                            ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-hooks-review/apps/desktop/tests/queue-hook-launch.test.ts:144:55)
+(fail) codex hook Fix in orchestrator prepares a fresh unmanaged chat without replacing the orchestrator [14.38ms]
+
+ 0 pass
+ 6 fail
+ 6 expect() calls
+Ran 6 tests across 1 file. [311.00ms]

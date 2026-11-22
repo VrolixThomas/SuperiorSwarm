@@ -29,7 +29,7 @@ export async function openQueueItem(item: QueueViewItem) {
 		if (prepared.url) await window.electron.shell.openExternal(prepared.url);
 		else {
 			useProjectStore.getState().selectProject(prepared.projectId);
-			useTabStore.getState().setSidebarSegment("repos");
+			useTabStore.getState().setSidebarSegment("repos", { restoreWorkspace: false });
 		}
 		return null;
 	}

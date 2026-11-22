@@ -1,0 +1,113 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/tab-store-xro-workspace.test.ts:
+(pass) openXroWorkspace > sets active workspace and builds terminal-left / canvas-right split [0.64ms]
+(pass) openXroWorkspace > reattaches without spawning a second coordinator [0.29ms]
+(pass) openXroWorkspace > re-open after closing only the coordinator terminal does not duplicate the canvas tab [0.46ms]
+
+tests/activity-queue-navigation.test.ts:
+(pass) direct Queue navigation > leaves repos directly without an intermediate restoration or shell [0.23ms]
+(pass) direct Queue navigation > leaves tickets directly without an intermediate restoration or shell [0.12ms]
+(pass) direct Queue navigation > leaves prs directly without an intermediate restoration or shell [0.06ms]
+(pass) direct Queue navigation > leaves hermes directly without an intermediate restoration or shell [0.05ms]
+(pass) direct Queue navigation > Back returns to the selected Hermes conversation [0.14ms]
+(pass) direct Queue navigation > PR activation retains direct history from Hermes [0.17ms]
+(pass) Queue source targeting > workspace reporter target opens the exact reporting chat instead of the selected sibling [1.14ms]
+(pass) Queue source targeting > selects the exact tab and split pane, preserving the other terminal [0.32ms]
+(pass) Queue source targeting > reopens the exact review drawer without creating a pane terminal [0.15ms]
+(pass) Queue source targeting > missing terminal and changed provider session preserve active work [0.13ms]
+(pass) Queue source targeting > PR duplicate clicks reuse one in-flight review operation [0.45ms]
+(pass) Queue source targeting > PR failure leaves current workspace and unlocks retry [0.23ms]
+(pass) Queue source targeting > same repository name on a different provider is not navigated [0.04ms]
+(pass) Queue source targeting > unavailable and Hermes recovery targets explain their limits [0.06ms]
+(pass) missing PR branches are resolved before creating a review workspace [0.10ms]
+(pass) missing live PTYs cannot be recreated by Queue navigation [0.13ms]
+(pass) terminal service errors retain the current workspace [0.10ms]
+(pass) closing the requested chat during inventory preflight cannot select its sibling [0.16ms]
+(pass) Queue marks terminals added during preflight before any destination activation [0.46ms]
+(pass) coordinator entity navigation never substitutes a linked workspace or creates a shell [0.33ms]
+(pass) coordinator chat navigation never substitutes a linked workspace or creates a shell [0.13ms]
+(pass) mismatched coordinator owner is rejected before navigation [0.07ms]
+(pass) a dead unrelated sibling does not block the healthy exact reporter [0.17ms]
+(pass) conversation replacement during inventory is rejected before switching workspaces [1.59ms]
+
+tests/workspace-history-actions.test.ts:
+(pass) workspace history actions > registers back and forward navigation shortcuts [0.39ms]
+(pass) workspace history actions > executes workspace history navigation [0.30ms]
+
+tests/tab-store.test.ts:
+(pass) diffContextsEqual > working-tree contexts with same repoPath are equal [0.12ms]
+(pass) diffContextsEqual > working-tree contexts with different repoPath are not equal
+(pass) diffContextsEqual > different types are not equal
+(pass) diffContextsEqual > branch contexts with same branches are equal
+(pass) diffContextsEqual > branch contexts with different headBranch are not equal
+(pass) diffContextsEqual > pr contexts with same prId are equal
+(pass) diffContextsEqual > pr contexts with different prId are not equal
+(pass) diffContextsEqual > commit: true when same commitHash and repoPath
+(pass) diffContextsEqual > commit: false when commitHash differs [0.07ms]
+(pass) toggleDiffPanel > opens panel when closed [0.04ms]
+(pass) toggleDiffPanel > closes panel when toggling same context
+(pass) toggleDiffPanel > switches context when toggling different context [0.09ms]
+(pass) toggleDiffPanel > switches to different PR instead of closing [0.02ms]
+(pass) toggleDiffPanel > closes same PR when toggling again
+(pass) toggleDiffPanel > switches to different branch instead of closing
+(pass) toggleDiffPanel > switches from explorer mode to diff when toggling diff panel
+(pass) closeDiffPanel > closes an open panel [0.10ms]
+(pass) closeDiffPanel > is a no-op when already closed
+(pass) setActiveWorkspace > opens the diff panel with working-tree context for the new cwd
+(pass) setActiveWorkspace > opens the diff panel with null diffCtx when cwd is empty [0.11ms]
+(pass) workspace history > goes back and forward through previously active workspaces [0.15ms]
+(pass) workspace history > clears forward history after a new manual workspace selection [0.11ms]
+(pass) workspace history > removes cleaned up workspaces from back and forward history [0.22ms]
+(pass) workspace history > preserves back history when navigating through an empty sidebar segment [0.19ms]
+(pass) closeDiff > closes panel when repoPath matches [0.11ms]
+(pass) closeDiff > does not close panel when repoPath differs [0.01ms]
+(pass) closeDiff > removes diff-file tabs for matching workspace and repoPath [0.11ms]
+(pass) closeDiff > does not remove diff-file tabs for non-matching workspace [0.09ms]
+(pass) openExplorer > opens panel in explorer mode
+(pass) openExplorer > toggles closed when already in explorer mode
+(pass) openExplorer > preserves diffCtx when switching from diff to explorer
+(pass) togglePanelMode > switches from explorer to diff when diffCtx exists [0.13ms]
+(pass) togglePanelMode > does not switch to diff when no diffCtx [0.02ms]
+(pass) togglePanelMode > switches from diff to explorer [0.01ms]
+(pass) openFile > opens a new file tab [0.58ms]
+(pass) openFile > deduplicates by repoPath + filePath [0.27ms]
+(pass) openFile > opens different files as separate tabs [0.05ms]
+(pass) openFile > updates initialPosition on existing tab [0.21ms]
+(pass) addTerminalTab > adds a terminal tab to the focused pane [0.05ms]
+(pass) addTerminalTab > sets the new tab as active [0.04ms]
+(pass) addTerminalTab > uses a main-process terminal ID and deduplicates a replayed dispatch [0.07ms]
+(pass) review workspace activation > setActiveWorkspace with review type opens Review Mode in the main panel [0.08ms]
+(pass) review workspace activation > activateReviewWorkspace registers metadata before selecting the PR segment [0.14ms]
+(pass) review workspace activation > legacy PR panel opener uses the same PR-segment activation transition [0.10ms]
+(pass) review workspace activation > setActiveWorkspace with non-review type uses default diff panel
+(pass) review workspace activation > switching Projects, Tickets, and PRs restores each segment without leaking Review Mode [0.16ms]
+(pass) hydrate > restores sessions into pane-store [0.38ms]
+(pass) hydrate > restores a persisted ticket scope [0.13ms]
+(pass) hydrate > reopens Review Mode for a persisted active PR workspace [0.09ms]
+(pass) ticket canvas state > initial state has activeTicketProject 'all' [0.02ms]
+(pass) ticket canvas state > changing projects resets a selected iteration scope [0.04ms]
+(pass) ticket canvas state > setActiveTicketProject changes project and resets detail
+(pass) ticket canvas state > setSelectedTicket opens detail panel [0.09ms]
+(pass) ticket canvas state > setSelectedTicket(null) closes detail panel [0.07ms]
+(pass) ticket canvas state > closeTicketDetail clears selection
+(pass) markdownPreviewMode > defaults to 'off'
+(pass) markdownPreviewMode > setMarkdownPreviewMode sets 'split' [0.04ms]
+(pass) markdownPreviewMode > setMarkdownPreviewMode sets 'rendered'
+(pass) markdownPreviewMode > setMarkdownPreviewMode resets to 'off' [0.03ms]
+(pass) openDiffFile with commit contexts > same file from two different commits opens two tabs [0.08ms]
+(pass) openDiffFile with commit contexts > same file, same commit dedups to a single tab [0.06ms]
+(pass) openDiffFile with commit contexts > commit tab is distinct from working-tree tab for same file
+(pass) queue destination > opening Queue preserves each workspace route for return [0.11ms]
+(pass) queue destination > a queue route restores without borrowing the previously active workspace
+
+tests/queue-navigation-session.test.ts:
+(pass) canonical pending excludes Later and acknowledged rows [0.11ms]
+(pass) next stops at end and does not skip shifted successor after current resolves [0.30ms]
+(pass) new occurrence and grouped receipt change require explicit selection [0.13ms]
+(pass) destination matches exact entity chat provider and conversation [0.05ms]
+
+ 97 pass
+ 0 fail
+ 281 expect() calls
+Ran 97 tests across 5 files. [72.00ms]
