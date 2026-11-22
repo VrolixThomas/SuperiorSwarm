@@ -219,6 +219,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		// Backdrop
 		// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled via document event listener in useEffect
 		<div
+			data-browser-modal
 			className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]"
 			onClick={closePalette}
 		>

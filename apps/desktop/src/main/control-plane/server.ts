@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { type BrowserAgentRequest, browserAgentRequestSchema } from "../../shared/browser";
 import {
 	ForbiddenError,
 	NotFoundError,
@@ -285,6 +286,10 @@ export type ConfirmFn = (req: {
 }) => Promise<boolean>;
 
 export interface ControlPlaneDeps {
+	browserRequest?: (
+		workspaceId: string,
+		request: BrowserAgentRequest
+	) => Promise<Record<string, unknown>>;
 	token: string;
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
@@ -566,6 +571,30 @@ async function handleRequest(
 				} catch (error) {
 					respond(res, 400, requestId, {
 						error: error instanceof Error ? error.message : "invalid_review_path_update",
+					});
+				}
+				return;
+			}
+			case "POST /browser.execute": {
+				const caller = resolveCaller(req, null);
+				if ("error" in caller || caller.kind !== "workspace") {
+					respond(res, 403, requestId, { error: "Browser tools require a workspace agent." });
+					return;
+				}
+				const parsed = browserAgentRequestSchema.safeParse(await readJson(req, 16384));
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "Invalid browser request." });
+					return;
+				}
+				if (!deps.browserRequest) {
+					respond(res, 503, requestId, { error: "Browser service is unavailable." });
+					return;
+				}
+				try {
+					respond(res, 200, requestId, await deps.browserRequest(caller.workspaceId, parsed.data));
+				} catch (error) {
+					respond(res, 409, requestId, {
+						error: error instanceof Error ? error.message : "Browser operation failed.",
 					});
 				}
 				return;

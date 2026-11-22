@@ -5,6 +5,7 @@ import { aiReviewRouter } from "./ai-review";
 import { atlassianRouter } from "./atlassian";
 import { authRouter } from "./auth";
 import { branchesRouter } from "./branches";
+import { browserRouter } from "./browser";
 import { commentSolverRouter } from "./comment-solver";
 import { crossRepoOrchestratorsRouter } from "./cross-repo-orchestrators";
 import { diffRouter } from "./diff";
@@ -35,6 +36,7 @@ import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
+	browser: browserRouter,
 	auth: authRouter,
 	agentLaunch: agentLaunchRouter,
 	aiReview: aiReviewRouter,

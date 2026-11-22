@@ -2,7 +2,7 @@
 	"private": true,
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1",
-		"better-sqlite3": "^12.8.0",
+		"better-sqlite3": "13.2.0",
 		"zod": "^4.3.6"
 	}
 }

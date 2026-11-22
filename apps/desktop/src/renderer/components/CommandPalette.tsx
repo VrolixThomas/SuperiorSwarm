@@ -95,6 +95,7 @@ export function CommandPalette() {
 
 	return createPortal(
 		<div
+			data-browser-modal
 			className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closePalette();

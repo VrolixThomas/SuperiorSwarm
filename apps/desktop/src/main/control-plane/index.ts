@@ -2,7 +2,7 @@ import type { Server } from "node:http";
 import type { SpawnFn } from "../services/workspace-service";
 import { generateToken } from "./auth";
 import { EventBus } from "./event-bus";
-import { type ConfirmFn, createControlPlaneServer } from "./server";
+import { type ConfirmFn, type ControlPlaneDeps, createControlPlaneServer } from "./server";
 import { TaskRegistry } from "./task-registry";
 
 export interface RunningControlPlane {
@@ -14,6 +14,7 @@ export interface RunningControlPlane {
 }
 
 export interface StartOpts {
+	browserRequest?: ControlPlaneDeps["browserRequest"];
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
 	token?: string;
@@ -30,6 +31,7 @@ export async function startControlPlane(opts: StartOpts): Promise<RunningControl
 		spawnFn: opts.spawnFn,
 		eventBus,
 		taskRegistry,
+		browserRequest: opts.browserRequest,
 	});
 
 	const port = await new Promise<number>((resolve, reject) => {

@@ -132,6 +132,7 @@ export function SubmitReviewModal({
 	return (
 		<div
 			ref={overlayRef}
+			data-browser-modal
 			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();

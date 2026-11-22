@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { registerBrowserTools } from "./browser-tools.mjs";
 import { resolveContext } from "./context.mjs";
 import {
 	handleHermesSessionAdmission,
@@ -1004,6 +1005,13 @@ if (isWorkspaceAgentOrCrossRepo) {
 					isError: true,
 				};
 			}
+			if (
+				path === "/browser.execute" &&
+				typeof parsed.image === "string" &&
+				parsed.mimeType === "image/png"
+			) {
+				return { content: [{ type: "image", data: parsed.image, mimeType: "image/png" }] };
+			}
 			return controlPlaneToolResult(parsed);
 		} catch (err) {
 			return {
@@ -1017,6 +1025,8 @@ if (isWorkspaceAgentOrCrossRepo) {
 			};
 		}
 	}
+
+	if (!isCrossRepoMode) registerBrowserTools(server, call);
 
 	if (isExternalManagerMode) {
 		server.tool(

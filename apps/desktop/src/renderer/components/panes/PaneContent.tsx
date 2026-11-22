@@ -1,5 +1,6 @@
 import type { Pane } from "../../../shared/pane-types";
 import { isReviewPathTerminal } from "../../../shared/terminal-create";
+import { BrowserTab } from "../../browser/BrowserTab";
 import { usePaneStore } from "../../stores/pane-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -116,6 +117,11 @@ export function PaneContent({
 						)
 				)}
 			{/* Other documents mount only when active. */}
+			{activeTab?.kind === "browser" && (
+				<div className="absolute inset-0">
+					<BrowserTab key={activeTab.id} tab={activeTab} />
+				</div>
+			)}
 			{activeTab?.kind === "diff-file" && (
 				<div className="absolute inset-0">
 					<DiffFileTab
