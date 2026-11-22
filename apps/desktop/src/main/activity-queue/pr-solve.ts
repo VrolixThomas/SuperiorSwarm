@@ -95,7 +95,7 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 			createdAt: new Date(event.at).toISOString(),
 			filePath: event.filePath ?? null,
 			lineNumber: event.lineNumber ?? null,
-			side: null,
+			side: event.side ?? null,
 			threadId: event.threadId,
 		}));
 		requireLinked();

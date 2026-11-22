@@ -9,6 +9,7 @@ export interface PRFeedbackEvent {
 	filePath?: string;
 	lineNumber?: number | null;
 	threadId?: string;
+	side?: "LEFT" | "RIGHT" | null;
 }
 export interface PRFeedbackSnapshot {
 	version: 1;

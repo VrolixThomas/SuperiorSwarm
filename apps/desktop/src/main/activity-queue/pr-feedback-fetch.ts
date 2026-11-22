@@ -67,6 +67,7 @@ export async function fetchPRFeedback(
 								isResolved: boolean;
 								path?: string;
 								line?: number | null;
+								diffSide?: "LEFT" | "RIGHT";
 								comments: {
 									nodes: {
 										id: string;
@@ -82,7 +83,7 @@ export async function fetchPRFeedback(
 					};
 				};
 			} = await githubGraphQL(
-				"query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id isResolved path line comments(first:100){pageInfo{hasNextPage} nodes{id body createdAt author{login ... on User{databaseId}}}}}}}}}",
+				"query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id isResolved path line diffSide comments(first:100){pageInfo{hasNextPage} nodes{id body createdAt author{login ... on User{databaseId}}}}}}}}}",
 				{ owner, repo, number, cursor }
 			);
 			const threads = data.repository?.pullRequest?.reviewThreads;
@@ -102,6 +103,7 @@ export async function fetchPRFeedback(
 						filePath: thread.path,
 						lineNumber: thread.line,
 						threadId: thread.id,
+						side: thread.diffSide,
 					});
 				}
 			}
@@ -154,6 +156,7 @@ export async function fetchPRFeedback(
 				content: { raw: string };
 				user: { account_id: string; display_name: string };
 				created_on: string;
+				inline?: { path?: string; to?: number; from?: number };
 			}[];
 			next?: string;
 		};
@@ -168,6 +171,9 @@ export async function fetchPRFeedback(
 					at: Date.parse(e.created_on) || 0,
 					resolved: e.deleted,
 					threadId: String(e.id),
+					filePath: e.inline?.path,
+					lineNumber: e.inline?.to ?? e.inline?.from ?? null,
+					side: e.inline?.to != null ? "RIGHT" : e.inline?.from != null ? "LEFT" : null,
 				});
 		next = data.next;
 	}
