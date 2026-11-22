@@ -37,6 +37,69 @@ describe("normalizeBitbucketDescription", () => {
 		const input = "Document `{ data-layout='center' }` when discussing the source.";
 		expect(normalizeBitbucketDescription(input)).toBe(input);
 	});
+
+	test("removes Bitbucket layout and inline-card attributes beside real description text and links", () => {
+		const input = [
+			"## Description",
+			"Allow free spins for multiple games. {: data-layout='center' }",
+			"",
+			"[PI-3205](https://example.atlassian.net/browse/PI-3205){: data-inline-card='' }",
+			'[Design notes](https://example.com/notes) {: data-inline-card="" }',
+			"Keep this {: data-layout='wide' } paragraph and its **emphasis**.",
+			"{: data-inline-card='' }",
+		].join("\n");
+		expect(normalizeBitbucketDescription(input)).toBe(
+			[
+				"## Description",
+				"Allow free spins for multiple games.",
+				"",
+				"[PI-3205](https://example.atlassian.net/browse/PI-3205)",
+				"[Design notes](https://example.com/notes)",
+				"Keep this paragraph and its **emphasis**.",
+			].join("\n")
+		);
+	});
+
+	test("preserves fenced and indented code examples including whitespace", () => {
+		const input = [
+			"```markdown",
+			"{: data-layout='center' }",
+			"[link](https://example.com){: data-inline-card='' }",
+			"",
+			"",
+			"```",
+			"",
+			"~~~text",
+			"{ data-layout='wide' }",
+			"~~~",
+			"",
+			"    {: data-layout='center' }",
+			"\t{: data-inline-card='' }",
+			"",
+			"> ~~~markdown",
+			"> {: data-inline-card='' }",
+			"> ~~~",
+			">     {: data-layout='wide' }",
+		].join("\n");
+		expect(normalizeBitbucketDescription(input)).toBe(input);
+	});
+
+	test("preserves variable-length and multiline inline code spans and escaped markers", () => {
+		const input = [
+			"Use `{: data-layout='center' }` or ``a ` tick {: data-inline-card='' }``.",
+			"A `multiline example",
+			"{: data-layout='wide' }",
+			"ends here` with text.",
+			"Literal \\{: data-inline-card='' } and { data-layout='center' } in prose.",
+		].join("\n");
+		expect(normalizeBitbucketDescription(input)).toBe(input);
+	});
+
+	test("keeps normal Markdown and unrelated attributes unchanged", () => {
+		const input =
+			"[link](https://example.com/path?q=1#section)  \nNext paragraph\n\n{: custom='value' }\n{: data-layout='unknown' }\n";
+		expect(normalizeBitbucketDescription(input)).toBe(input);
+	});
 });
 
 describe("getBitbucketPRComments", () => {

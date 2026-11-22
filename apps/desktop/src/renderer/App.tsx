@@ -452,13 +452,8 @@ function AuthenticatedApp() {
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const activeReview = useReviewModeStore((s) => s.active);
-	const reviewView = useReviewModeStore((s) => s.view);
-	const showReviewWorkspace = shouldShowReviewMode(
-		sidebarSegment,
-		activeWorkspaceId,
-		activeReview,
-		reviewView
-	);
+	// Both reading and agent tabs stay inside the full-window PR shell.
+	const showReviewWorkspace = shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({

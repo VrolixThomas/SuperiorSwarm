@@ -320,20 +320,81 @@ export interface BitbucketComment {
 }
 
 /**
- * Bitbucket occasionally exposes editor layout attribute lines in the raw
- * description. They are meaningful to Atlassian's renderer but render as
- * visible noise in standard Markdown.
+ * Remove known Atlassian editor annotations outside Markdown code. Keep the
+ * original text/whitespace elsewhere, including examples of these annotations.
  */
 export function normalizeBitbucketDescription(description: string): string {
-	return description
-		.split("\n")
-		.filter(
-			(line) =>
-				!/^\s*\{\s*:?\s*data-layout\s*=\s*(['"])(?:center|wide|full-width)\1\s*\}\s*$/i.test(line)
-		)
-		.join("\n")
-		.replace(/\n{3,}/g, "\n\n")
-		.trim();
+	const marker =
+		/^\{[ \t]*:[ \t]*(?:data-layout[ \t]*=[ \t]*(?:"(?:center|wide|full-width)"|'(?:center|wide|full-width)')|data-inline-card[ \t]*=[ \t]*(?:""|''))[ \t]*\}/i;
+	const legacyLine =
+		/^[ \t]*\{[ \t]*data-layout[ \t]*=[ \t]*(['"])(?:center|wide|full-width)\1[ \t]*\}[ \t]*$/i;
+	let fence: { character: string; length: number } | undefined;
+	let inlineTicks = 0;
+	const lines: string[] = [];
+	for (const line of description.split("\n")) {
+		// Container prefixes do not make quoted/list-nested code examples into prose.
+		const containerLine = line.replace(/^(?: {0,3}>[ \t]?)+/, "");
+		const fencedLine = containerLine.replace(/^ {0,3}(?:[-+*]|\d+[.)])[ \t]+/, "");
+		const delimiter = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(fencedLine);
+		if (fence) {
+			if (
+				delimiter?.[1]?.[0] === fence.character &&
+				delimiter[1].length >= fence.length &&
+				!delimiter[2]?.trim()
+			)
+				fence = undefined;
+			lines.push(line);
+			continue;
+		}
+		if (
+			!inlineTicks &&
+			delimiter?.[1] &&
+			!(delimiter[1][0] === "`" && delimiter[2]?.includes("`"))
+		) {
+			fence = { character: delimiter[1][0] ?? "`", length: delimiter[1].length };
+			lines.push(line);
+			continue;
+		}
+		if (!inlineTicks && /^(?: {4}|\t)/.test(containerLine)) {
+			lines.push(line);
+			continue;
+		}
+		if (!inlineTicks && legacyLine.test(line)) continue;
+		let output = "";
+		let removed = false;
+		for (let index = 0; index < line.length; ) {
+			if (!inlineTicks && line[index] === "\\") {
+				output += line.slice(index, index + 2);
+				index += 2;
+				continue;
+			}
+			if (line[index] === "`") {
+				const start = index;
+				while (line[index] === "`") index++;
+				const length = index - start;
+				if (!inlineTicks) inlineTicks = length;
+				else if (inlineTicks === length) inlineTicks = 0;
+				output += line.slice(start, index);
+				continue;
+			}
+			const annotation =
+				!inlineTicks && line[index] === "{" ? marker.exec(line.slice(index))?.[0] : undefined;
+			if (annotation) {
+				removed = true;
+				index += annotation.length;
+				if (/^[ \t]*$/.test(line.slice(index))) {
+					output = output.replace(/[ \t]+$/, "");
+					break;
+				}
+				if (!output || /[ \t]$/.test(output)) while (/[ \t]/.test(line[index] ?? "")) index++;
+				continue;
+			}
+			output += line[index++];
+		}
+		if (!line.trim()) inlineTicks = 0;
+		if (!removed || output.trim()) lines.push(output);
+	}
+	return lines.join("\n");
 }
 
 /** Fetch all comments on a Bitbucket pull request (follows pagination) */

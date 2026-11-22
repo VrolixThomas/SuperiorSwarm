@@ -1,4 +1,5 @@
 import type { Pane } from "../../../shared/pane-types";
+import { isReviewPathTerminal } from "../../../shared/terminal-create";
 import { trpc } from "../../trpc/client";
 import { CrossRepoOrchestratorCanvas } from "../CrossRepoOrchestratorCanvas";
 import { DiffFileTab } from "../DiffFileTab";
@@ -8,6 +9,7 @@ import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { SolveReviewTab } from "../SolveReviewTab";
 import { Terminal } from "../Terminal";
+import { ReviewAgentTerminal } from "../review-mode/ReviewAgentTerminal";
 import { ReviewTab } from "../review/ReviewTab";
 
 export function PaneContent({
@@ -42,13 +44,23 @@ export function PaneContent({
 					key={tab.id}
 					className={`absolute inset-0 ${tab.id === pane.activeTabId ? "visible" : "invisible"}`}
 				>
-					<Terminal
-						id={tab.id}
-						cwd={tab.kind === "terminal" ? tab.cwd : undefined}
-						workspaceId={tab.workspaceId}
-						initialContent={savedScrollback[tab.id]}
-						active={tab.id === pane.activeTabId}
-					/>
+					{isReviewPathTerminal(tab.id) ? (
+						<ReviewAgentTerminal
+							id={tab.id}
+							cwd={tab.cwd}
+							workspaceId={tab.workspaceId}
+							initialContent={savedScrollback[tab.id]}
+							active={tab.id === pane.activeTabId}
+						/>
+					) : (
+						<Terminal
+							id={tab.id}
+							cwd={tab.kind === "terminal" ? tab.cwd : undefined}
+							workspaceId={tab.workspaceId}
+							initialContent={savedScrollback[tab.id]}
+							active={tab.id === pane.activeTabId}
+						/>
+					)}
 				</div>
 			))}
 

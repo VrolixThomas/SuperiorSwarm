@@ -35,6 +35,9 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review agent workspace navigati
 		try {
 			await h.settle();
 			expect(h.container.textContent).toContain("Workspace tabs");
+			expect(h.container.querySelector('[aria-label="PR agent workspace"]')).not.toBeNull();
+			expect(h.container.textContent).toContain("team/repo · PR #42");
+			expect(h.container.textContent).toContain("All PRs");
 			expect(h.container.textContent).not.toContain("Select a pull request");
 			await act(async () =>
 				Array.from(h.container.querySelectorAll("button"))
@@ -48,6 +51,16 @@ if (inIsolatedFileBrowserTest(import.meta.path, "review agent workspace navigati
 					.getTabsByWorkspace("review-ws")
 					.filter((tab) => tab.id === terminal.tabId)
 			).toHaveLength(1);
+			await act(async () => {
+				openReviewTerminalTab(terminal);
+			});
+			await act(async () =>
+				Array.from(h.container.querySelectorAll("button"))
+					.find((button) => button.textContent?.includes("All PRs"))
+					?.click()
+			);
+			expect(useReviewModeStore.getState().queueOpen).toBe(true);
+			expect(h.container.textContent).toContain("PR reading view");
 		} finally {
 			await h.cleanup();
 		}

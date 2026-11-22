@@ -194,7 +194,7 @@ if (
 			expect(h.container.querySelector('[aria-label="Resize AI review terminal"]')).toBeNull();
 			await act(async () =>
 				Array.from(h.container.querySelectorAll("button"))
-					.find((button) => button.textContent === "Agent terminal")
+					.find((button) => button.textContent === "Agent workspace")
 					?.click()
 			);
 			expect(useReviewModeStore.getState().view).toBe("terminal");
@@ -210,6 +210,92 @@ if (
 			await h.cleanup();
 		}
 	});
+	test.each(["preparing", "ended"])(
+		"agent navigation follows the current run: %s",
+		async (phase) => {
+			reset();
+			const head = (phase === "preparing" ? "e" : "d").repeat(40);
+			useTabStore.setState({ activeWorkspaceId: "workspace", sidebarSegment: "prs" });
+			useReviewModeStore.setState({ terminals: {} });
+			const identity = {
+				workspaceId: "workspace",
+				provider: "github",
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				prNumber: prCtx.number,
+				headSha: head,
+			};
+			if (phase === "preparing")
+				useReviewModeStore
+					.getState()
+					.setTerminal({ workspaceId: "workspace", tabId: "review-path:old:1", cwd: "/fixture" });
+			const h = await renderBrowserTest(
+				<ReviewWorkspace active={{ workspaceId: "workspace", prCtx }} />,
+				[],
+				false,
+				{
+					request: (path, input) => {
+						if (path === "projects.getPRDetails") return { ...details, headCommitOid: head };
+						if (path === "reviewPath.status") return { identity, status: "none" };
+						if (path === "reviewPath.get")
+							return {
+								identity,
+								path: null,
+								pathVersion: 0,
+								conversationId: "conversation",
+								questions: [],
+								messages: [],
+								runs: [
+									{
+										identity,
+										id: "old",
+										version: 1,
+										state: "completed",
+										kind: "mapping",
+										conversationId: "conversation",
+										terminalId: "review-path:old:1",
+									},
+									...(phase === "preparing"
+										? [
+												{
+													identity,
+													id: "new",
+													version: 2,
+													state: "running",
+													kind: "mapping",
+													conversationId: "conversation",
+												},
+											]
+										: []),
+								],
+							};
+						return request(path, input);
+					},
+				}
+			);
+			try {
+				await h.settle();
+				if (phase === "preparing") expect(h.container.textContent).not.toContain("Agent workspace");
+				else {
+					expect(h.container.textContent).toContain("Agent workspace");
+					await act(async () =>
+						Array.from(h.container.querySelectorAll("button"))
+							.find((button) => button.textContent === "Agent workspace")
+							?.click()
+					);
+					expect(useReviewModeStore.getState().view).toBe("terminal");
+					expect(
+						h.calls.some(
+							(call) =>
+								call.path === "workspaces.attachTerminal" || call.path === "reviewPath.start"
+						)
+					).toBe(false);
+				}
+			} finally {
+				await h.cleanup();
+			}
+		}
+	);
 	test("fixture path keyboard follows nested tests and never marks context viewed", async () => {
 		reset();
 		const h = await renderBrowserTest(

@@ -127,3 +127,25 @@ tests across nine files (isolated wrappers contain additional cases). Independen
 review passed 12 outer tests across six files plus a real-router root-transition
 probe. Production build passes; renderer type diagnostics introduce no new signatures
 relative to the recorded baseline.
+
+## Follow-up: agent navigation and description rendering
+
+The agent remains a real workspace tab, but its surrounding shell now retains the PR
+header, repository/PR identity, All PRs navigation, and Back to PR review. The generic
+project sidebar and unrelated branch/CLI toolbar no longer replace the review shell.
+
+A saved tab is not evidence of a live PTY. The read-only terminal-state query validates
+the recorded run, workspace, session row, canonical cwd, and daemon inventory before
+the renderer mounts Terminal. It rechecks ownership after asynchronous inventory.
+Completed/ended sessions display an outcome card; no missing session is recreated.
+Preparing a newer run cannot advertise a previous run's terminal as the active agent.
+
+Bitbucket's layout and inline-card attributes are removed from description prose,
+including markers adjacent to text and links. Fenced, indented, inline and escaped
+code examples, unknown attributes, URLs and other Markdown remain intact.
+
+Live verification showed PR #9503's completed run as Agent finished in the consistent
+PR shell, then navigation to #12054 showed clean description text and its original
+link without raw layout/card markers. No agent was started and no provider content
+was modified during this verification. Scoped tests cover lifecycle inspection,
+ended-run navigation, preparation versus old terminals, and Markdown preservation.

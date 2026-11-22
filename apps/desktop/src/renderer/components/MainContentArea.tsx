@@ -9,6 +9,7 @@ import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionCon
 import { QuickActionPopover } from "./QuickActionPopover";
 import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
+import { ReviewAgentWorkspace } from "./review-mode/ReviewAgentWorkspace";
 import { ReviewModeShell } from "./review-mode/ReviewModeShell";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
@@ -68,6 +69,15 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	if (sidebarSegment === "hermes") {
 		return <HermesSessionView />;
 	}
+	if (reviewTabsOpen && activeReview) {
+		return (
+			<ReviewAgentWorkspace
+				active={activeReview}
+				layout={layout}
+				savedScrollback={savedScrollback}
+			/>
+		);
+	}
 
 	if (sidebarSegment === "prs" && !reviewTabsOpen) {
 		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview, reviewView)) {
@@ -100,20 +110,6 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	return (
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
-			{reviewTabsOpen && (
-				<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
-					<button
-						type="button"
-						onClick={() => useReviewModeStore.getState().setView("changes")}
-						className="shrink-0 rounded-md px-2 py-1 text-[12px] text-[var(--accent-hover)] hover:bg-[var(--bg-overlay)]"
-					>
-						← Back to PR review
-					</button>
-					<span className="truncate text-[12px] text-[var(--text-secondary)]">
-						#{activeReview?.prCtx.number} · {activeReview?.prCtx.title}
-					</span>
-				</div>
-			)}
 			{/* Branch indicator bar */}
 			{projectId && !isFolderProject && (
 				<div className="app-drag flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">

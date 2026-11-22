@@ -90,10 +90,10 @@ export function ReviewTopBar({
 					<button
 						type="button"
 						onClick={onOpenTerminal}
-						title="Open the agent in a workspace tab"
+						title="View the agent workspace for this PR"
 						className="rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
 					>
-						Agent terminal
+						Agent workspace
 					</button>
 				)}
 				<button

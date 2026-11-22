@@ -5,11 +5,15 @@ import {
 	reviewPathRunScopeSchema,
 	reviewPathSettingsSchema,
 } from "../../../shared/review-path-runtime";
-import { reviewPathStatusScopeSchema } from "../../../shared/review-path-status";
+import {
+	reviewPathStatusScopeSchema,
+	reviewPathTerminalStateInputSchema,
+} from "../../../shared/review-path-status";
 import { getDb } from "../../db";
 import type { ReviewPathApplication } from "../../review-path/application";
 import { getReviewPathApplication } from "../../review-path/service";
 import { readReviewPathStatus } from "../../review-path/status-query";
+import { readReviewPathTerminalState } from "../../review-path/terminal-state";
 import { contextStepSchema, questionInputSchema } from "../../review-path/validation";
 import { publicProcedure, router } from "../index";
 
@@ -25,6 +29,9 @@ async function call<T>(fn: () => T | Promise<T>): Promise<T> {
 }
 export function createReviewPathRouter(application: () => ReviewPathApplication) {
 	return router({
+		terminalState: publicProcedure
+			.input(reviewPathTerminalStateInputSchema)
+			.query(({ input }) => call(() => readReviewPathTerminalState(getDb(), input))),
 		status: publicProcedure
 			.input(reviewPathStatusScopeSchema)
 			.query(({ input }) => call(() => readReviewPathStatus(getDb(), input))),

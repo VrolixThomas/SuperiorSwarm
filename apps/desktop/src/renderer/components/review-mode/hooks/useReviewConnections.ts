@@ -87,17 +87,19 @@ export function useReviewConnections(
 	useEffect(() => {
 		if (live.state.snapshot) rememberReviewPath(live.state.snapshot);
 	}, [live.state.snapshot]);
-	const ownedRun = live.state.snapshot?.runs
+	const latestRun = live.state.snapshot?.runs
 		.filter(
-			(run) =>
-				identity &&
-				reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity) &&
-				run.terminalId === `review-path:${run.id}:${run.version}`
+			(run) => identity && reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity)
 		)
 		.sort((a, b) => b.version - a.version)[0];
+	const ownedRun =
+		latestRun?.terminalId === `review-path:${latestRun?.id}:${latestRun?.version}`
+			? latestRun
+			: undefined;
 	const recordedTerminal = useReviewModeStore((state) => state.terminals[workspaceId]);
 	const terminal =
-		recordedTerminal?.reviewScopeKey && recordedTerminal.reviewScopeKey !== scopeKey
+		(recordedTerminal?.reviewScopeKey && recordedTerminal.reviewScopeKey !== scopeKey) ||
+		(latestRun && recordedTerminal?.tabId !== latestRun.terminalId)
 			? undefined
 			: recordedTerminal;
 	const recover = useCallback(async () => {
@@ -106,12 +108,16 @@ export function useReviewConnections(
 		try {
 			const status = await trpcVanilla.reviewPath.status.query(identity);
 			if (!isCurrent()) return;
-			if (
-				!status?.terminal ||
-				reviewPathIdentityKey(status.identity) !== reviewPathIdentityKey(identity)
-			)
+			if (!status || reviewPathIdentityKey(status.identity) !== reviewPathIdentityKey(identity))
 				throw new Error("The recorded agent terminal is unavailable. Its session may have ended.");
-			const descriptor = status.terminal;
+			// A recorded run remains inspectable after its PTY ends. The workspace
+			// tab checks terminalState before mounting any terminal; this is display
+			// metadata, never permission to recreate the old agent.
+			const descriptor = status.terminal ?? {
+				terminalId: ownedRun.terminalId,
+				reviewWorkspaceId: workspaceId,
+				worktreePath: prCtx.repoPath,
+			};
 			if (
 				!descriptor.terminalId ||
 				descriptor.reviewWorkspaceId !== workspaceId ||
@@ -140,7 +146,15 @@ export function useReviewConnections(
 					error instanceof Error ? error.message : "Could not recover the agent terminal."
 				);
 		}
-	}, [identity, ownedRun?.terminalId, scopeKey, workspaceId, live.state.snapshot, utils]);
+	}, [
+		identity,
+		ownedRun?.terminalId,
+		scopeKey,
+		workspaceId,
+		live.state.snapshot,
+		utils,
+		prCtx.repoPath,
+	]);
 	const recoveryAttempt = useRef("");
 	useEffect(() => {
 		const attempt = `${scopeKey}:${ownedRun?.terminalId ?? ""}`;

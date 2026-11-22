@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { ReviewPathIdentity, ReviewPathLaunchResult } from "./review-path-runtime";
+import type {
+	ReviewPathIdentity,
+	ReviewPathLaunchResult,
+	ReviewPathRunState,
+} from "./review-path-runtime";
 import type { ReviewPathStatus } from "./review-path-types";
 
 export const reviewPathStatusScopeSchema = z
@@ -19,4 +23,18 @@ export interface ReviewPathStatusProjection {
 	status: ReviewPathStatus;
 	reviewDraftId?: string;
 	terminal?: ReviewPathLaunchResult;
+}
+
+export const reviewPathTerminalStateInputSchema = z
+	.object({
+		workspaceId: z.string().min(1).max(256),
+		terminalId: z.string().min(1).max(1024),
+	})
+	.strict();
+export type ReviewPathTerminalStateInput = z.infer<typeof reviewPathTerminalStateInputSchema>;
+export interface ReviewPathTerminalState {
+	status: "available" | "ended" | "unavailable";
+	runState?: ReviewPathRunState;
+	message: string;
+	cwd?: string;
 }
