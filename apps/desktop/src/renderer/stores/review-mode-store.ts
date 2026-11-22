@@ -21,6 +21,8 @@ export interface ReviewTerminal {
 }
 
 export interface ReviewModeStore {
+	findingsRequest: { headSha: string; nonce: number } | null;
+	requestFindings: (headSha: string) => void;
 	observedHeadSha: string | null;
 	railMode: "path" | "files" | null;
 	panel: "threads" | "ask" | null;
@@ -79,6 +81,7 @@ function createIntent(kind: ReviewIntent["kind"], threadId?: string): ReviewInte
 }
 
 const readingPathDefaults = {
+	findingsRequest: null,
 	railMode: null,
 	panel: null,
 	queueOpen: false,
@@ -132,6 +135,7 @@ export const createReviewModeStore = () =>
 				intent: null,
 			})),
 
+		requestFindings: (headSha) => set({ findingsRequest: { headSha, nonce: ++nextIntentNonce } }),
 		setRailMode: (railMode) => set({ railMode }),
 		setPanel: (panel) => set({ panel }),
 		setQueueOpen: (queueOpen) => set({ queueOpen }),

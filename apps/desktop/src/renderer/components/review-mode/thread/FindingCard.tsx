@@ -84,6 +84,7 @@ export function FindingCard({
 			{editing && callbacks.onSaveEdit && (
 				<div className="border-t border-[var(--border-subtle)] p-3">
 					<ReplyComposer
+						draftKey={`finding-edit:${thread.draftCommentId}`}
 						placeholder="Edit finding"
 						initialValue={thread.userEdit ?? thread.body}
 						autoFocus

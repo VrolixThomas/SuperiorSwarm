@@ -31,6 +31,8 @@ interface ReviewData {
 	details: GitHubPRDetails | undefined;
 	isLoading: boolean;
 	draftPending: boolean;
+	findingsLoading: boolean;
+	findingsError: boolean;
 	matchingDraft: ReviewDraft | undefined;
 	activeDraft: ReviewDraft | undefined;
 	aiDraft: ReviewDraftWithComments | undefined;
@@ -237,6 +239,14 @@ export function useReviewData(
 	return {
 		details,
 		isLoading: detailsQuery.isLoading,
+		findingsLoading:
+			reviewDraftsQuery.isLoading ||
+			projection.isLoading ||
+			(!!(boundId ?? matchingDraft?.id) && aiDraftQuery.isLoading),
+		findingsError:
+			reviewDraftsQuery.isError ||
+			projection.isError ||
+			(!!(boundId ?? matchingDraft?.id) && aiDraftQuery.isError),
 		draftPending: mappingBindingPending || (!!(boundId ?? matchingDraft?.id) && !aiDraft),
 		matchingDraft: selectedDraft,
 		activeDraft,

@@ -202,6 +202,39 @@ async function resolveCommitOid(
 		: undefined;
 }
 
+/** Resolve a listing's captured revision in its verified source repository, including forks. */
+export async function resolveCapturedPRHeadOid(
+	workspace: string,
+	repoSlug: string,
+	prId: number,
+	capturedHash: string
+): Promise<string | undefined> {
+	if (FULL_COMMIT_OID.test(capturedHash)) return capturedHash.toLowerCase();
+	if (!/^[a-f0-9]{4,63}$/i.test(capturedHash) || !Number.isSafeInteger(prId) || prId < 1)
+		return undefined;
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${encodeURIComponent(workspace)}/${encodeURIComponent(repoSlug)}/pullrequests/${prId}`
+	);
+	if (!res.ok) return undefined;
+	const data = (await res.json()) as { source?: BitbucketRevisionSide; state?: string };
+	const observedHash = data.source?.commit?.hash;
+	if (
+		data.state !== "OPEN" ||
+		typeof observedHash !== "string" ||
+		!/^[a-f0-9]{4,64}$/i.test(observedHash)
+	)
+		return undefined;
+	const captured = capturedHash.toLowerCase();
+	const observed = observedHash.toLowerCase();
+	if (!observed.startsWith(captured) && !captured.startsWith(observed)) return undefined;
+	const resolved = await resolveCommitOid(workspace, repoSlug, {
+		...data.source,
+		commit: { hash: captured },
+	});
+	return resolved?.startsWith(observed) ? resolved : undefined;
+}
+
 /** Get the current state and exact head SHA of a Bitbucket pull request. */
 export async function getPRState(
 	workspace: string,

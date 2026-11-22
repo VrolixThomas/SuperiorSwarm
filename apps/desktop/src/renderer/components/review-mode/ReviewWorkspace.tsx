@@ -67,6 +67,9 @@ function ReviewWorkspaceContent({
 	} = useReviewConnections(workspaceId, prCtx, data.details, fixture);
 	const queue = useReviewQueue(prCtx);
 	const panel = useReviewUIStore((s) => s.panel);
+	const findingsRequest = useReviewUIStore((s) => s.findingsRequest);
+	const [findingsMessage, setFindingsMessage] = useState<string>();
+	const [readyFindingsRequest, setReadyFindingsRequest] = useState<number>();
 	const commentFilter = useReviewUIStore((s) => s.commentFilter);
 	const queueOpen = useReviewUIStore((s) => s.queueOpen);
 	const askAnchor = useReviewUIStore((s) => s.askAnchor);
@@ -185,24 +188,94 @@ function ReviewWorkspaceContent({
 		nav.changeMode(mode);
 		if (target) nav.select(target);
 	};
-	const currentFindings = data.allThreads.filter(
-		(thread) =>
-			thread.isAIDraft &&
-			!thread.isOutdated &&
-			(thread.status === "pending" ||
-				thread.status === "user-pending" ||
-				thread.status === "approved" ||
-				thread.status === "edited")
+	const currentFindings = useMemo(
+		() =>
+			data.allThreads.filter(
+				(thread) =>
+					thread.isAIDraft &&
+					!thread.isOutdated &&
+					(thread.status === "pending" ||
+						thread.status === "user-pending" ||
+						thread.status === "approved" ||
+						thread.status === "edited")
+			),
+		[data.allThreads]
 	);
-	const openFindings = () => {
+	const openFindings = useCallback(() => {
 		const target =
 			currentFindings.find((thread) => thread.isAIDraft && thread.status === "pending") ??
 			currentFindings[0];
+		ui.getState().setPanel(null);
 		if (target) {
+			setFindingsMessage(undefined);
 			openThread(target);
-			ui.getState().setPanel(null);
+		} else {
+			ui.getState().setOverviewOpen(true);
+			setFindingsMessage("No agent findings for this revision.");
 		}
-	};
+	}, [currentFindings, openThread, ui]);
+	useEffect(() => {
+		if (!findingsRequest || !isActive) return;
+		let current = true;
+		ui.getState().setPanel(null);
+		setFindingsMessage("Loading agent findings…");
+		void (async () => {
+			try {
+				await utils.aiReview.getReviewDrafts.invalidate(undefined, undefined, {
+					throwOnError: true,
+				});
+				await utils.aiReview.getReviewDraft.invalidate(undefined, undefined, {
+					throwOnError: true,
+				});
+				if (current) setReadyFindingsRequest(findingsRequest.nonce);
+			} catch {
+				if (current) {
+					ui.setState({ findingsRequest: null });
+					setFindingsMessage("Could not load agent findings. Refresh the PR and try again.");
+				}
+			}
+		})();
+		return () => {
+			current = false;
+		};
+	}, [findingsRequest, isActive, utils, ui]);
+	useEffect(() => {
+		if (
+			!findingsRequest ||
+			readyFindingsRequest !== findingsRequest.nonce ||
+			!isActive ||
+			data.isLoading ||
+			data.findingsLoading
+		)
+			return;
+		if (data.findingsError) {
+			ui.setState({ findingsRequest: null });
+			setFindingsMessage("Could not load agent findings. Refresh the PR and try again.");
+			return;
+		}
+		ui.setState({ findingsRequest: null });
+		if (!data.details || findingsRequest.headSha !== data.details.headCommitOid) {
+			ui.getState().setPanel(null);
+			ui.getState().setOverviewOpen(true);
+			setFindingsMessage(
+				data.details
+					? "These findings belong to an older revision."
+					: "PR details are unavailable. Refresh the PR to load its findings."
+			);
+			return;
+		}
+		openFindings();
+	}, [
+		findingsRequest,
+		readyFindingsRequest,
+		isActive,
+		data.isLoading,
+		data.findingsLoading,
+		data.findingsError,
+		data.details,
+		ui,
+		openFindings,
+	]);
 	useReviewKeymap({
 		enabled: isActive,
 		rootRef: tabMode ? root : undefined,
@@ -250,6 +323,18 @@ function ReviewWorkspaceContent({
 					onOpenFindings={openFindings}
 					findingsCount={currentFindings.length}
 				/>
+			)}
+			{findingsMessage && (
+				<output className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2 text-[12px] text-[var(--text-secondary)]">
+					{findingsMessage}
+					<button
+						type="button"
+						aria-label="Dismiss findings message"
+						onClick={() => setFindingsMessage(undefined)}
+					>
+						×
+					</button>
+				</output>
 			)}
 			{attachmentError && (
 				<div role="alert" className="px-4 py-2 text-[12px] text-[var(--color-danger)]">

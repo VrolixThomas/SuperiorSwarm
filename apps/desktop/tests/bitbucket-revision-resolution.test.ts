@@ -14,7 +14,9 @@ if (inIsolatedFileBrowserTest(import.meta.path, "Bitbucket exact revision resolu
 			return respond(url);
 		},
 	}));
-	const { getBitbucketPRDetails, getPRState } = await import("../src/main/atlassian/bitbucket");
+	const { getBitbucketPRDetails, getPRState, resolveCapturedPRHeadOid } = await import(
+		"../src/main/atlassian/bitbucket"
+	);
 	const { BitbucketAdapter } = await import("../src/main/providers/bitbucket-adapter");
 	const metadata = (source = head.slice(0, 12), destination = base.slice(0, 12)) => ({
 		state: "OPEN",
@@ -39,6 +41,52 @@ if (inIsolatedFileBrowserTest(import.meta.path, "Bitbucket exact revision resolu
 			baseCommitOid: base,
 		});
 		expect(calls).toHaveLength(3);
+	});
+
+	test("automatic mapping expands the captured listing hash in the verified fork repository", async () => {
+		expect(await resolveCapturedPRHeadOid("org", "repo", 1, head.slice(0, 12))).toBe(head);
+		expect(calls).toHaveLength(2);
+		expect(calls[1]).toContain(`/fork/source/commit/${head.slice(0, 12)}`);
+	});
+	test("automatic mapping never substitutes a newer PR head for the captured listing hash", async () => {
+		respond = () => Response.json(metadata(moved, base));
+		expect(await resolveCapturedPRHeadOid("org", "repo", 1, head.slice(0, 12))).toBeUndefined();
+		expect(calls).toHaveLength(1);
+	});
+	test("same-prefix replacement cannot certify a different captured commit", async () => {
+		respond = (url) =>
+			url.endsWith("/pullrequests/1")
+				? Response.json(metadata(`${head.slice(0, 12)}${"d".repeat(28)}`, base))
+				: Response.json({ hash: head });
+		expect(await resolveCapturedPRHeadOid("org", "repo", 1, head.slice(0, 12))).toBeUndefined();
+	});
+	test.each(["closed", "invalid-source", "mismatch", "forbidden"])(
+		"auto-map captured resolution fails closed for %s",
+		async (scenario) => {
+			respond = (url) => {
+				if (url.endsWith("/pullrequests/1"))
+					return Response.json({
+						...metadata(),
+						...(scenario === "closed" ? { state: "MERGED" } : {}),
+						...(scenario === "invalid-source"
+							? {
+									source: {
+										commit: { hash: head.slice(0, 12) },
+										repository: { full_name: "../invalid" },
+									},
+								}
+							: {}),
+					});
+				return scenario === "forbidden"
+					? new Response(null, { status: 403 })
+					: Response.json({ hash: moved });
+			};
+			expect(await resolveCapturedPRHeadOid("org", "repo", 1, head.slice(0, 12))).toBeUndefined();
+		}
+	);
+	test("complete listing hashes avoid auto-map expansion requests", async () => {
+		expect(await resolveCapturedPRHeadOid("org", "repo", 1, head)).toBe(head);
+		expect(calls).toHaveLength(0);
 	});
 
 	test("state polling uses the same exact source revision as detail reads", async () => {

@@ -17,6 +17,10 @@ export async function maybeAutoMap(pr: CachedPR, ledger: AutoReviewLedger): Prom
 	if (!mapper)
 		mapper = createAutoMapper({
 			getSettings: () => getReviewPathStorage().getSettings(),
+			resolveHead: async (pr) => {
+				const { resolveCapturedPRHeadOid } = await import("../atlassian/bitbucket");
+				return resolveCapturedPRHeadOid(pr.repoOwner, pr.repoName, pr.number, pr.headCommitSha);
+			},
 			hasReview: (pr) =>
 				getReviewDrafts().some(
 					(draft) =>

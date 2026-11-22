@@ -189,8 +189,7 @@ export function ReviewAgentTab({
 										const ui = reviewUIStoreFor(
 											reviewUIScopeKey({ workspaceId, prCtx: review.prCtx })
 										).getState();
-										ui.setCommentFilter("pending");
-										ui.setPanel("threads");
+										ui.requestFindings(job.identity.headSha);
 									}}
 								>
 									Review findings

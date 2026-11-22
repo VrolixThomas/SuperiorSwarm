@@ -294,6 +294,18 @@ async function run() {
 	await refresh();
 	check("completed job inspectable without relaunch", text().includes("Done") && !button("Cancel"));
 	await capture("tabs-07-ended");
+	await click("Review findings");
+	await poll(
+		() => sessions.getState().sessions.get(sessionKey)?.activeThreadId === "ai-finding",
+		"agent finding navigation"
+	);
+	check(
+		"agent results opens actual inline finding, not provider Threads",
+		ui.getState().panel === null &&
+			sessions.getState().sessions.get(sessionKey)?.activeFilePath === "src/alpha.ts" &&
+			!!document.querySelector('[data-thread-id="ai-finding"]')
+	);
+
 	await click("Open reading path");
 	await click("Path summary");
 	await poll(() => text().includes("How this path was made"), "summary after path poll");

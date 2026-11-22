@@ -56,6 +56,24 @@ if (
 			},
 		}),
 	}));
+	const expanded: string[] = [];
+	mock.module("../src/main/atlassian/auth", () => ({
+		getAuth: () => null,
+		getValidToken: async () => {
+			throw Error("No token access during auto-map acceptance");
+		},
+		atlassianFetch: async (_service: string, url: string) => {
+			expanded.push(url);
+			if (url.endsWith("/o/r/pullrequests/2"))
+				return Response.json({
+					state: "OPEN",
+					source: { commit: { hash: "b".repeat(12) }, repository: { full_name: "fork/source" } },
+				});
+			if (url.endsWith(`/fork/source/commit/${"b".repeat(12)}`))
+				return Response.json({ hash: "b".repeat(40) });
+			throw Error(`Unexpected fixture URL ${url}`);
+		},
+	}));
 	const { maybeAutoMap } = await import("../src/main/review-path/auto-map-runtime");
 	test("logical workspace and queued job suppress competing legacy launch without claiming completed work", async () => {
 		const pr = {
@@ -86,5 +104,41 @@ if (
 		expect(db.select().from(schema.workspaces).get()?.worktreeId).toBeNull();
 		expect(db.select().from(schema.worktrees).all()).toHaveLength(0);
 		expect(marked).toBe(0);
+	});
+	test("Bitbucket abbreviated listing heads reach a full-OID durable job through the captured resolver", async () => {
+		job = undefined;
+		const before = accepted.length;
+		const pr = {
+			provider: "bitbucket",
+			identifier: "o/r#2",
+			repoOwner: "o",
+			repoName: "r",
+			number: 2,
+			headCommitSha: "b".repeat(12),
+			projectId: "p",
+			role: "reviewer",
+			state: "open",
+			title: "PR",
+			sourceBranch: "feature",
+			targetBranch: "main",
+		} as import("../src/shared/review-types").CachedPR;
+		const ledger = {
+			get: () => ({ firstTriggeredAt: null }),
+			markFirstTriggered: () => {
+				throw Error("Queued job cannot mark a completed review");
+			},
+		} as unknown as import("../src/main/ai-review/auto-trigger").AutoReviewLedger;
+		expect(await maybeAutoMap(pr, ledger)).toBe(true);
+		expect(expanded).toHaveLength(2);
+		expect(expanded[1]).toContain(`/fork/source/commit/${"b".repeat(12)}`);
+		expect(accepted).toHaveLength(before + 1);
+		expect(accepted.at(-1)?.["identity"]).toMatchObject({
+			provider: "bitbucket",
+			owner: "o",
+			repo: "r",
+			prNumber: 2,
+			headSha: "b".repeat(40),
+		});
+		expect(db.select().from(schema.worktrees).all()).toHaveLength(0);
 	});
 }

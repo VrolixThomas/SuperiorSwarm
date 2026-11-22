@@ -30,6 +30,8 @@ export function useReviewWorkspaceData(
 		details,
 		isLoading,
 		draftPending,
+		findingsLoading,
+		findingsError,
 		matchingDraft,
 		activeDraft,
 		aiDraft,
@@ -73,10 +75,23 @@ export function useReviewWorkspaceData(
 			number: prCtx.number,
 		});
 	}, [prCtx.number, prCtx.owner, prCtx.provider, prCtx.repo, utils]);
-	const refreshDetails = useCallback(() => {
+	const refreshDetails = useCallback(async () => {
 		resetReviewSnapshotAcquisition(workspaceId);
 		invalidateDetails();
-		void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
+		// Content keys remain stable when the backend recreates an evicted snapshot.
+		// Let metadata recreation finish before retrying reads against those same IDs.
+		try {
+			await utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId }, undefined, {
+				throwOnError: true,
+			});
+		} catch {
+			// The snapshot query presents the failure. Its content must wait for recovery.
+			return;
+		}
+		await Promise.all([
+			utils.reviewExplanation.getSnapshotFile.invalidate({ workspaceId }),
+			utils.reviewExplanation.getSnapshotContext.invalidate({ workspaceId }),
+		]);
 	}, [workspaceId, invalidateDetails, utils]);
 
 	const { mutate: updateDraftComment } = trpc.aiReview.updateDraftComment.useMutation({
@@ -201,6 +216,8 @@ export function useReviewWorkspaceData(
 		details,
 		isLoading,
 		draftPending,
+		findingsLoading,
+		findingsError,
 		matchingDraft,
 		activeDraft,
 		aiDraft,
