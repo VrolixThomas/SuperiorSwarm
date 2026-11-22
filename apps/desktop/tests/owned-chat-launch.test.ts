@@ -267,3 +267,54 @@ test("failed owned registration removes only the newly prepared terminal", async
 	).toEqual(before);
 	expect(f.manager.getSession(f.dispatchedId)?.managed).toBe(true);
 });
+
+for (const provider of ["claude", "codex"] as const) {
+	test(`${provider} explicit ticket prompt is shell-quoted, bounded and reflected in launch descriptor`, async () => {
+		const f = await fixture("folder");
+		let requested: SpawnArgs | undefined;
+		const prompt = "Start SUP-39: user's ticket.\nhttps://linear.app/swarm/issue/SUP-39";
+		const launch = await startOwnedChat(
+			{ workspaceId: f.workspaceId, provider, initialPrompt: `  ${prompt}  ` },
+			{
+				spawn: async (args) => {
+					requested = args;
+					return defaultSpawnFn(args);
+				},
+			}
+		);
+		directories.push(dirname(launch.scriptPath));
+		expect(requested?.agent).toMatchObject({
+			provider,
+			initialPrompt: true,
+			managed: false,
+			skipPermissions: false,
+		});
+		const script = readFileSync(launch.scriptPath, "utf8");
+		expect(script).toContain("Start SUP-39: user'\\''s ticket.");
+		expect(script).toContain("https://linear.app/swarm/issue/SUP-39");
+		expect(script).not.toContain("dangerously");
+		expect(f.manager.getSession(f.dispatchedId)?.managed).toBe(true);
+		await expect(
+			startOwnedChat({ workspaceId: f.workspaceId, provider, initialPrompt: "x".repeat(4001) })
+		).rejects.toThrow("4,000");
+	});
+}
+test("whitespace initial prompt stays promptless; leading flag is treated as user text", async () => {
+	const f = await fixture("folder");
+	for (const initialPrompt of ["   ", "--help"]) {
+		let requested: SpawnArgs | undefined;
+		const launch = await startOwnedChat(
+			{ workspaceId: f.workspaceId, provider: "codex", initialPrompt },
+			{
+				spawn: async (args) => {
+					requested = args;
+					return defaultSpawnFn(args);
+				},
+			}
+		);
+		directories.push(dirname(launch.scriptPath));
+		expect(requested?.agent?.initialPrompt).toBe(initialPrompt === "--help");
+		if (initialPrompt === "--help")
+			expect(readFileSync(launch.scriptPath, "utf8")).toContain("'User request:\n--help'");
+	}
+});

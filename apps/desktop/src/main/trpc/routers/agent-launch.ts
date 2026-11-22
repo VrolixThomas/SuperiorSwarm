@@ -14,7 +14,13 @@ let installedCache: Promise<CliPresetName[]> | null = null;
 export const agentLaunchRouter = router({
 	startChat: publicProcedure
 		.input(
-			z.object({ workspaceId: z.string().min(1), provider: z.enum(["claude", "codex"]) }).strict()
+			z
+				.object({
+					workspaceId: z.string().min(1),
+					provider: z.enum(["claude", "codex"]),
+					initialPrompt: z.string().trim().max(4_000).optional(),
+				})
+				.strict()
 		)
 		.mutation(({ input }) => startOwnedChat(input)),
 	listSessions: publicProcedure

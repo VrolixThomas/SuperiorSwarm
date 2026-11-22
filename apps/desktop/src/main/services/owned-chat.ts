@@ -7,10 +7,17 @@ import { type SpawnFn, buildLaunchScript, defaultSpawnFn } from "./workspace-ser
 
 /** A local user's own chat is app-owned, but never an orchestrator dispatch target. */
 export async function startOwnedChat(
-	input: { workspaceId: string; provider: OwnedChatProvider },
+	input: { workspaceId: string; provider: OwnedChatProvider; initialPrompt?: string },
 	deps: { spawn?: SpawnFn } = {}
 ): Promise<OwnedChatLaunch> {
 	if (!["claude", "codex"].includes(input.provider)) throw Error("Unsupported chat provider");
+	const initialPrompt = input.initialPrompt?.trim() || undefined;
+	if (initialPrompt && (initialPrompt.length > 4_000 || initialPrompt.includes("\0")))
+		throw Error(
+			"Initial chat prompt must be at most 4,000 characters and contain no NUL characters"
+		);
+	// A leading dash must be text, never a provider CLI flag.
+	const prompt = initialPrompt?.startsWith("-") ? `User request:\n${initialPrompt}` : initialPrompt;
 	if (!queueEntities().has(input.workspaceId)) throw Error("This workspace is no longer available");
 	if (!getAgentSessionManager()) throw Error("Chat startup is not available yet");
 	const cwd = getWorkspaceCwdOrThrow(input.workspaceId);
@@ -24,6 +31,7 @@ export async function startOwnedChat(
 		cliPreset: input.provider,
 		queueLaunchId,
 		cliSessionId: providerSessionId,
+		prompt,
 		skipPermissions: false,
 	});
 	const result = await (deps.spawn ?? defaultSpawnFn)({
@@ -37,7 +45,7 @@ export async function startOwnedChat(
 			providerSessionId,
 			skipPermissions: false,
 			managed: false,
-			initialPrompt: false,
+			initialPrompt: prompt !== undefined,
 			queueLaunchId,
 		},
 	});
