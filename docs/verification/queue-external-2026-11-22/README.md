@@ -1,6 +1,6 @@
 # External queue integration — 22 November 2026
 
-Branch: `feat/queue-pr-review-feedback`, based on `cd9d5f28`. Includes the ticket and hook agents' commits. This branch has not been merged into `activity-queue`.
+Branch: `feat/queue-pr-review-feedback`, based on `cd9d5f28`. Includes the ticket and hook agents' commits. The reviewed integration was merged into `activity-queue` at `84edb72c`.
 
 Implemented:
 
@@ -21,7 +21,7 @@ Verification:
 - `external-queue-electron.test.ts`: PASS. Production renderer components, preload, tRPC and native SQLite in an isolated Electron profile. Ticket, PR and hook rows appear together; actual Open/Done/Undo/Later/BringBack actions run through IPC; a trusted synthetic `cat output.jsonl` hook resolves absent keys and retains failures. This fixture blocks network, uses synthetic account identities and disables provider-capability reads. It does not prove authenticated review submission, live ticket creation, local solver execution, physical keyboard delivery, or full-shell sidebar layout.
 - Existing workspace/review normalization/classification and queue UI/navigation regression suites are rerun. Production build passes. Repository-wide TypeScript diagnostics predate this branch; comparisons exclude line-number shifts and record new diagnostics separately.
 
-Final follow-up: all implementation and independent-review gates are now complete in `integrate/queue-external-review`; the features remain staged outside `activity-queue`. Queue-origin review and solver publication now use five-second guarded Undo, and actual Claude/Codex startup/context checks pass. The detailed final report, independent findings and integrated test results are in [final verification](../../../.hermes/verification/queue-external-review-2026-11-22/README.md).
+Final follow-up: all implementation and independent-review gates are now complete in `integrate/queue-external-review`; the reviewed features are merged into `activity-queue` at `84edb72c`. Queue-origin review and solver publication now use five-second guarded Undo, and actual Claude/Codex startup/context checks pass. The detailed final report, independent findings and integrated test results are in [final verification](../../../.hermes/verification/queue-external-review-2026-11-22/README.md).
 
 Bitbucket still cannot atomically pin approval to a head, and keeps its explicit manual fallback. Live provider posting was not used in verification. Actual native startup/context tests retain the documented restrictive fixture seams; legacy solver structured resume is not claimed.
 

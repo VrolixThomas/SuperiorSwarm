@@ -1,6 +1,6 @@
 # External queue — final independent review and integration
 
-SUP-39–42 are implemented, independently reviewed and verified together on `integrate/queue-external-review`. The final code snapshot is `99b0edc3`; later commits record evidence only. The user's `activity-queue` branch remains at completed SUP-45 `014e5e79`. External queue features have not been merged into that branch or pushed.
+SUP-39–42 are implemented, independently reviewed and verified together on `integrate/queue-external-review`. The final code snapshot is `99b0edc3`; later commits record evidence only. The reviewed integration was fast-forwarded into `activity-queue` at `84edb72c` on 2026-11-22. Nothing was pushed. Post-merge build/smoke results and the additional combined-source QA are tracked in [merge verification](../queue-merged-2026-11-22/README.md).
 
 ## Delivered behavior
 
