@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { RailFileItem } from "../../../lib/review-path-model";
 import { Check, Circle, FlaskConical, MessageSquare, Sparkles } from "./RailIcons";
 
@@ -63,11 +63,23 @@ function Row({
 			data-step-number={item.number}
 			aria-current={selected ? "step" : undefined}
 			onClick={() => onSelect(item)}
-			className={`relative flex w-full items-center gap-[10px] pr-[14px] text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${indent ? "h-[26px] pl-[46px] text-[12px]" : item.kind === "context" ? "h-[32px] pl-[16px] text-[13px]" : item.folderLabel ? "h-[46px] pl-[16px] text-[13px]" : "h-[34px] pl-[16px] text-[13px]"} ${selected ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
+			className={`relative flex w-full items-center gap-[10px] pr-[14px] text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${indent ? "min-h-[26px] py-1 pl-[46px] text-[12px]" : item.kind === "context" ? "min-h-[32px] py-1.5 pl-[16px] text-[13px]" : item.folderLabel ? "min-h-[46px] py-1.5 pl-[16px] text-[13px]" : "min-h-[34px] py-1.5 pl-[16px] text-[13px]"} ${selected ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
 		>
 			{children}
 			<span className="min-w-0 flex-1">
-				<span className="block truncate">{item.path.split("/").pop()}</span>
+				<span
+					data-rail-filename
+					className="block whitespace-normal break-words [overflow-wrap:anywhere] leading-[18px]"
+				>
+					{(item.path.split("/").pop() ?? item.path)
+						.split(/(?<=[a-z0-9])(?=[A-Z])|(?=[._-])/)
+						.map((part, index) => (
+							<Fragment key={`${index}:${part}`}>
+								{index > 0 && <wbr />}
+								{part}
+							</Fragment>
+						))}
+				</span>
 				{item.folderLabel && (
 					<span className="mt-[2px] block truncate text-[11px] text-[var(--text-tertiary)]">
 						{item.folderLabel}
@@ -106,7 +118,7 @@ export function TestRow(props: RailRowProps) {
 		<Row {...props} indent>
 			<span
 				aria-label={viewed ? "Viewed" : props.item.changed ? "Test" : "Test, not changed"}
-				className={viewed ? "text-[var(--color-success)]" : "text-[var(--text-tertiary)]"}
+				className={`shrink-0 ${viewed ? "text-[var(--color-success)]" : "text-[var(--text-tertiary)]"}`}
 			>
 				{viewed ? (
 					<Check size={12} aria-hidden="true" />

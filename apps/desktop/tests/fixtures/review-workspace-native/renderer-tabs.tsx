@@ -9,7 +9,9 @@ import {
 	reviewUIScopeKey,
 	reviewUIStoreFor,
 } from "../../../src/renderer/components/review-mode/ReviewUIContext";
+import { RailList } from "../../../src/renderer/components/review-mode/rail/RailList";
 import { ReviewAgentJobCoordinator } from "../../../src/renderer/components/review-mode/useReviewAgentJob";
+import type { RailItem } from "../../../src/renderer/lib/review-path-model";
 import { getAllPanes, usePaneStore } from "../../../src/renderer/stores/pane-store";
 import {
 	prReviewSessionKey,
@@ -150,6 +152,101 @@ const read = async () => {
 	await wait(300);
 };
 const diff = () => monaco.editor.getDiffEditors()[0]!;
+async function verifyLongPathLabels() {
+	const host = document.createElement("div");
+	Object.assign(host.style, {
+		position: "fixed",
+		left: "80px",
+		top: "60px",
+		height: "500px",
+		display: "flex",
+		flexDirection: "column",
+		zIndex: "1000",
+		background: "var(--bg-surface)",
+	});
+	document.body.appendChild(host);
+	const root = createRoot(host);
+	const longTitle =
+		"Provider callback contracts and request identity across reconciliation operations";
+	const paths = Array.from(
+		{ length: 180 },
+		(_, index) =>
+			`src/Domain/DebitAccountSportsRequestHandlerIntegrationTestsWithReconciliation${index}.cs`
+	);
+	const items: RailItem[] = [
+		{ kind: "entry", id: "long-entry", title: longTitle },
+		...paths.map((path, index) => ({
+			kind: index % 2 ? ("test" as const) : ("step" as const),
+			id: `wrap-${index}`,
+			path,
+			changed: true,
+			number: index % 2 ? undefined : index + 1,
+			entryId: "long-entry",
+		})),
+	];
+	const render = (selectedPath: string | null) =>
+		root.render(
+			<RailList
+				items={items}
+				selectedPath={selectedPath}
+				viewed={new Set()}
+				counts={new Map()}
+				onSelect={() => {}}
+				virtualize
+			/>
+		);
+	const noOverlap = () => {
+		const rows = [...host.querySelectorAll<HTMLElement>("[data-rail-row]")]
+			.map((node) => node.getBoundingClientRect())
+			.sort((a, b) => a.top - b.top);
+		return rows.every((row, index) => !index || row.top >= rows[index - 1]!.bottom - 1);
+	};
+	for (const width of [236, 288, 360]) {
+		host.style.width = `${width}px`;
+		render(null);
+		await wait(400);
+		const scroll = host.querySelector<HTMLElement>("[data-rail-scroll]")!;
+		scroll.scrollTop = 0;
+		await wait(300);
+		const labels = [
+			...host.querySelectorAll<HTMLElement>("[data-rail-filename],[data-rail-entry-title]"),
+		];
+		check(
+			`long path labels wrap without clipping at ${width}px`,
+			labels.length > 0 &&
+				labels.every(
+					(label) =>
+						getComputedStyle(label).whiteSpace !== "nowrap" &&
+						label.scrollWidth <= label.clientWidth + 1 &&
+						label.scrollHeight <= label.clientHeight + 1
+				) &&
+				noOverlap()
+		);
+		check(
+			`path group title fully visible at ${width}px`,
+			host.querySelector("[data-rail-entry-title]")?.textContent === longTitle
+		);
+		if (width === 236) await bridge.capture("tabs-10-readable-path");
+		render(paths.at(-1)!);
+		await wait(450);
+		const selected = host.querySelector<HTMLElement>('[aria-current="step"]');
+		const bounds = scroll.getBoundingClientRect();
+		const selection = selected?.getBoundingClientRect();
+		check(
+			`wrapped virtual list selects distant row at ${width}px`,
+			!!selection &&
+				selection.top >= bounds.top - 1 &&
+				selection.bottom <= bounds.bottom + 1 &&
+				noOverlap()
+		);
+		scroll.scrollTop = 0;
+		scroll.dispatchEvent(new Event("scroll"));
+		await wait(300);
+		check(`manual scrolling stays put at ${width}px`, scroll.scrollTop === 0 && noOverlap());
+	}
+	root.unmount();
+	host.remove();
+}
 async function run() {
 	await poll(
 		() => !!button("Start agent review") && !button("Start agent review")!.disabled,
@@ -340,6 +437,7 @@ async function run() {
 		metrics.every((m) => m.scrollWidth <= m.width),
 		metrics
 	);
+	await verifyLongPathLabels();
 	await bridge.complete({ results, metrics });
 }
 void run().catch(async (e) => {
