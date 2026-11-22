@@ -19,6 +19,6 @@ Unknown/legacy launch settings, unsupported native identity/environment capture,
 
 See the lane reports in queue-safe-resume-2026-11-22, queue-answer-continuation-2026-11-22 and queue-owned-chat-launch-2026-11-22 for source checks and fixture boundaries. Actual-provider logs are retained with the parent continuation evidence.
 
-## Post-environment live probes still open
+## Post-environment live follow-up completed
 
-The final guarded implementation was merged at the user's explicit request. The79-test final targeted suite and rebuilt main/daemon/native helper passed. Earlier real-provider resume/answer successes establish those transport mechanics, but are not counted as final environment-registration proof: the additional empty Codex startup probe stopped at its synthetic hook-review gate before firstturn; the final Claude automatic-registration probe timed out before hibernation. Neither probe sent an unsafe resume or bypassed verification. SUP-45 remains in progress for this last live registration follow-up. Logs are under queue-resume-continuation-2026-11-22.
+The final follow-up isolated the failures to fixture setup: a generation string was polled as a `.supported` object, and Codex's native startup gate included unrelated disabled/modified user hooks. After correcting the API assertion and isolating synthetic hook configuration, real Claude and Codex each passed empty-own-chat first input, repeated sleep/resume, view-only wake/manual follow-up and sleeping saved-answer continuation. SUP-45 is complete for the supported structured launch path. Full evidence and explicit scope boundaries: [final verification](queue-sup45-final-2026-11-22/README.md).

@@ -1,0 +1,135 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-resume-manager.test.ts:
+(pass) unknown and rejected structured wake never downgrade to shell commands or flush user input [9.81ms]
+(pass) uncertain structured wake blocks buffered input; admitted view wake preserves same terminal [4.63ms]
+(pass) showing ordinary shell or idle live chat is not treated as a failed sleeping resume [1.97ms]
+(pass) legacy fallback requires explicit absence of descriptor, never transport ambiguity [2.15ms]
+(pass) known app launch cannot lose policy through explicit missing or old daemon metadata [5.99ms]
+(pass) own app chat registration does not steal or demote a managed dispatch target [3.35ms]
+(pass) pending app policy binds only after its launchId and is consumed after successful registration [11.80ms]
+(pass) known launch without an exact clean sleep proof never terminates or changes live state [2.25ms]
+(pass) a callback during sleep preparation prevents terminating the newly active chat [4.08ms]
+
+tests/queue-answer-envelope.test.ts:
+(pass) continuation embeds the exact saved answer losslessly without terminal command controls
+(pass) normal full-size saved answers fit while expansion beyond frame budget is explicit [2.82ms]
+
+tests/queue-answer-continuation.test.ts:
+(pass) claude/worktree: save then continue binds exact answer; matching accepted prompt retrieves only that question [36.30ms]
+(pass) claude/folder: save then continue binds exact answer; matching accepted prompt retrieves only that question [31.55ms]
+(pass) claude/orchestrator: save then continue binds exact answer; matching accepted prompt retrieves only that question [27.57ms]
+(pass) claude/coordinator: save then continue binds exact answer; matching accepted prompt retrieves only that question [30.04ms]
+(pass) codex/worktree: save then continue binds exact answer; matching accepted prompt retrieves only that question [27.90ms]
+(pass) codex/folder: save then continue binds exact answer; matching accepted prompt retrieves only that question [27.27ms]
+(pass) codex/orchestrator: save then continue binds exact answer; matching accepted prompt retrieves only that question [27.28ms]
+(pass) codex/coordinator: save then continue binds exact answer; matching accepted prompt retrieves only that question [29.13ms]
+(pass) saved answer is reused on retry and recovery never mutates or resends [29.30ms]
+(pass) partial failure retains saved answer and no receipt remains uncertain [20.21ms]
+(pass) different saved content and reused request identity fail without creating another answer [32.34ms]
+(pass) answer consumed outside Queue is not continued a second time [19.90ms]
+(pass) old prompt digest cannot mark edited answer or replaced conversation retrieved [20.12ms]
+(pass) oversized encoded continuation saves but never truncates or submits [20.92ms]
+(pass) independent retrieval while admission waits returns not-needed without duplicate delivery [18.34ms]
+(pass) capability rechecks persisted envelope size after save [28.97ms]
+(pass) a forged or changed displayed member receipt cannot save or continue an answer [19.00ms]
+(pass) a matching old prompt does not retrieve a question after a conflicting answer was saved [26.38ms]
+(pass) continuation matching refuses missing conversation and inconsistent entity or sender identity [19.63ms]
+
+tests/queue-resume-pty.test.ts:
+(pass) one-PTY resume preserves listeners, dimensions, cwd, callback environment and accepted replay tail [1.67ms]
+(pass) a directly resumed provider parks and resumes again without closing any terminal [0.63ms]
+(pass) a post-spawn publication failure is uncertain and consumes the one-shot lease [0.89ms]
+(pass) promptless typed startup retires only its launcher boundary before the first manual turn [0.49ms]
+(pass) input arriving after preparation prevents daemon-owned sleep signalling [0.47ms]
+
+tests/queue-conversation-replies.test.ts:
+(pass) actual persisted daemon admission admits once; repeated/concurrent/reconnected requests cannot duplicate [31.15ms]
+(pass) busy, hibernated, legacy daemon, stale source and provider replacement never submit [30.78ms]
+(pass) busy transition at atomic daemon boundary rejects without delivery [18.99ms]
+(pass) a later occurrence during admission survives, and its old receipt is rejected [16.87ms]
+(pass) lost daemon response uses committed receipt and never resubmits [13.13ms]
+(pass) crash before receipt remains uncertain and blocks retry with any request ID [14.09ms]
+(pass) a definitely rejected request remains immutable while an explicit fresh attempt may retry [20.17ms]
+(pass) a newly appearing structured question at admission blocks ordinary free-form input [12.37ms]
+(pass) claude worktree: exact delivery preserves sibling, identity and later occurrence [34.21ms]
+(pass) claude folder: exact delivery preserves sibling, identity and later occurrence [33.43ms]
+(pass) claude orchestrator: exact delivery preserves sibling, identity and later occurrence [32.94ms]
+(pass) claude coordinator: exact delivery preserves sibling, identity and later occurrence [38.43ms]
+(pass) codex worktree: exact delivery preserves sibling, identity and later occurrence [38.90ms]
+(pass) codex folder: exact delivery preserves sibling, identity and later occurrence [38.59ms]
+(pass) codex orchestrator: exact delivery preserves sibling, identity and later occurrence [42.00ms]
+(pass) codex coordinator: exact delivery preserves sibling, identity and later occurrence [42.28ms]
+(pass) a newly grouped same-conversation receipt cannot be omitted at daemon admission [15.12ms]
+(pass) admitted: report after handoff survives delayed provider prompt without upgrading delivery [34.68ms]
+(pass) uncertain: report after handoff survives delayed provider prompt without upgrading delivery [48.17ms]
+(pass) only the exact prompt digest and conversation can establish provider receipt [15.87ms]
+(pass) read-only receipt recovery never creates or retries an absent intent [16.68ms]
+(pass) a different explicit prompt digest never inherits an uncertain queued cleanup ceiling [17.03ms]
+(pass) reply cap rejects 4,001 characters and submits the trimmed 4,000-character boundary [15.62ms]
+
+tests/queue-answer-router.test.ts:
+(pass) claude/worktree/live: production router + SQL admission continues only saved answer [135.88ms]
+(pass) claude/worktree/sleeping: production router + SQL admission continues only saved answer [131.48ms]
+(pass) claude/folder/live: production router + SQL admission continues only saved answer [133.89ms]
+(pass) claude/folder/sleeping: production router + SQL admission continues only saved answer [126.91ms]
+(pass) claude/orchestrator/live: production router + SQL admission continues only saved answer [127.67ms]
+(pass) claude/orchestrator/sleeping: production router + SQL admission continues only saved answer [129.98ms]
+(pass) claude/coordinator/live: production router + SQL admission continues only saved answer [140.44ms]
+(pass) claude/coordinator/sleeping: production router + SQL admission continues only saved answer [141.64ms]
+(pass) codex/worktree/live: production router + SQL admission continues only saved answer [133.98ms]
+(pass) codex/worktree/sleeping: production router + SQL admission continues only saved answer [132.27ms]
+(pass) codex/folder/live: production router + SQL admission continues only saved answer [130.98ms]
+(pass) codex/folder/sleeping: production router + SQL admission continues only saved answer [125.76ms]
+(pass) codex/orchestrator/live: production router + SQL admission continues only saved answer [129.96ms]
+(pass) codex/orchestrator/sleeping: production router + SQL admission continues only saved answer [129.77ms]
+(pass) codex/coordinator/live: production router + SQL admission continues only saved answer [146.54ms]
+(pass) codex/coordinator/sleeping: production router + SQL admission continues only saved answer [144.44ms]
+(pass) real ledger prevents concurrent different-request continuation duplicates [146.68ms]
+(pass) retrieval at daemon boundary sends nothing and returns already handled [82.72ms]
+(pass) lost transport response recovers actual persisted receipt without re-sending [88.42ms]
+(pass) long saved answer envelope beyond16000 characters keeps exact receipt and retrieval [86.01ms]
+(pass) a new unprojected question at daemon boundary blocks continuing the old answer [80.36ms]
+(pass) capability explains another pending question even after its answer was saved [122.16ms]
+(pass) a legacy reply-only daemon exposes save-only fallback without answer continuation [54.83ms]
+(pass) a competing valid answer at the daemon boundary prevents ambiguous continuation [82.49ms]
+(pass) wrong-recipient and older answer rows cannot poison the selected valid answer [81.11ms]
+(pass) outside-queue saved answers retain raw whitespace and may use the bounded larger envelope [190.48ms]
+(pass) larger continuation allowance never expands new-answer save limits [17.09ms]
+
+tests/queue-resume-guard-review.test.ts:
+(pass) claude: a manual same-session process replacement cannot inherit app launch policy [4.19ms]
+(pass) claude: only the exact admitted argv prompt establishes live reply readiness [0.50ms]
+(pass) codex: a manual same-session process replacement cannot inherit app launch policy [0.32ms]
+(pass) codex: only the exact admitted argv prompt establishes live reply readiness [0.33ms]
+(pass) a resume lease cannot authorize ordinary file insertion into the retained shell [0.45ms]
+(pass) typing before completed sleep cannot be erased by the completion notification [0.24ms]
+(pass) typing after a resume lease prevents process handoff, including newline-containing drafts [0.81ms]
+(pass) a stale shell process or different owner cannot consume the resume lease [0.57ms]
+(pass) a matching argv callback cannot erase input typed after admission [0.41ms]
+(pass) wake without a prompt never manufactures prompt readiness [0.28ms]
+(pass) changed executable identity invalidates a prepared resume [0.35ms]
+(pass) Codex dedicated mode must be an actual parsed switch, not an option value
+(pass) resume argv retains policy and one literal prompt while refusing ambiguous selectors
+
+tests/queue-resume-environment-native.test.ts:
+(pass) native environment snapshot preserves policy markers without exposing environment in ordinary identity probes [738.39ms]
+
+tests/queue-conversation-admission.test.ts:
+(pass) conversation admission requires exact provider executable, excludes shells and generic runtimes [0.17ms]
+(pass) admission is single-use, bracketed, and invalidated by any ordinary typing [0.10ms]
+(pass) process replacement and controls fail closed with no write [0.06ms]
+(pass) an existing user draft cannot be combined with a queue reply
+(pass) multiline paste, Enter, Ctrl-C and a queued draft never reset dirty state [0.09ms]
+(pass) only a fresh correlated completed turn restores admission, other conversations do not [0.03ms]
+(pass) read-only capability polling cannot replace an in-flight admission lease [0.01ms]
+(pass) two submissions before the first hook cannot attribute the second Enter to the first turn [0.05ms]
+(pass) multiple uncorrelated submissions in one chunk remain unavailable [0.02ms]
+(pass) provider slash commands and shell shortcuts are not ordinary Queue replies [0.06ms]
+(pass) unknown lifecycle phases cannot establish composer readiness [0.01ms]
+(pass) daemon also rejects overlong replies before any terminal write
+
+ 111 pass
+ 0 fail
+ 770 expect() calls
+Ran 111 tests across 9 files. [5.28s]

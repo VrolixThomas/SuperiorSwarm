@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import TOML from "@iarna/toml";
@@ -66,11 +66,13 @@ const trace: {
 	accepted: boolean;
 	evidence?: { text: string }[];
 	promptHash?: string;
+	launchId?: string;
 	turnId?: string;
 }[] = [];
 const resumeScenario = process.env["SS_QUEUE_RESUME_TUI"] === "1";
 const answerScenario = process.env["SS_QUEUE_ANSWER_TUI"] === "1";
 const emptyScenario = process.env["SS_QUEUE_EMPTY_CHAT_TUI"] === "1";
+let fixtureCodexHome: string | undefined;
 let output = "";
 let viewOutput: string | null = null;
 let step = "startup";
@@ -118,6 +120,7 @@ async function run() {
 			accepted: !!accepted,
 			evidence: event.evidence,
 			promptHash: event.promptHash,
+			launchId: event.launchId,
 		});
 	});
 	await listener.start();
@@ -187,6 +190,28 @@ async function run() {
 		join(root, "settings.json"),
 		`ELECTRON_RUN_AS_NODE=1 ${quote(process.execPath)} ${quote(bridge)}`
 	);
+	if (provider === "codex") {
+		// An isolated home avoids the native startup gate for unrelated changed user hooks,
+		// even when those hooks are disabled. Reuse authentication without copying secrets.
+		const userCodexHome = process.env["CODEX_HOME"] || join(homedir(), ".codex");
+		const configured = TOML.parse(readFileSync(join(userCodexHome, "config.toml"), "utf8"));
+		assert(!configured["model_provider"], "Native fixture requires the standard Codex provider");
+		assert(
+			!configured["cli_auth_credentials_store"] ||
+				configured["cli_auth_credentials_store"] === "file",
+			"Native fixture requires existing file-backed Codex authentication"
+		);
+		assert(existsSync(join(userCodexHome, "auth.json")), "Log in to Codex before the native test");
+		fixtureCodexHome = join(root, "codex-home");
+		mkdirSync(fixtureCodexHome, { mode: 0o700 });
+		symlinkSync(join(userCodexHome, "auth.json"), join(fixtureCodexHome, "auth.json"));
+		const selected: ReturnType<typeof TOML.parse> = {};
+		for (const key of ["model", "model_context_window", "model_reasoning_effort", "service_tier"]) {
+			const value = configured[key];
+			if (value !== undefined) selected[key] = value;
+		}
+		writeFileSync(join(fixtureCodexHome, "config.toml"), TOML.stringify(selected), { mode: 0o600 });
+	}
 	const env = {
 		...Object.fromEntries(
 			Object.entries(process.env).filter(
@@ -198,6 +223,7 @@ async function run() {
 					entry[0] !== "CLAUDECODE"
 			)
 		),
+		...(fixtureCodexHome ? { CODEX_HOME: fixtureCodexHome } : {}),
 		AGENT_NOTIFY_PORT: String(listener.getPort()),
 		AGENT_NOTIFY_TOKEN: token,
 		AGENT_NOTIFY_WORKSPACE_ID: "workspace",
@@ -243,6 +269,8 @@ async function run() {
 	}
 	const initialConversationId = randomUUID();
 
+	const launchId = randomUUID();
+	const environmentProbe = randomUUID();
 	const prompt = "Reply with exactly QUEUE_TUI_INITIAL. Do not use tools or change files.";
 	let args: string[];
 	if (provider === "claude")
@@ -271,23 +299,17 @@ async function run() {
 				[{ hooks: [{ type: "command", command: hookCommand, timeout: 35 }] }],
 			])
 		);
+
 		const state = await codexHookTrust(
 			process.env["SS_QUEUE_CODEX_BIN"]!,
 			cwd,
 			hookEvents,
-			env,
-			bridge
+			{ ...env, AGENT_NOTIFY_LAUNCH_ID: launchId, SS_RESUME_POLICY_PROBE: environmentProbe },
+			hookCommand
 		);
-		const configured = TOML.parse(readFileSync(join(homedir(), ".codex/config.toml"), "utf8")) as {
-			mcp_servers?: Record<string, unknown>;
-		};
-		const disableMcp = Object.keys(configured.mcp_servers ?? {}).flatMap((name) => [
-			"-c",
-			`mcp_servers.${JSON.stringify(name)}.enabled=false`,
-		]);
+
 		args = [
 			"--no-daemon",
-			...disableMcp,
 			"-c",
 			`hooks=${TOML.stringify.value({ ...hookEvents, state })}`,
 			"-c",
@@ -303,8 +325,6 @@ async function run() {
 		];
 	}
 	const policyArgs = provider === "claude" ? args.slice(0, -3) : args.slice(0, -1);
-	const launchId = randomUUID();
-	const environmentProbe = randomUUID();
 	if (resumeScenario || emptyScenario) {
 		const registration: Parameters<AgentSessionManager["registerManagedSession"]>[0] = {
 			terminalId,
@@ -381,12 +401,12 @@ async function run() {
 	}
 	if (resumeScenario) {
 		step = "authentic app launch registered original policy";
+		assert(trace.some((event) => event.accepted && event.launchId === launchId));
 		await until(async () => {
 			const session = manager.getSession(terminalId);
 			return (
 				!!session?.providerSessionId &&
 				!!(await daemon.prepareQueueSleep(terminalId, provider, session.providerSessionId))
-					?.supported
 			);
 		}, 5000);
 		const initialTarget = JSON.stringify(item.target);
@@ -488,7 +508,7 @@ async function run() {
 			(event) =>
 				event.event === "Stop" &&
 				event.accepted &&
-				event.evidence?.some((value) => value.text === "QUEUE_TUI_FOLLOWUP")
+				event.evidence?.some((value) => /^QUEUE_TUI_FOLLOWUP[.!]?$/.test(value.text.trim()))
 		)
 	);
 	assert.equal((await retryOriginal()).status, "received");
@@ -672,6 +692,7 @@ async function finish(code: number) {
 	daemon.disconnect();
 	socket?.close();
 	ptys.disposeAll();
+	if (fixtureCodexHome) rmSync(join(fixtureCodexHome, "auth.json"), { force: true });
 	closeDb();
 	win?.destroy();
 	app.exit(code);
