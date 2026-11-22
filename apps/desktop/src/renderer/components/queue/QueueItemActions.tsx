@@ -25,7 +25,9 @@ export function QueueItemActions({
 		onOpen ??
 		(() => {
 			void openQueueItem(item)
-				.then(focusQueueDestination)
+				.then((destination) => {
+					if (destination) focusQueueDestination(destination);
+				})
 				.catch(() =>
 					setOpenError("The chat could not be opened. Refresh the queue and try again.")
 				);

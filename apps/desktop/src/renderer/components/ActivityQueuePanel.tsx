@@ -18,6 +18,10 @@ const groupColor = {
 	"pr-review": "var(--accent)",
 	"pr-update": "var(--color-purple)",
 	"agent-ready": "var(--term-green)",
+	"pr-feedback": "var(--term-blue)",
+	"ticket-start": "var(--term-blue)",
+	"ticket-feedback": "var(--term-blue)",
+	"project-hook": "var(--term-blue)",
 };
 export interface ActivityQueuePanelProps {
 	data?: ActivityQueueListResult;

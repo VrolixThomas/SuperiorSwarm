@@ -17,7 +17,7 @@ export function QueueNavigationRuntime() {
 				<QueuePeek
 					key={entity ? `${entity.kind}:${entity.id}` : "all"}
 					items={query.data?.items ?? []}
-					available={!!query.data && !query.isError && query.data.agentStatusAvailable !== false}
+					available={!!query.data && !query.isError}
 					entity={entity}
 					close={() => useQueueNavigationStore.getState().closePeek()}
 					shouldRestoreFocus={() => useQueueNavigationStore.getState().restorePeekFocus}

@@ -1,21 +1,28 @@
-import type { WorkspaceQueueItem } from "../../shared/activity-queue";
+import type { QueueViewItem } from "../../shared/activity-queue";
 
-export type WorkspaceQueueFilter = "all" | "input" | "ready";
-export function queueCounts(items: readonly WorkspaceQueueItem[]) {
+export type WorkspaceQueueFilter = "all" | "input" | "ready" | "prs" | "tickets" | "hooks";
+export function queueCounts(items: readonly QueueViewItem[]) {
 	return {
 		all: items.length,
 		input: items.filter((i) => i.kind === "agent-input").length,
 		ready: items.filter((i) => i.kind === "agent-ready").length,
+		prs: items.filter((i) => i.category === "prs").length,
+		tickets: items.filter((i) => i.category === "tickets").length,
+		hooks: items.filter((i) => i.category === "hooks").length,
 	};
 }
 export function orderWorkspaceItems(
-	items: readonly WorkspaceQueueItem[],
+	items: readonly QueueViewItem[],
 	filter: WorkspaceQueueFilter,
 	group: boolean
-): WorkspaceQueueItem[] {
+): QueueViewItem[] {
 	return items
 		.filter(
-			(i) => filter === "all" || i.kind === (filter === "input" ? "agent-input" : "agent-ready")
+			(i) =>
+				filter === "all" ||
+				i.category === filter ||
+				i.kind ===
+					(filter === "input" ? "agent-input" : filter === "ready" ? "agent-ready" : "none")
 		)
 		.slice()
 		.sort(

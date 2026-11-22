@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
-	WorkspaceQueueItem,
-	WorkspaceQueueListResult,
+	QueueViewItem,
+	QueueViewListResult,
 	WorkspaceQueueRevisionInput,
 } from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
@@ -18,23 +18,24 @@ import {
 } from "../../lib/queue-model";
 import { useActivityQueueStore } from "../../stores/activity-queue-store";
 import { useQueueNavigationStore } from "../../stores/queue-navigation-store";
-import { trpc } from "../../trpc/client";
+import { trpc, trpcVanilla } from "../../trpc/client";
 import { QueuePanel, queueButton } from "./QueuePanel";
 import type { AnswerQuestion, QueueAnswerContinuationActions } from "./QueueQuestionReply";
 import { QueueRow, queueFocus } from "./QueueRow";
+import { QueueTicketSettings } from "./QueueTicketActions";
 
 import { useQueueConversationActions } from "../../hooks/useQueueConversationActions";
 import { useQueuePermissionActions } from "../../hooks/useQueuePermissionActions";
 import type { QueueConversationActions } from "./QueueConversationReply";
 import type { QueuePermissionActionsAPI } from "./QueuePermissionActions";
 
-const EMPTY: WorkspaceQueueItem[] = [];
+const EMPTY: QueueViewItem[] = [];
 type Receipt = WorkspaceQueueRevisionInput;
 type Result = { status: string };
 type LaterOption = ReturnType<typeof laterOptions>[number];
 export interface QueueScreenProps {
-	data?: WorkspaceQueueListResult;
-	pendingItems?: WorkspaceQueueItem[];
+	data?: QueueViewListResult;
+	pendingItems?: QueueViewItem[];
 	initialSelectedId?: string | null;
 	onSelectionChange?: (id: string | null) => void;
 	loading?: boolean;
@@ -42,7 +43,7 @@ export interface QueueScreenProps {
 	view: "pending" | "later";
 	setView: (view: "pending" | "later") => void;
 	refresh: () => Promise<unknown>;
-	open: (item: WorkspaceQueueItem) => Promise<unknown>;
+	open: (item: QueueViewItem) => Promise<unknown>;
 	done: (receipt: Receipt) => Promise<Result>;
 	later: (input: Receipt & { until?: number; untilChange: boolean }) => Promise<Result>;
 	bringBack: (receipt: Receipt) => Promise<Result>;
@@ -51,6 +52,8 @@ export interface QueueScreenProps {
 	answerContinuationActions?: QueueAnswerContinuationActions;
 	conversationActions?: QueueConversationActions;
 	permissionActions?: QueuePermissionActionsAPI;
+	settings?: React.ReactNode;
+	refreshSources?: () => Promise<unknown>;
 }
 export function QueueScreen({
 	data,
@@ -71,6 +74,8 @@ export function QueueScreen({
 	answerContinuationActions,
 	conversationActions,
 	permissionActions,
+	settings,
+	refreshSources,
 }: QueueScreenProps) {
 	const [filter, setFilter] = useState<WorkspaceQueueFilter>("all");
 	const [group, setGroup] = useState(false);
@@ -155,7 +160,10 @@ export function QueueScreen({
 			.find((el) => el.dataset["queueRow"] === id)
 			?.focus();
 	};
-	const available = !!selected && !selected.stale && data?.agentStatusAvailable !== false;
+	const available =
+		!!selected &&
+		!selected.stale &&
+		(selected.category !== "agents" || data?.agentStatusAvailable !== false);
 	const startLater = () => {
 		if (!available || busy) return;
 		setOptions(laterOptions(new Date()));
@@ -357,6 +365,29 @@ export function QueueScreen({
 				) {
 					setDetailsOpen(true);
 					setReplyFocus(true);
+				} else if (
+					["f", "s", "a"].includes(e.key.toLowerCase()) &&
+					selected &&
+					!busy &&
+					available
+				) {
+					const selector =
+						e.key.toLowerCase() === "f" && selected.category === "hooks"
+							? "[data-queue-hook-fix]"
+							: e.key.toLowerCase() === "s" && selected.kind === "ticket-start"
+								? "[data-queue-ticket-start]"
+								: e.key.toLowerCase() === "a" && selected.kind === "pr-review"
+									? "[data-queue-pr-approve=eligible]"
+									: null;
+					if (!selector) handled = false;
+					else {
+						const button = root.current?.querySelector<HTMLButtonElement>(
+							`#queue-item-details ${selector}`
+						);
+						if (button && !button.disabled && button.getBoundingClientRect().height > 0)
+							button.click();
+						else setDetailsOpen(true);
+					}
 				} else if (e.key === "Enter") void runOpen();
 				else if (e.key.toLowerCase() === "h" && view === "pending") startLater();
 				else if (e.key.toLowerCase() === "e" && view === "pending") void act("done");
@@ -365,7 +396,7 @@ export function QueueScreen({
 				else if (e.key.toLowerCase() === "g") setGroup(!group);
 				else if (e.key === "?") setMode("help");
 				else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-					const tabs = (["all", "input", "ready"] as const).filter(
+					const tabs = (["all", "input", "ready", "prs", "tickets", "hooks"] as const).filter(
 						(t) => t === "all" || t === filter || counts[t] > 0
 					);
 					const pos = tabs.indexOf(filter);
@@ -383,7 +414,7 @@ export function QueueScreen({
 				<h1 className="text-[13px] font-medium">
 					Queue{" "}
 					<span className="ml-2 text-[11px] font-normal text-[var(--text-quaternary)]">
-						Workspaces
+						Your work
 					</span>
 				</h1>
 				<div className="app-no-drag flex items-center gap-2 text-[var(--text-tertiary)]">
@@ -393,7 +424,7 @@ export function QueueScreen({
 						disabled={busy}
 						onClick={() => {
 							setFailure(null);
-							void refresh().catch((err) => setFailure(String(err)));
+							void (refreshSources ?? refresh)().catch((err) => setFailure(String(err)));
 						}}
 						className={queueButton}
 					>
@@ -415,7 +446,7 @@ export function QueueScreen({
 					aria-label="Workspace attention"
 					className="flex h-full items-stretch gap-5"
 				>
-					{(["all", "input", "ready"] as const)
+					{(["all", "input", "ready", "prs", "tickets", "hooks"] as const)
 						.filter((t) => t === "all" || t === filter || counts[t] > 0)
 						.map((t) => (
 							<button
@@ -429,7 +460,16 @@ export function QueueScreen({
 								}}
 								className={`border-b-2 text-[12px] ${queueFocus} ${view === "pending" && filter === t ? "border-[var(--text)] text-[var(--text)]" : "border-transparent text-[var(--text-tertiary)]"}`}
 							>
-								{t === "all" ? "All" : t === "input" ? "Needs input" : "To review"}
+								{
+									{
+										all: "All",
+										input: "Needs input",
+										ready: "To review",
+										prs: "PRs",
+										tickets: "Tickets",
+										hooks: "Checks",
+									}[t]
+								}
 								<span className="ml-2 text-[10px] tabular-nums text-[var(--text-quaternary)]">
 									{t === "all" ? (data?.totalPending ?? "…") : counts[t]}
 								</span>
@@ -458,6 +498,12 @@ export function QueueScreen({
 					</button>
 				</div>
 			</div>
+			{settings && (
+				<details className="border-b border-[var(--border-subtle)] px-5 py-2 text-[12px]">
+					<summary>Queue settings</summary>
+					<div className="py-2">{settings}</div>
+				</details>
+			)}
 			{(failure || error) && (
 				<div
 					role="alert"
@@ -468,13 +514,13 @@ export function QueueScreen({
 			)}
 			{data?.agentStatusAvailable === false && (
 				<output className="border-b border-[var(--border-subtle)] px-5 py-3 text-[12px] text-[var(--text-tertiary)]">
-					Current agent status is unavailable. Reconnect the terminal service to confirm this queue.
+					Chat status is unavailable. Reconnect the terminal service to refresh chats.
 				</output>
 			)}
 			{!!data?.sourceErrors.length && (
 				<details className="border-b border-[var(--border-subtle)] px-5 py-2 text-[11px] text-[var(--text-tertiary)]">
 					<summary className="cursor-pointer">
-						Some workspace activity could not be refreshed ({data.sourceErrors.length})
+						Some activity could not be refreshed ({data.sourceErrors.length})
 					</summary>
 					<ul className="space-y-1 py-2">
 						{[...new Set(data.sourceErrors.map((e) => e.error))].map((e) => (
@@ -496,7 +542,7 @@ export function QueueScreen({
 					>
 						{loading && !data ? (
 							<output className="block px-5 py-12 text-[13px] text-[var(--text-tertiary)]">
-								Loading workspaces…
+								Loading queue…
 							</output>
 						) : ordered.length === 0 ? (
 							<div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-16 text-center">
@@ -678,7 +724,8 @@ export function QueueScreen({
 							{[
 								["↑ ↓ / 1–9", "Select item"],
 								["← →", "Switch filter"],
-								["↵", "Open workspace"],
+								["↵", "Open item"],
+								["S / F / A", "Start ticket / Fix check / Approve eligible PR"],
 								["R", "Focus reply"],
 								["H / E", "Later / Done"],
 								["B / Z", "Bring back / Undo"],
@@ -709,17 +756,22 @@ export function QueueView() {
 	const query = useWorkspaceQueue(view);
 	const pending = useWorkspaceQueue("pending");
 	const utils = trpc.useUtils();
-	const done = trpc.activityQueue.workspaceDone.useMutation();
-	const later = trpc.activityQueue.later.useMutation();
-	const bringBack = trpc.activityQueue.bringBack.useMutation();
-	const undoDone = trpc.activityQueue.undoDone.useMutation();
+	const done = trpc.activityQueue.viewDone.useMutation();
+	const later = trpc.activityQueue.viewLater.useMutation();
+	const bringBack = trpc.activityQueue.viewBringBack.useMutation();
+	const undoDone = trpc.activityQueue.viewUndoDone.useMutation();
 	const answer = trpc.activityQueue.workspaceAnswer.useMutation();
 	const refresh = async () => {
-		await utils.activityQueue.workspaceList.invalidate();
+		await utils.activityQueue.viewList.invalidate();
 		return query.refetch();
 	};
 	return (
 		<QueueScreen
+			settings={<QueueTicketSettings refresh={refresh} />}
+			refreshSources={async () => {
+				await trpcVanilla.activityQueue.viewRefresh.mutate();
+				return refresh();
+			}}
 			data={query.data}
 			pendingItems={pending.data?.items}
 			initialSelectedId={selectedId}
@@ -733,7 +785,7 @@ export function QueueView() {
 				const dest = await openQueueItem(item);
 				useQueueNavigationStore.getState().select(item, pending.data?.items ?? []);
 				useActivityQueueStore.setState({ open: false });
-				focusQueueDestination(dest);
+				if (dest) focusQueueDestination(dest);
 			}}
 			done={(input) => done.mutateAsync(input)}
 			later={(input) => later.mutateAsync(input)}

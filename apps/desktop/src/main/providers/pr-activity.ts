@@ -1,5 +1,11 @@
 /** Compact confirmed facts; omitted fields are unknown, never negative evidence. */
 export interface PRActivityFacts {
+	accountId?: string;
+	authorAccountId?: string;
+	viewerIsReviewer?: boolean;
+	viewerReviewToken?: string;
+	viewerReviewHead?: string;
+	viewerReviewState?: string;
 	state?: "open" | "closed" | "merged" | "declined";
 	headSha?: string;
 	isDraft?: boolean;
@@ -13,6 +19,7 @@ export function prIdentity(provider: string, owner: string, repo: string, number
 }
 
 export interface GitHubCompactPR {
+	author?: { databaseId?: number };
 	headRefName?: string;
 	baseRefName?: string;
 	headRefOid?: string;
@@ -30,7 +37,13 @@ export interface GitHubCompactPR {
 	};
 	reviews?: {
 		totalCount: number;
-		nodes: { id: string; state: string; submittedAt: string | null }[];
+		nodes: {
+			id: string;
+			state: string;
+			submittedAt: string | null;
+			author?: { login: string };
+			commit?: { oid: string };
+		}[];
 	};
 	comments?: { totalCount: number; nodes: { id: string; updatedAt: string }[] };
 }
@@ -41,6 +54,7 @@ export function githubActivity(
 	teams: string[] | undefined
 ): PRActivityFacts {
 	const facts: PRActivityFacts = {};
+	if (raw.author?.databaseId) facts.authorAccountId = String(raw.author.databaseId);
 	if (raw.headRefOid) facts.headSha = raw.headRefOid;
 	if (typeof raw.isDraft === "boolean") facts.isDraft = raw.isDraft;
 	if (raw.state === "OPEN" || raw.state === "CLOSED" || raw.state === "MERGED")
@@ -52,8 +66,10 @@ export function githubActivity(
 				((login && r.login === login) ||
 					(r.slug && r.organization && teams?.includes(`${r.organization.login}/${r.slug}`)))
 		);
-		if (matches) facts.reviewRequested = true;
-		else if (
+		if (matches) {
+			facts.reviewRequested = true;
+			facts.viewerIsReviewer = true;
+		} else if (
 			login &&
 			teams &&
 			raw.reviewRequests.pageInfo?.hasNextPage === false &&
@@ -65,12 +81,23 @@ export function githubActivity(
 	}
 	// Counts plus newest IDs detect submissions even when counts remain unchanged.
 	// This bounded observation does not cover edits to older comments/reviews or inline threads.
-	if (raw.reviews) facts.reviewToken = JSON.stringify(raw.reviews);
+	if (raw.reviews) {
+		facts.reviewToken = JSON.stringify(raw.reviews);
+		const own = raw.reviews.nodes
+			.filter((r) => r.author?.login === login && r.submittedAt && r.state !== "PENDING")
+			.sort((a, b) => Date.parse(b.submittedAt ?? "") - Date.parse(a.submittedAt ?? ""))[0];
+		if (own?.commit?.oid) {
+			facts.viewerReviewHead = own.commit.oid;
+			facts.viewerReviewState = own.state;
+			facts.viewerIsReviewer = true;
+		}
+	}
 	if (raw.comments) facts.commentToken = JSON.stringify(raw.comments);
 	return facts;
 }
 
 export interface BitbucketCompactPR {
+	author?: { account_id?: string; display_name?: string };
 	state?: string;
 	source?: { commit?: { hash?: string } };
 	draft?: boolean;
@@ -89,6 +116,8 @@ export function bitbucketActivity(
 	accountId: string | undefined
 ): PRActivityFacts {
 	const facts: PRActivityFacts = {};
+	if (accountId) facts.accountId = accountId;
+	if (raw.author?.account_id) facts.authorAccountId = raw.author.account_id;
 	if (raw.source?.commit?.hash) facts.headSha = raw.source.commit.hash;
 	if (["OPEN", "MERGED", "DECLINED", "CLOSED", "SUPERSEDED"].includes(raw.state ?? ""))
 		facts.state =
@@ -96,7 +125,15 @@ export function bitbucketActivity(
 				? "closed"
 				: (raw.state?.toLowerCase() as PRActivityFacts["state"]);
 	if (typeof raw.draft === "boolean") facts.isDraft = raw.draft;
+	if (accountId && raw.participants) {
+		const own = raw.participants.find((p) => p.user?.account_id === accountId);
+		if (own?.state) {
+			facts.viewerReviewState = own.state;
+			facts.viewerReviewToken = JSON.stringify([own.state, own.approved, own.participated_on]);
+		}
+	}
 	if (accountId && raw.reviewers) {
+		facts.viewerIsReviewer = raw.reviewers.some((r) => r.account_id === accountId);
 		if (!raw.reviewers.some((r) => r.account_id === accountId)) {
 			if (raw.reviewers.every((r) => r.account_id)) facts.reviewRequested = false;
 		} else if (raw.participants?.every((p) => p.user?.account_id)) {

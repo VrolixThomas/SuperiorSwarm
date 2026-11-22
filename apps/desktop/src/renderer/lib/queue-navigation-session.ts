@@ -1,13 +1,13 @@
-import type { QueueEntity, WorkspaceQueueItem } from "../../shared/activity-queue";
+import type { QueueEntity, QueueViewItem } from "../../shared/activity-queue";
 import { orderWorkspaceItems } from "./queue-model";
 
 export interface QueueNavigationSession {
-	item: WorkspaceQueueItem;
+	item: QueueViewItem;
 	order: string[];
 	index: number;
 	total: number;
 }
-export function pendingQueueItems(items: readonly WorkspaceQueueItem[]) {
+export function pendingQueueItems(items: readonly QueueViewItem[]) {
 	return orderWorkspaceItems(
 		items.filter((item) => !item.snoozed && !item.acknowledged),
 		"all",
@@ -15,20 +15,29 @@ export function pendingQueueItems(items: readonly WorkspaceQueueItem[]) {
 	);
 }
 /** Display enrichment is excluded; every source receipt and conversation stays pinned. */
-export function queueOccurrenceKey(item: WorkspaceQueueItem): string {
+export function queueOccurrenceKey(item: QueueViewItem): string {
 	return JSON.stringify([
 		item.id,
 		item.revision,
-		item.context.entity,
-		item.target,
+		item.category === "agents" ? item.context.entity : null,
+		item.target.type === "pr"
+			? [
+					item.target.provider,
+					item.target.host,
+					item.target.accountId,
+					item.target.owner,
+					item.target.repo,
+					item.target.number,
+				]
+			: item.target,
 		(item.members ?? [])
 			.map(({ id, revision }) => [id, revision])
 			.sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
 	]);
 }
 export function bindQueueSession(
-	item: WorkspaceQueueItem,
-	items: readonly WorkspaceQueueItem[]
+	item: QueueViewItem,
+	items: readonly QueueViewItem[]
 ): QueueNavigationSession {
 	const rows = pendingQueueItems(items);
 	return {
@@ -39,9 +48,9 @@ export function bindQueueSession(
 	};
 }
 export function nextPendingItem(
-	items: readonly WorkspaceQueueItem[],
+	items: readonly QueueViewItem[],
 	session: QueueNavigationSession | null
-): WorkspaceQueueItem | null {
+): QueueViewItem | null {
 	const rows = pendingQueueItems(items);
 	if (!session) return rows[0] ?? null;
 	const current = rows.findIndex(
@@ -58,7 +67,7 @@ export function nextPendingItem(
 }
 export function queueSessionStatus(
 	session: QueueNavigationSession,
-	items: readonly WorkspaceQueueItem[],
+	items: readonly QueueViewItem[],
 	available: boolean
 ) {
 	if (!available) return "unavailable";
@@ -69,15 +78,25 @@ export function queueSessionStatus(
 }
 export interface QueueVisibleDestination {
 	entity: QueueEntity;
+	pr?: { provider: string; owner: string; repo: string; number: number };
 	terminalId?: string | null;
 	provider?: string;
 	providerSessionId?: string | null;
 }
 export function matchesQueueDestination(
-	item: WorkspaceQueueItem,
+	item: QueueViewItem,
 	visible: QueueVisibleDestination | null
 ): boolean {
 	if (!visible) return false;
+	if (item.category === "prs" && item.target.type === "pr")
+		return (
+			!!visible.pr &&
+			visible.pr.provider === item.target.provider &&
+			visible.pr.owner === item.target.owner &&
+			visible.pr.repo === item.target.repo &&
+			visible.pr.number === item.target.number
+		);
+	if (item.category !== "agents") return false;
 	const entity = item.context.entity;
 	if (!entity || entity.kind !== visible.entity.kind || entity.id !== visible.entity.id)
 		return false;

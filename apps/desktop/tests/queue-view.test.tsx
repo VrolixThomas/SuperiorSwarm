@@ -230,7 +230,7 @@ test("loading, empty and fetch errors offer honest recovery states", async () =>
 		undoDone: async () => ({ status: "restored" }),
 	};
 	await act(() => root?.render(<QueueScreen {...props} loading />));
-	expect(document.body.textContent).toContain("Loading workspaces");
+	expect(document.body.textContent).toContain("Loading queue");
 	await act(() =>
 		root?.render(
 			<QueueScreen
@@ -287,7 +287,7 @@ test("unavailable permission items remain readable but cannot be handled", async
 			/>
 		)
 	);
-	expect(document.body.textContent).toContain("Current agent status is unavailable");
+	expect(document.body.textContent).toContain("Chat status is unavailable");
 	expect(document.querySelector("details")?.open).toBe(false);
 	await key("e");
 	expect(calls).toHaveLength(0);

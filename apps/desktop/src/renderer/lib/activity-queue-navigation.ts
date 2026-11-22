@@ -117,6 +117,8 @@ export async function openQueueTarget(
 	target: ActivityQueueTarget,
 	api: QueueNavigationApi = navigationApi
 ): Promise<QueueDestination> {
+	if (target.type === "ticket" || target.type === "project-hook")
+		throw new Error("Open this task from its queue action.");
 	if (target.type === "unavailable") throw new Error(target.reason);
 	if (target.type === "hermes")
 		throw new Error(

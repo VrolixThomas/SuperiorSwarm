@@ -30,7 +30,7 @@ test("workspace queue prioritizes input then oldest; grouping preserves that ord
 		"early",
 	]);
 	expect(orderWorkspaceItems(rows, "ready", false).map((i) => i.id)).toEqual(["ready"]);
-	expect(queueCounts(rows)).toEqual({ all: 3, input: 2, ready: 1 });
+	expect(queueCounts(rows)).toEqual({ all: 3, input: 2, ready: 1, prs: 0, tickets: 0, hooks: 0 });
 });
 test("selection survives refresh and picks the same position after removal", () => {
 	const rows = [{ id: "a" }, { id: "b" }, { id: "c" }];

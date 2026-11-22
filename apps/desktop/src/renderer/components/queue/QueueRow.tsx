@@ -1,4 +1,4 @@
-import type { WorkspaceQueueItem } from "../../../shared/activity-queue";
+import type { QueueViewItem } from "../../../shared/activity-queue";
 import { queueAge } from "../../lib/activity-queue-view";
 import { QueueIcon } from "./QueueIcon";
 export const queueFocus =
@@ -11,7 +11,7 @@ export function QueueRow({
 	select,
 	open,
 }: {
-	item: WorkspaceQueueItem;
+	item: QueueViewItem;
 	index: number;
 	selected: boolean;
 	later: boolean;

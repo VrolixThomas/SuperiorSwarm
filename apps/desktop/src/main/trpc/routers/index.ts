@@ -19,6 +19,7 @@ import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
 import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";
+import { queueHooksRouter } from "./queue-hooks";
 import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
@@ -35,6 +36,7 @@ import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
 	activityQueue: activityQueueRouter,
+	queueHooks: queueHooksRouter,
 	auth: authRouter,
 	agentLaunch: agentLaunchRouter,
 	aiReview: aiReviewRouter,

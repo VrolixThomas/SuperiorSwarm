@@ -4,7 +4,7 @@ import {
 	type PRActivityFacts,
 	githubActivity,
 } from "../providers/pr-activity";
-import { githubFetch, githubGraphQL } from "./auth";
+import { getAuth, githubFetch, githubGraphQL } from "./auth";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -285,9 +285,9 @@ async function searchPRs(query: string): Promise<RawSearchIssueNode[]> {
 
 // ── Public API functions ──────────────────────────────────────────────────────
 
-const COMPACT_PR_FIELDS = `headRefName baseRefName headRefOid isDraft state
+const COMPACT_PR_FIELDS = `headRefName baseRefName headRefOid isDraft state author { ... on User { databaseId } }
  reviewRequests(first: 100) { pageInfo { hasNextPage } nodes { requestedReviewer { ... on User { login } ... on Team { slug organization { login } } } } }
- reviews(last: 1) { totalCount nodes { id state submittedAt } }
+ reviews(last: 100) { totalCount nodes { id state submittedAt author { login } commit { oid } } }
  comments(last: 1) { totalCount nodes { id updatedAt } }`;
 
 async function fetchCompactPRs(
@@ -338,6 +338,7 @@ async function getReviewIdentity(): Promise<{ login?: string; teams?: string[] }
 }
 
 export async function getMyPRs(): Promise<GitHubPR[]> {
+	const accountId = getAuth()?.accountId;
 	const identity = await getReviewIdentity();
 	const username = identity.login ?? "@me";
 	const teamSlugs = identity.teams ?? [];
@@ -376,7 +377,9 @@ export async function getMyPRs(): Promise<GitHubPR[]> {
 	return nodes.map(({ node, role }) => {
 		const raw = compact.get(`${node.repository_url}#${node.number}`);
 		const pr = mapPRNode(node, role, raw?.headRefName ?? "unknown");
-		pr.activity = raw ? githubActivity(raw, identity.login, identity.teams) : {};
+		pr.activity = raw
+			? { ...githubActivity(raw, identity.login, identity.teams), accountId }
+			: { accountId };
 		return pr;
 	});
 }
@@ -651,10 +654,12 @@ export async function getPRState(
 	repo: string,
 	prNumber: number
 ): Promise<{ headSha: string; state: string; merged: boolean; activity: PRActivityFacts }> {
+	const accountId = getAuth()?.accountId;
 	const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`);
 	if (!res.ok) throw new Error(`GitHub get PR failed: ${res.status}`);
 	const data = (await res.json()) as { head: { sha: string }; state: string; merged: boolean };
 	const activity: PRActivityFacts = {
+		accountId,
 		headSha: data.head?.sha,
 		state: data.merged
 			? "merged"

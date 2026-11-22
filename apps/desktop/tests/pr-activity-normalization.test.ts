@@ -90,7 +90,7 @@ describe("compact PR observations", () => {
 		).toBe(true);
 	});
 	test("Bitbucket missing fields never imply false/zero/non-draft", () => {
-		expect(bitbucketActivity({}, "me")).toEqual({});
+		expect(bitbucketActivity({}, "me")).toEqual({ accountId: "me" });
 		expect(
 			bitbucketActivity({ reviewers: [{ account_id: "me" }] }, "me").reviewRequested
 		).toBeUndefined();

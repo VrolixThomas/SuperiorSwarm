@@ -80,6 +80,8 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 - **Diff Markdown previews** → `DiffFileTab.tsx`, `PRReviewFileTab.tsx`, `review/ReviewTab.tsx`, `review-mode/views/ChangesView.tsx`; the global `markdownPreviewMode` must be scoped to each file's language before hiding Monaco or rendering previews.
 - **DB schema + migrations** → `src/main/db/` (auto-applied on startup via `initializeDatabase()`). **Always name migrations descriptively** — use `bun run db:generate --name <descriptive_name>` (e.g., `add_review_viewed_table`, not the default timestamped auto-name).
 
+- **External queue integration (staged)** → `main/activity-queue/queue-view.ts`, `external-runtime.ts`, `pr-source.ts`, `pr-actions.ts`, `pr-eligibility.ts`; additive unified view preserves workspace guards, scoped author/reviewer sources and durable five-second approval reservations. Verification and remaining publication/Bitbucket/solver boundaries → `docs/verification/queue-external-2026-11-22/README.md`. Native fixture uses isolated identities/network blocking; do not mistake it for live provider submission.
+
 ## Code Style
 
 - **Biome** for formatting and linting (not ESLint/Prettier)

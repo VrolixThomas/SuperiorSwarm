@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { QueueEntity, WorkspaceQueueItem } from "../../shared/activity-queue";
+import type { QueueEntity, QueueViewItem } from "../../shared/activity-queue";
 import {
 	type QueueNavigationSession,
 	bindQueueSession,
@@ -13,11 +13,11 @@ export const useQueueNavigationStore = create<{
 	peekEntity: QueueEntity | null;
 	restorePeekFocus: boolean;
 	jumpRequest: number;
-	requestedItem: WorkspaceQueueItem | null;
-	select: (item: WorkspaceQueueItem, items: readonly WorkspaceQueueItem[]) => void;
+	requestedItem: QueueViewItem | null;
+	select: (item: QueueViewItem, items: readonly QueueViewItem[]) => void;
 	end: () => void;
 	next: () => void;
-	openItem: (item: WorkspaceQueueItem) => void;
+	openItem: (item: QueueViewItem) => void;
 	peek: (entity?: QueueEntity) => void;
 	closePeek: (restoreFocus?: boolean) => void;
 }>()((set) => ({

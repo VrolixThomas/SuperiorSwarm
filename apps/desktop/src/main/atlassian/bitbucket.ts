@@ -30,7 +30,7 @@ interface BitbucketApiPR extends BitbucketCompactPR {
 	id: number;
 	title: string;
 	state: string;
-	author: { display_name: string };
+	author: { display_name: string; account_id?: string };
 	source: {
 		repository: { full_name: string };
 		branch?: { name?: string };

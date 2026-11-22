@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
-import type { WorkspaceQueueItem } from "../../../shared/activity-queue";
+import type { QueueViewItem } from "../../../shared/activity-queue";
 import { queueAge } from "../../lib/activity-queue-view";
 import { type QueueConversationActions, QueueConversationReply } from "./QueueConversationReply";
+import { QueueHookActions } from "./QueueHookActions";
 import { QueueLinkedWorkContext } from "./QueueLinkedWorkContext";
+import { QueuePRActions } from "./QueuePRActions";
 import { QueuePermissionActions, type QueuePermissionActionsAPI } from "./QueuePermissionActions";
 import {
 	type AnswerQuestion,
@@ -10,6 +12,7 @@ import {
 	QueueQuestionReply,
 } from "./QueueQuestionReply";
 import { queueFocus } from "./QueueRow";
+import { QueueTicketActions } from "./QueueTicketActions";
 export const queueButton = `rounded-md px-3 py-2 text-[12px] transition-colors hover:bg-[var(--bg-elevated)] disabled:opacity-40 ${queueFocus}`;
 export function QueuePanel({
 	item,
@@ -28,7 +31,7 @@ export function QueuePanel({
 	permissionActions,
 	refresh,
 }: {
-	item: WorkspaceQueueItem;
+	item: QueueViewItem;
 	later: boolean;
 	busy: boolean;
 	canAct: boolean;
@@ -95,48 +98,60 @@ export function QueuePanel({
 					/>
 					<span
 						className="truncate"
-						title={`${item.context.projectName} › ${item.context.workspaceName}`}
+						title={
+							item.context.workspaceName
+								? `${item.context.projectName} › ${item.context.workspaceName}`
+								: item.context.projectName
+						}
 					>
-						{item.context.projectName} <span className="px-1 text-[var(--text-quaternary)]">›</span>{" "}
-						{item.context.workspaceName}
+						{item.context.projectName}{" "}
+						{item.context.workspaceName && (
+							<>
+								<span className="px-1 text-[var(--text-quaternary)]">›</span>{" "}
+								{item.context.workspaceName}
+							</>
+						)}
 					</span>
 				</p>
-				<div className="mb-4 space-y-1 break-words text-[11px] text-[var(--text-tertiary)]">
-					<p>
-						{item.context.role === "coordinator"
-							? "Coordinator directory"
-							: item.context.projectKind === "folder"
-								? "Folder"
-								: item.context.projectKind === "repo"
-									? "Repository"
-									: "Project"}
-						{item.context.projectPath ? ` · ${item.context.projectPath}` : " · Path unavailable"}
-					</p>
-					<p>
-						{item.context.role ?? "workspace"} · {item.context.workspaceName}
-					</p>
-					{item.context.terminalTitle && <p>Chat: {item.context.terminalTitle}</p>}
-					{item.context.linkedProjects?.map((project) => (
-						<p key={project.id}>
-							Linked {project.kind === "folder" ? "folder" : "repository"}: {project.name} ·{" "}
-							{project.path}
+				{item.category === "agents" && (
+					<div className="mb-4 space-y-1 break-words text-[11px] text-[var(--text-tertiary)]">
+						<p>
+							{item.context.role === "coordinator"
+								? "Coordinator directory"
+								: item.context.projectKind === "folder"
+									? "Folder"
+									: item.context.projectKind === "repo"
+										? "Repository"
+										: "Project"}
+							{item.context.projectPath ? ` · ${item.context.projectPath}` : " · Path unavailable"}
 						</p>
-					))}
-					<QueueLinkedWorkContext items={item.context.linkedWork} />
-					{!!item.providerEvidence?.length && (
-						<details className="text-[10px] text-[var(--text-tertiary)]">
-							<summary className="cursor-pointer">Source details</summary>
-							{item.providerEvidence.map((value, index) => (
-								<p key={`${value.sourceField}-${index}`} className="mt-1 break-words">
-									{value.provider}: {value.rawEvent} / {value.sourceField}
-								</p>
-							))}
-						</details>
-					)}
-					{item.context.identityCapability === "missing-owner" && (
-						<p>Reporting conversation is unknown. No sibling chat is assumed to own this item.</p>
-					)}
-				</div>
+						<p>
+							{item.context.role ?? "workspace"} · {item.context.workspaceName}
+						</p>
+						{item.context.terminalTitle && <p>Chat: {item.context.terminalTitle}</p>}
+						{item.context.linkedProjects?.map((project) => (
+							<p key={project.id}>
+								Linked {project.kind === "folder" ? "folder" : "repository"}: {project.name} ·{" "}
+								{project.path}
+							</p>
+						))}
+						<QueueLinkedWorkContext items={item.context.linkedWork} />
+						{!!item.providerEvidence?.length && (
+							<details className="text-[10px] text-[var(--text-tertiary)]">
+								<summary className="cursor-pointer">Source details</summary>
+								{item.category === "agents" &&
+									item.providerEvidence.map((value, index) => (
+										<p key={`${value.sourceField}-${index}`} className="mt-1 break-words">
+											{value.provider}: {value.rawEvent} / {value.sourceField}
+										</p>
+									))}
+							</details>
+						)}
+						{item.context.identityCapability === "missing-owner" && (
+							<p>Reporting conversation is unknown. No sibling chat is assumed to own this item.</p>
+						)}
+					</div>
+				)}
 				<h2 className="break-words text-[20px] font-medium leading-7 tracking-tight text-[var(--text)]">
 					{item.subject}
 				</h2>
@@ -172,21 +187,22 @@ export function QueuePanel({
 							<p className="whitespace-pre-wrap break-words text-[12px] leading-5 text-[var(--text-secondary)]">
 								{line}
 							</p>
-							{item.providerEvidence
-								?.filter((value) => value.text === line)
-								.map((value, index) => (
-									<p
-										key={`${value.sourceField}-${index}`}
-										className="mt-1 break-words text-[10px] text-[var(--text-tertiary)]"
-									>
-										{value.provider} · {value.kind}
-										{value.truncated ? " · Truncated excerpt" : ""}
-										{value.redacted ? " · Sensitive text redacted" : ""}
-									</p>
-								))}
+							{item.category === "agents" &&
+								item.providerEvidence
+									?.filter((value) => value.text === line)
+									.map((value, index) => (
+										<p
+											key={`${value.sourceField}-${index}`}
+											className="mt-1 break-words text-[10px] text-[var(--text-tertiary)]"
+										>
+											{value.provider} · {value.kind}
+											{value.truncated ? " · Truncated excerpt" : ""}
+											{value.redacted ? " · Sensitive text redacted" : ""}
+										</p>
+									))}
 						</div>
 					))}
-					{item.permission && (
+					{item.category === "agents" && item.permission && (
 						<p className="text-[11px] text-[var(--text-tertiary)]">
 							{item.permission.outcome === "unconfirmed"
 								? "Permission outcome unknown"
@@ -195,7 +211,7 @@ export function QueuePanel({
 							not confirm that the requested action ran.
 						</p>
 					)}
-					{item.ordering === "uncertain" && (
+					{item.category === "agents" && item.ordering === "uncertain" && (
 						<p className="text-[11px] text-[var(--text-tertiary)]">
 							The timing of this update could not be confirmed. Check its current state in the chat.
 						</p>
@@ -208,26 +224,39 @@ export function QueuePanel({
 						both updates.
 					</p>
 				)}
-				<QueuePermissionActions
-					item={item}
-					available={canAct && !busy}
-					actions={permissionActions}
-					onOpen={open}
-					refresh={refresh}
-				/>
-				<QueueConversationReply
-					item={item}
-					available={canAct && !busy}
-					actions={conversationActions}
-					refresh={refresh}
-				/>
-				<QueueQuestionReply
-					item={item}
-					available={canAct && !busy}
-					answer={answer}
-					continuationActions={answerContinuationActions}
-					refresh={refresh}
-				/>
+				{item.category === "hooks" && (
+					<QueueHookActions key={`${item.id}:${item.revision}`} item={item} refresh={refresh} />
+				)}
+				{item.category === "tickets" && (
+					<QueueTicketActions key={`${item.id}:${item.revision}`} item={item} refresh={refresh} />
+				)}
+				{item.category === "prs" && (
+					<QueuePRActions key={`${item.id}:${item.revision}`} item={item} refresh={refresh} />
+				)}
+				{item.category === "agents" && (
+					<>
+						<QueuePermissionActions
+							item={item}
+							available={canAct && !busy}
+							actions={permissionActions}
+							onOpen={open}
+							refresh={refresh}
+						/>
+						<QueueConversationReply
+							item={item}
+							available={canAct && !busy}
+							actions={conversationActions}
+							refresh={refresh}
+						/>
+						<QueueQuestionReply
+							item={item}
+							available={canAct && !busy}
+							answer={answer}
+							continuationActions={answerContinuationActions}
+							refresh={refresh}
+						/>
+					</>
+				)}
 				<div className="mt-3 flex items-center gap-1 text-[var(--text-tertiary)]">
 					{later ? (
 						<button

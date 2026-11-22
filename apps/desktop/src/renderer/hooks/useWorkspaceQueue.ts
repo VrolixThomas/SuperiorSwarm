@@ -3,7 +3,7 @@ import { useActivityQueueStore } from "../stores/activity-queue-store";
 import { trpc } from "../trpc/client";
 
 export function useWorkspaceQueue(view: "pending" | "later" = "pending") {
-	return trpc.activityQueue.workspaceList.useQuery(
+	return trpc.activityQueue.viewList.useQuery(
 		{ view },
 		{
 			refetchInterval: 10_000,
@@ -27,7 +27,7 @@ export function WorkspaceQueueSync() {
 	}, [query.data, query.isError, setSummary]);
 	useEffect(() => {
 		const invalidate = () => {
-			void utils.activityQueue.workspaceList.invalidate();
+			void utils.activityQueue.viewList.invalidate();
 		};
 		const offAlert = window.electron?.agentAlert?.onAlert(invalidate);
 		const offDaemon = window.electron?.daemon?.onStatus(() => invalidate());

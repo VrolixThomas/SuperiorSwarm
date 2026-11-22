@@ -2,6 +2,7 @@ import type { PRActivityFacts } from "../providers/pr-activity";
 
 export interface PRSnapshot extends PRActivityFacts {
 	version: 1;
+	handledHeadSha?: string;
 	change: number;
 	readyDraftIds: string[];
 	updates: ("head" | "request" | "review" | "comment" | "readiness")[];

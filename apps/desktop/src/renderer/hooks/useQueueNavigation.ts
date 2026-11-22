@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { WorkspaceQueueItem } from "../../shared/activity-queue";
+import type { QueueViewItem } from "../../shared/activity-queue";
 import { focusQueueDestination } from "../lib/activity-queue-navigation";
 import { openQueueItem } from "../lib/queue-item-open";
 import {
@@ -18,14 +18,14 @@ export function useQueueNavigation() {
 	const seen = useRef(request);
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
-	const open = async (requested?: WorkspaceQueueItem) => {
+	const open = async (requested?: QueueViewItem) => {
 		if (running.current) return;
 		running.current = true;
 		setBusy(true);
 		setMessage(null);
 		try {
 			const fresh = await query.refetch();
-			if (fresh.isError || !fresh.data || fresh.data.agentStatusAvailable === false)
+			if (fresh.isError || !fresh.data || false)
 				throw new Error("Queue unavailable. Refresh and try again.");
 			const rows = pendingQueueItems(fresh.data.items);
 			const item = requested
@@ -44,7 +44,7 @@ export function useQueueNavigation() {
 			const destination = await openQueueItem(item);
 			useQueueNavigationStore.getState().select(item, rows);
 			useQueueNavigationStore.getState().closePeek(false);
-			focusQueueDestination(destination);
+			if (destination) focusQueueDestination(destination);
 		} catch (error) {
 			setMessage(error instanceof Error ? error.message : "Could not open this queue item.");
 		} finally {

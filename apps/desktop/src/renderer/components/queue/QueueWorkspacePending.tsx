@@ -7,7 +7,10 @@ import { queueButton } from "./QueuePanel";
 export function QueueWorkspacePending({ entity }: { entity: QueueEntity }) {
 	const query = useWorkspaceQueue();
 	const count = pendingQueueItems(query.data?.items ?? []).filter(
-		(item) => item.context.entity?.kind === entity.kind && item.context.entity.id === entity.id
+		(item) =>
+			item.category === "agents" &&
+			item.context.entity?.kind === entity.kind &&
+			item.context.entity.id === entity.id
 	).length;
 	if (!count) return null;
 	return (

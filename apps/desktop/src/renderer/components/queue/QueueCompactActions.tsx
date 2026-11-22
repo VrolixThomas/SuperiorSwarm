@@ -1,15 +1,15 @@
 import { useId, useMemo, useRef, useState } from "react";
-import type {
-	WorkspaceQueueItem,
-	WorkspaceQueueRevisionInput,
-} from "../../../shared/activity-queue";
+import type { QueueViewItem, WorkspaceQueueRevisionInput } from "../../../shared/activity-queue";
 import { laterOptions } from "../../../shared/queue-later-options";
 import { useQueueAnswerContinuationActions } from "../../hooks/useQueueAnswerContinuationActions";
 import { trpc } from "../../trpc/client";
+import { QueueHookActions } from "./QueueHookActions";
 import { QueueItemActions } from "./QueueItemActions";
+import { QueuePRActions } from "./QueuePRActions";
 import { queueButton } from "./QueuePanel";
 import type { QueueAnswerContinuationActions } from "./QueueQuestionReply";
 import { QueueQuestionReply } from "./QueueQuestionReply";
+import { QueueTicketActions } from "./QueueTicketActions";
 
 /** Buttons only: a terminal keeps its own letter keys while the queue bar is visible. */
 export function QueueCompactActions({
@@ -20,16 +20,16 @@ export function QueueCompactActions({
 	children,
 	compact = false,
 }: {
-	item: WorkspaceQueueItem;
+	item: QueueViewItem;
 	disabled: boolean;
 	refresh: () => Promise<unknown>;
 	onOpen: () => void;
 	children?: React.ReactNode;
 	compact?: boolean;
 }) {
-	const done = trpc.activityQueue.workspaceDone.useMutation();
-	const later = trpc.activityQueue.later.useMutation();
-	const undoDone = trpc.activityQueue.undoDone.useMutation();
+	const done = trpc.activityQueue.viewDone.useMutation();
+	const later = trpc.activityQueue.viewLater.useMutation();
+	const undoDone = trpc.activityQueue.viewUndoDone.useMutation();
 	const answer = trpc.activityQueue.workspaceAnswer.useMutation();
 	const answerContinuationActions = useQueueAnswerContinuationActions();
 	const lock = useRef(false);
@@ -126,13 +126,24 @@ export function QueueCompactActions({
 				className={`${compact ? "order-2 w-full" : ""} max-h-[35vh] overflow-y-auto`}
 			>
 				{children}
-				<QueueItemActions
-					item={item}
-					disabled={disabled || busy}
-					refresh={refresh}
-					onOpen={onOpen}
-				/>
-				{item.question && (
+				{item.category === "hooks" && (
+					<QueueHookActions key={`${item.id}:${item.revision}`} item={item} refresh={refresh} />
+				)}
+				{item.category === "tickets" && (
+					<QueueTicketActions key={`${item.id}:${item.revision}`} item={item} refresh={refresh} />
+				)}
+				{item.category === "prs" && (
+					<QueuePRActions key={`${item.id}:${item.revision}`} item={item} refresh={refresh} />
+				)}
+				{item.category === "agents" && (
+					<QueueItemActions
+						item={item}
+						disabled={disabled || busy}
+						refresh={refresh}
+						onOpen={onOpen}
+					/>
+				)}
+				{item.category === "agents" && item.question && (
 					<QueueQuestionReply
 						inputId={answerInputId}
 						continuationActions={guardedAnswerContinuation}

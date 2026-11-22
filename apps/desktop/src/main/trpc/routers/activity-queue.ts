@@ -14,7 +14,15 @@ import {
 	workspaceReplyReceipt,
 } from "../../activity-queue/conversation-replies";
 import { listCurrentActivityQueue } from "../../activity-queue/current-items";
+import { refreshExternalQueue } from "../../activity-queue/external-runtime";
 import { linkedWorkForEntity } from "../../activity-queue/linked-context";
+import {
+	listQueueView,
+	queueViewBringBack,
+	queueViewDone,
+	queueViewLater,
+	queueViewUndoDone,
+} from "../../activity-queue/queue-view";
 import { getActivityQueueService } from "../../activity-queue/service";
 import {
 	bringBack,
@@ -30,6 +38,8 @@ import {
 	getQueuePermissionCapability,
 } from "../../agent-hooks/permission-runtime";
 import { publicProcedure, router } from "../index";
+import { queuePRProcedures } from "./queue-pr";
+import { queueTicketProcedures } from "./queue-tickets";
 
 const workspaceRevision = z.object({
 	members: z
@@ -47,6 +57,28 @@ const answerContinuationTransport = {
 };
 const answerReference = workspaceRevision.extend({ questionId: z.string().min(1).max(256) });
 export const activityQueueRouter = router({
+	...queuePRProcedures,
+	...queueTicketProcedures,
+	viewRefresh: publicProcedure.mutation(() => refreshExternalQueue()),
+	viewList: publicProcedure
+		.input(
+			z
+				.object({ view: z.enum(["pending", "later"]).optional(), projectId: z.string().optional() })
+				.optional()
+		)
+		.query(({ input }) => listQueueView(input)),
+	viewDone: publicProcedure.input(workspaceRevision).mutation(({ input }) => queueViewDone(input)),
+	viewLater: publicProcedure
+		.input(
+			workspaceRevision.extend({ until: z.number().int().optional(), untilChange: z.boolean() })
+		)
+		.mutation(({ input }) => queueViewLater(input)),
+	viewBringBack: publicProcedure
+		.input(workspaceRevision)
+		.mutation(({ input }) => queueViewBringBack(input)),
+	viewUndoDone: publicProcedure
+		.input(workspaceRevision)
+		.mutation(({ input }) => queueViewUndoDone(input)),
 	workspaceAnswerContinuationCapability: publicProcedure
 		.input(answerReference)
 		.query(({ input }) =>

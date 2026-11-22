@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { QueueEntity, WorkspaceQueueItem } from "../../../shared/activity-queue";
+import type { QueueEntity, QueueViewItem } from "../../../shared/activity-queue";
 import { queueKeysAreTyping } from "../../lib/queue-model";
 import {
 	bindQueueSession,
@@ -23,24 +23,26 @@ export function QueuePeek({
 	actions,
 	shouldRestoreFocus,
 }: {
-	items: readonly WorkspaceQueueItem[];
+	items: readonly QueueViewItem[];
 	available: boolean;
 	entity?: QueueEntity | null;
-	initialItem?: WorkspaceQueueItem;
+	initialItem?: QueueViewItem;
 	close: () => void;
-	open: (item: WorkspaceQueueItem) => void;
-	openQueue: (item?: WorkspaceQueueItem) => void;
+	open: (item: QueueViewItem) => void;
+	openQueue: (item?: QueueViewItem) => void;
 	shouldRestoreFocus?: () => boolean;
-	actions: (item: WorkspaceQueueItem, disabled: boolean) => ReactNode;
+	actions: (item: QueueViewItem, disabled: boolean) => ReactNode;
 }) {
 	const rows = pendingQueueItems(items)
 		.filter(
 			(item) =>
 				!entity ||
-				(item.context.entity?.id === entity.id && item.context.entity.kind === entity.kind)
+				(item.category === "agents" &&
+					item.context.entity?.id === entity.id &&
+					item.context.entity.kind === entity.kind)
 		)
 		.slice(0, 7);
-	const [selected, setSelected] = useState<WorkspaceQueueItem | null>(
+	const [selected, setSelected] = useState<QueueViewItem | null>(
 		() => initialItem ?? rows[0] ?? null
 	);
 	const root = useRef<HTMLDialogElement>(null);
@@ -129,7 +131,7 @@ export function QueuePeek({
 					const index = rows.findIndex(
 						(item) => selected && queueOccurrenceKey(item) === queueOccurrenceKey(selected)
 					);
-					let next: WorkspaceQueueItem | undefined;
+					let next: QueueViewItem | undefined;
 					const laterOption = details.current?.querySelector<HTMLButtonElement>(
 						`[data-queue-later-option="${event.key}"]`
 					);
@@ -193,7 +195,8 @@ export function QueuePeek({
 						>
 							<p className="break-words text-[11px] text-[var(--text-tertiary)]">
 								{selected.context.projectName} › {selected.context.workspaceName}
-								{selected.context.terminalTitle &&
+								{selected.category === "agents" &&
+								selected.context.terminalTitle &&
 								selected.context.terminalTitle.trim().toLocaleLowerCase() !==
 									selected.context.workspaceName.trim().toLocaleLowerCase()
 									? ` · ${selected.context.terminalTitle}`
@@ -211,7 +214,9 @@ export function QueuePeek({
 											: "Current activity unavailable."}
 								</output>
 							)}
-							<QueueLinkedWorkContext items={selected.context.linkedWork} />
+							{selected.category === "agents" && (
+								<QueueLinkedWorkContext items={selected.context.linkedWork} />
+							)}
 							{actions(selected, !canAct)}
 						</div>
 					)}

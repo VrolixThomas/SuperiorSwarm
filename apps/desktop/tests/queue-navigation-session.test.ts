@@ -14,6 +14,7 @@ function row(id: string, revision = 1): WorkspaceQueueItem {
 		id,
 		revision,
 		kind: "agent-input",
+		category: "agents",
 		occurredAt: Number(id) || 0,
 		acknowledged: false,
 		stale: false,

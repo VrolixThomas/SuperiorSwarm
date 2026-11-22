@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
-import { observePRPoll } from "../activity-queue/pr-source";
+import { observeScopedPRPoll } from "../activity-queue/pr-source";
 import { getDb } from "../db";
 import { type TrackedPr, projects, reviewDrafts, trackedPrs } from "../db/schema";
 import { getConnectedGitProviders } from "../providers/git-provider";
@@ -334,7 +334,7 @@ async function doPoll(): Promise<void> {
 
 	// Queue baselines are persisted only after tracked PR persistence succeeds.
 	try {
-		observePRPoll(getCachedPRs(), observations, errors);
+		await observeScopedPRPoll(getCachedPRs(), observations, errors);
 	} catch (error) {
 		console.error("[pr-poller] Queue projection failed:", error);
 	}

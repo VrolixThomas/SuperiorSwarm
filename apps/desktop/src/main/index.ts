@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { SUPERIORSWARM_DIR, daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
+import { initializeExternalQueue } from "./activity-queue/external-runtime";
 import { updateOpenCodePluginConfig } from "./agent-hooks/agents/opencode";
 import { getOrCreateAgentNotifyToken } from "./agent-hooks/auth-token";
 import { publishCurrentHookEndpoint } from "./agent-hooks/endpoint";
@@ -480,6 +481,7 @@ app.whenReady().then(async () => {
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();
 	startPolling();
+	stopExternalQueue = initializeExternalQueue();
 	startPRPolling();
 	startCommentPoller();
 
@@ -545,7 +547,9 @@ app.whenReady().then(async () => {
 // NOTE: we only DETACH from the daemon - we do not kill it. The daemon is a
 // detached process that intentionally outlives the app so background agent PTYs
 // survive quit and can be re-attached on next launch (see src/daemon/index.ts).
+let stopExternalQueue: (() => void) | undefined;
 function teardownServices(t0: number): void {
+	stopExternalQueue?.();
 	try {
 		keepAwakeService.dispose();
 	} catch (error) {

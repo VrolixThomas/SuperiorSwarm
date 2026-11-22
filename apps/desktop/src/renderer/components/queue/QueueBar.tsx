@@ -97,6 +97,7 @@ export function QueueBar({ entity }: { entity: QueueEntity | null }) {
 		sessions.isError ||
 		!matchesQueueDestination(session.item, {
 			entity,
+			pr: reviewActive?.prCtx,
 			terminalId,
 			provider: live?.provider,
 			providerSessionId: live?.providerSessionId,
@@ -106,7 +107,9 @@ export function QueueBar({ entity }: { entity: QueueEntity | null }) {
 	const status = queueSessionStatus(
 		session,
 		query.data?.items ?? [],
-		!!query.data && !query.isError && query.data.agentStatusAvailable !== false
+		!!query.data &&
+			!query.isError &&
+			(session.item.category !== "agents" || query.data.agentStatusAvailable !== false)
 	);
 	const actions = useQueueNavigationStore.getState();
 	return (
