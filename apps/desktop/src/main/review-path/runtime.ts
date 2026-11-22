@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import type { CliPresetName } from "../../shared/cli-preset";
+import type { GitHubPRDetails } from "../../shared/github-types";
 import type { ReviewPathRun, ReviewPathRuntimePort } from "../../shared/review-path-runtime";
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getReviewDrafts, getSettings } from "../ai-review/orchestrator";
@@ -11,6 +12,7 @@ import { getDb } from "../db";
 import { reviewDrafts, terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import { getGitProvider } from "../providers/git-provider";
+import { reviewRevisionAcquisition } from "../review-explanation/acquisition-service";
 import { requireLocalCommit } from "../review-explanation/git-reader";
 import { getTaskRegistry } from "../services/task-registry-handle";
 import { getDaemonClient } from "../terminal/daemon-instance";
@@ -54,6 +56,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 			)
 				throw new Error("Reading-path identity does not match the review workspace");
 			const cwd = getWorkspaceCwdOrThrow(workspace.id);
+			let details: GitHubPRDetails | undefined;
 			// Never reset a live review worktree or silently substitute its mutable HEAD.
 			const controller = new AbortController();
 			const terminalId = ownedTerminalId(run);
@@ -63,7 +66,55 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 				if (!sameActiveRun(store.getRun(run.id), run)) controller.abort();
 			}, 25);
 			try {
-				await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
+				let headMissing = false;
+				try {
+					await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
+				} catch (error) {
+					if (controller.signal.aborted) throw error;
+					headMissing = true;
+				}
+				let onAbort = () => {};
+				try {
+					const cancelled = new Promise<never>((_resolve, reject) => {
+						onAbort = () => reject(new Error("Reading-path run is no longer active"));
+						controller.signal.addEventListener("abort", onAbort, { once: true });
+						if (controller.signal.aborted) onAbort();
+					});
+					details = await Promise.race([
+						getGitProvider(run.identity.provider).getPRDetails(
+							run.identity.owner,
+							run.identity.repo,
+							run.identity.prNumber
+						),
+						cancelled,
+					]);
+				} finally {
+					controller.signal.removeEventListener("abort", onAbort);
+				}
+				if (controller.signal.aborted || !sameActiveRun(store.getRun(run.id), run))
+					throw new Error("Reading-path run is no longer active");
+				if (details.headCommitOid !== run.identity.headSha)
+					throw new Error("PR head changed before agent launch");
+				if (headMissing && !details.baseCommitOid)
+					throw new Error("Review target revision is unavailable. Refresh the PR.");
+				if (details.baseCommitOid) {
+					// Acquisition only uses the network for missing objects, including a missing base.
+					await reviewRevisionAcquisition.acquire(
+						{
+							workspaceId: workspace.id,
+							headOid: run.identity.headSha,
+							targetTipOid: details.baseCommitOid,
+							review: {
+								provider: run.identity.provider,
+								owner: run.identity.owner,
+								repo: run.identity.repo,
+								number: run.identity.prNumber,
+							},
+						},
+						controller.signal
+					);
+				}
+				if (headMissing) await requireLocalCommit(cwd, run.identity.headSha, controller.signal);
 			} finally {
 				clearInterval(fence);
 				pendingReads.delete(terminalId);
@@ -76,11 +127,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 			) as CliPresetName;
 			if (cli !== "codex" && cli !== "claude")
 				throw new Error(`Reading paths are not supported by ${cli}`);
-			const details = await getGitProvider(run.identity.provider).getPRDetails(
-				run.identity.owner,
-				run.identity.repo,
-				run.identity.prNumber
-			);
+
 			if (!sameActiveRun(store.getRun(run.id), run))
 				throw new Error("Reading-path run is no longer active");
 			if (details.headCommitOid !== run.identity.headSha)

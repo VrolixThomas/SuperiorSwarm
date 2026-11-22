@@ -104,7 +104,9 @@ if (
 		try {
 			await h.settle();
 			expect(h.container.textContent).toContain("Description");
-			expect(h.container.textContent).toContain("Reading-path agent is not connected yet");
+			expect(h.container.textContent).toContain(
+				"The provider could not resolve the full PR revision"
+			);
 			await key("j");
 			expect(h.container.querySelector("[data-diff]")).not.toBeNull();
 			expect(h.calls.filter((c) => c.path === "github.markFileViewed")).toHaveLength(0);
@@ -116,6 +118,62 @@ if (
 			await key("Escape");
 			expect(useReviewModeStore.getState().panel).toBeNull();
 			expect(useReviewModeStore.getState().active).not.toBeNull();
+		} finally {
+			await h.cleanup();
+		}
+	});
+	test("overview actions open changed files and the requested discussion filter", async () => {
+		reset();
+		const h = await renderBrowserTest(
+			<ReviewWorkspace active={{ workspaceId: "workspace", prCtx }} />,
+			[],
+			false,
+			{
+				request: (path, input) =>
+					path === "projects.getPRDetails"
+						? {
+								...details,
+								reviewThreads: [
+									{
+										id: "resolved-thread",
+										isResolved: true,
+										path: PR129_FILES[0]?.path ?? "",
+										line: 1,
+										diffSide: "RIGHT",
+										comments: [
+											{
+												id: "comment",
+												body: "Resolved discussion",
+												author: "reviewer",
+												authorAvatarUrl: "",
+												createdAt: "2026-11-21T00:00:00Z",
+											},
+										],
+									},
+								],
+							}
+						: request(path, input),
+			}
+		);
+		try {
+			await h.settle();
+			await act(async () =>
+				Array.from(h.container.querySelectorAll("button"))
+					.find((button) => button.textContent?.includes("Resolved threads"))
+					?.click()
+			);
+			expect(useReviewModeStore.getState().commentFilter).toBe("resolved");
+			expect(
+				h.container.querySelector('[data-filter="resolved"]')?.getAttribute("aria-pressed")
+			).toBe("true");
+			await key("Escape");
+			await act(async () =>
+				Array.from(h.container.querySelectorAll("button"))
+					.find((button) => button.textContent?.includes("Browse changed files"))
+					?.click()
+			);
+			expect(h.container.querySelector("[data-diff]")).not.toBeNull();
+			expect(h.calls.filter((call) => call.path === "github.markFileViewed")).toHaveLength(0);
 		} finally {
 			await h.cleanup();
 		}

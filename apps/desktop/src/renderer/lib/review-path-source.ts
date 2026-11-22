@@ -2,6 +2,7 @@
  * Durable live transport with exact workspace/revision scope.
  * The illustrative registry and timers are accessible only through explicit fixture opt-in.
  */
+import { replaceEqualDeep } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { GitHubPRDetails, PRContext } from "../../shared/github-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
@@ -280,28 +281,43 @@ export function reviewPathIdentityKey(identity: ReviewPathIdentity): string {
 /** Snapshot ordering is separate from delivery of each acknowledged mutation. */
 export function createLiveReviewPathController(
 	identity: ReviewPathIdentity,
-	transport: ReviewPathTransport
+	transport: ReviewPathTransport,
+	options: { schedulePoll?: (callback: () => void, delayMs: number) => () => void } = {}
 ) {
 	let state: LiveReviewPathState = { snapshot: null, available: false, pending: false };
 	let sequence = 0;
 	let pendingMutations = 0;
 	const mutationSequences = new Map<string, number>();
 	const subscribers = new Set<() => void>();
+	let inFlightRefresh: Promise<ReviewPathSnapshot | undefined> | undefined;
+	let pollFailures = 0;
+	let pollingConsumers = 0;
+	let pollingGeneration = 0;
+	let cancelPoll: (() => void) | undefined;
+	const schedulePoll =
+		options.schedulePoll ??
+		((callback, delayMs) => {
+			const timer = setTimeout(callback, delayMs);
+			return () => clearTimeout(timer);
+		});
 	const publish = (next: LiveReviewPathState) => {
-		state = {
+		const previous = state;
+		state = replaceEqualDeep(previous, {
 			...next,
 			error:
 				next.pollError ?? Object.values(next.mutationErrors ?? {}).find((error) => error)?.message,
-		};
+		});
+		if (state === previous) return;
 		// Fence delayed comment acknowledgements before notifying renderer subscribers.
-		if (next.snapshot) {
-			const mapping = next.snapshot.runs
-				.filter(
-					(run) =>
-						run.kind === "mapping" &&
-						reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity)
+		if (state.snapshot && state.snapshot.runs !== previous.snapshot?.runs) {
+			let mapping: ReviewPathRun | undefined;
+			for (const run of state.snapshot.runs)
+				if (
+					run.kind === "mapping" &&
+					reviewPathIdentityKey(run.identity) === reviewPathIdentityKey(identity) &&
+					(!mapping || run.version > mapping.version)
 				)
-				.sort((a, b) => b.version - a.version)[0];
+					mapping = run;
 			observeReviewMapping(identity, mapping?.id);
 		}
 		for (const subscriber of subscribers) subscriber();
@@ -329,8 +345,10 @@ export function createLiveReviewPathController(
 				throw new Error(
 					"Reading-path response identity mismatch. Refresh the PR to use its current head."
 				);
-			if (generation === sequence)
+			if (generation === sequence) {
+				pollFailures = 0;
 				publish({ ...state, snapshot: incoming, available: true, pollError: undefined });
+			}
 			// A later operation can supersede this snapshot, but not its owned launch result.
 			return mutation || generation === sequence ? result : undefined;
 		} catch (error) {
@@ -341,8 +359,10 @@ export function createLiveReviewPathController(
 						...state,
 						mutationErrors: { ...state.mutationErrors, [mutation]: { id, message } },
 					});
-			} else if (generation === sequence)
+			} else if (generation === sequence) {
+				pollFailures++;
 				publish({ ...state, available: false, pollError: message });
+			}
 			return undefined;
 		} finally {
 			if (mutation) {
@@ -356,6 +376,26 @@ export function createLiveReviewPathController(
 		id: run.id,
 		version: run.version,
 	});
+	const refresh = (): Promise<ReviewPathSnapshot | undefined> => {
+		if (state.pending) return Promise.resolve(undefined);
+		if (inFlightRefresh) return inFlightRefresh;
+		const request = perform(() => transport.get({ identity }));
+		inFlightRefresh = request;
+		void request.finally(() => {
+			if (inFlightRefresh === request) inFlightRefresh = undefined;
+		});
+		return request;
+	};
+	const poll = async (generation: number) => {
+		await refresh();
+		if (!pollingConsumers || generation !== pollingGeneration) return;
+		// Slow and unavailable backends get one bounded retry loop, not overlapping reads.
+		const delay = Math.min(30_000, 1500 * 2 ** Math.min(pollFailures, 5));
+		cancelPoll = schedulePoll(() => {
+			cancelPoll = undefined;
+			void poll(generation);
+		}, delay);
+	};
 	return {
 		getSnapshot: () => state,
 		subscribe: (callback: () => void) => {
@@ -364,8 +404,21 @@ export function createLiveReviewPathController(
 				subscribers.delete(callback);
 			};
 		},
-		refresh: () =>
-			state.pending ? Promise.resolve(undefined) : perform(() => transport.get({ identity })),
+		refresh,
+		retainPolling: () => {
+			pollingConsumers++;
+			if (pollingConsumers === 1) void poll(++pollingGeneration);
+			let retained = true;
+			return () => {
+				if (!retained) return;
+				retained = false;
+				if (--pollingConsumers === 0) {
+					pollingGeneration++;
+					cancelPoll?.();
+					cancelPoll = undefined;
+				}
+			};
+		},
 		start: (agent: ReviewPath["agent"], alsoReview: boolean) =>
 			perform(() => transport.start({ identity, agent, alsoReview }), "start"),
 		stop: () => {
@@ -438,11 +491,7 @@ export function useLiveReviewPath(
 	);
 	useEffect(() => {
 		if (!controller || options.observeOnly) return;
-		void controller.refresh();
-		const timer = setInterval(() => {
-			void controller.refresh();
-		}, 1500);
-		return () => clearInterval(timer);
+		return controller.retainPolling();
 	}, [controller, options.observeOnly]);
 	const lifecycle = useRef({ controller, mounted: true });
 	lifecycle.current.controller = controller;

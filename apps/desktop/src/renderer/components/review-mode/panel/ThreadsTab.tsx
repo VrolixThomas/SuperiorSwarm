@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { UnifiedThread } from "../../../../shared/github-types";
 import type { ReviewPath } from "../../../../shared/review-path-types";
 import { threadAuthor, threadExcerpt } from "../../../lib/pr-review-threads";
@@ -9,6 +9,7 @@ interface ThreadsTabProps {
 	path: ReviewPath | null;
 	currentUser?: string;
 	currentUserId?: string;
+	initialFilter?: "open" | "resolved";
 	onOpen: (thread: UnifiedThread) => void;
 	onAsk: (question: string) => void;
 }
@@ -18,10 +19,12 @@ export function ThreadsTab({
 	path,
 	currentUser,
 	currentUserId,
+	initialFilter = "open",
 	onOpen,
 	onAsk,
 }: ThreadsTabProps) {
-	const [filter, setFilter] = useState<"open" | "resolved" | "mine" | "unknown">("open");
+	const [filter, setFilter] = useState<"open" | "resolved" | "mine" | "unknown">(initialFilter);
+	useEffect(() => setFilter(initialFilter), [initialFilter]);
 	const groups = useMemo(() => {
 		const numbers = path ? numberSteps(path) : new Map<string, number>();
 		const result = new Map<string, UnifiedThread[]>();

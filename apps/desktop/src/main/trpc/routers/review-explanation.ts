@@ -1,6 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { ReviewSnapshotRevision } from "../../../shared/review-snapshot-types";
 import { getWorkspaceCwdOrThrow } from "../../agent-launch/workspace-cwd-lookup";
+import { reviewRevisionAcquisition } from "../../review-explanation/acquisition-service";
 import { ReviewSnapshotError, ReviewSnapshotService } from "../../review-explanation/snapshot";
 import { publicProcedure, router } from "../index";
 
@@ -23,8 +25,45 @@ async function snapshotCall<T>(action: () => Promise<T>): Promise<T> {
 	}
 }
 
-export function createReviewExplanationRouter(service: ReviewSnapshotService) {
+export function createReviewExplanationRouter(
+	service: ReviewSnapshotService,
+	acquire: (input: ReviewSnapshotRevision) => Promise<void> = async () => {
+		throw new Error("Review revision acquisition is unavailable");
+	}
+) {
 	return router({
+		acquireSnapshotRevisions: publicProcedure
+			.input(
+				z
+					.object({
+						workspaceId,
+						targetTipOid: oid,
+						headOid: oid,
+						review: z
+							.object({
+								provider: z.enum(["github", "bitbucket"]),
+								owner: z.string().min(1).max(256),
+								repo: z.string().min(1).max(256),
+								number: z.number().int().positive(),
+							})
+							.strict(),
+					})
+					.strict()
+			)
+			.mutation(async ({ input }) => {
+				try {
+					await acquire(input);
+					return { acquired: true };
+				} catch (error) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message:
+							error instanceof Error && error.message.startsWith("Review ")
+								? error.message
+								: "Review revision acquisition failed. Check Git authentication and retry Refresh.",
+					});
+				}
+			}),
 		resolveSnapshot: publicProcedure
 			.input(
 				z
@@ -68,5 +107,6 @@ export function createReviewExplanationRouter(service: ReviewSnapshotService) {
 }
 
 export const reviewExplanationRouter = createReviewExplanationRouter(
-	new ReviewSnapshotService({ resolveRoot: async (id) => getWorkspaceCwdOrThrow(id) })
+	new ReviewSnapshotService({ resolveRoot: async (id) => getWorkspaceCwdOrThrow(id) }),
+	(input) => reviewRevisionAcquisition.acquire(input)
 );

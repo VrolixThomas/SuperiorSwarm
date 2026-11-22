@@ -63,15 +63,17 @@ function Row({
 			data-step-number={item.number}
 			aria-current={selected ? "step" : undefined}
 			onClick={() => onSelect(item)}
-			className={`relative flex w-full items-center gap-[10px] pr-[14px] text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${indent ? "h-[26px] pl-[46px] text-[12px]" : item.kind === "context" ? "h-[32px] pl-[16px] text-[13px]" : "h-[34px] pl-[16px] text-[13px]"} ${selected ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
+			className={`relative flex w-full items-center gap-[10px] pr-[14px] text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${indent ? "h-[26px] pl-[46px] text-[12px]" : item.kind === "context" ? "h-[32px] pl-[16px] text-[13px]" : item.folderLabel ? "h-[46px] pl-[16px] text-[13px]" : "h-[34px] pl-[16px] text-[13px]"} ${selected ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
 		>
 			{children}
-			<span className="min-w-0 flex-1 truncate">{item.path.split("/").pop()}</span>
-			{item.folderLabel && (
-				<span className="max-w-[90px] truncate text-[11px] text-[var(--text-tertiary)]">
-					{item.folderLabel}
-				</span>
-			)}
+			<span className="min-w-0 flex-1">
+				<span className="block truncate">{item.path.split("/").pop()}</span>
+				{item.folderLabel && (
+					<span className="mt-[2px] block truncate text-[11px] text-[var(--text-tertiary)]">
+						{item.folderLabel}
+					</span>
+				)}
+			</span>
 			{item.kind === "context" ? (
 				<span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">
 					{item.step?.kind === "context" && item.step.addedBy === "user"

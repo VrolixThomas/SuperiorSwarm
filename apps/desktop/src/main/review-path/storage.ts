@@ -49,7 +49,7 @@ const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export class ReviewPathStorage {
 	constructor(private readonly db: Db) {}
-	private load(identity: ReviewPathIdentity): Document {
+	private load(identity: ReviewPathIdentity, projectionOnly = false): Document {
 		reviewPathIdentitySchema.parse(identity);
 		const row = this.db
 			.select()
@@ -62,7 +62,11 @@ export class ReviewPathStorage {
 					identity,
 					path: null,
 					pathVersion: 0,
-					conversationId: randomUUID(),
+					// Empty read-only projections stay equal across polls. Durable creation
+					// still receives a fresh conversation, including Ask before any mapping.
+					conversationId: projectionOnly
+						? `uninitialized:${reviewPathKey(identity)}`
+						: randomUUID(),
 					runs: [],
 					questions: [],
 					messages: [],
@@ -106,7 +110,7 @@ export class ReviewPathStorage {
 		};
 	}
 	peek(identity: ReviewPathIdentity): ReviewPathSnapshot {
-		return this.snapshot(this.load(identity));
+		return this.snapshot(this.load(identity, true));
 	}
 	/** Reserve before awaiting provider metadata, across all application/storage instances. */
 	reserveMetadata(identity: ReviewPathIdentity): number {

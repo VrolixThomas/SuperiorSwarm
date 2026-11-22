@@ -10,6 +10,7 @@ export interface ReviewTopBarProps {
 	onOpenQueue: () => void;
 	onOpenOverview: () => void;
 	onNextPR: () => void;
+	onRefresh?: () => void;
 	onOpenTerminal?: () => void;
 	/** MappingPill while mapping, otherwise the existing AgentStatusChip. */
 	statusSlot?: ReactNode;
@@ -26,6 +27,7 @@ export function ReviewTopBar({
 	onOpenQueue,
 	onOpenOverview,
 	onNextPR,
+	onRefresh,
 	onOpenTerminal,
 	statusSlot,
 	submitSlot,
@@ -72,6 +74,17 @@ export function ReviewTopBar({
 				</span>
 			</div>
 			<div className="app-no-drag relative flex shrink-0 items-center gap-3">
+				{onRefresh && (
+					<button
+						type="button"
+						aria-label="Refresh pull request"
+						title="Refresh pull request"
+						onClick={onRefresh}
+						className="flex h-[28px] w-[28px] items-center justify-center rounded-[6px] text-[16px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
+					>
+						↻
+					</button>
+				)}
 				{statusSlot}
 				{onOpenTerminal && (
 					<button

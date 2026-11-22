@@ -15,6 +15,10 @@ export interface ReviewQueuePR {
 	targetBranch?: string;
 	projectId?: string;
 	headCommitSha?: string;
+	author?: string;
+	updatedAt?: string;
+	fileCount?: number;
+	isDraft?: boolean;
 }
 export interface ReviewQueue {
 	needsReview: ReviewQueuePR[];
@@ -67,6 +71,9 @@ export function buildReviewQueue(input: {
 			targetBranch: pr.targetBranch ?? cached?.targetBranch,
 			projectId: pr.projectId ?? cached?.projectId,
 			headCommitSha: pr.headCommitSha ?? cached?.headCommitSha,
+			author: pr.author ?? cached?.author?.login,
+			updatedAt: pr.updatedAt ?? cached?.updatedAt,
+			fileCount: pr.fileCount ?? cached?.changedFiles,
 		};
 		queue[waiting ? "waitingOnAuthor" : "needsReview"].push(item);
 	}
@@ -79,6 +86,7 @@ export function buildReviewQueue(input: {
 				number: pr.number,
 				title: pr.title,
 				sourceBranch: pr.branchName,
+				isDraft: pr.isDraft,
 			},
 			pr.role === "reviewer" && pr.state === "open",
 			pr.isDraft || pr.reviewDecision === "changes_requested"
@@ -95,6 +103,8 @@ export function buildReviewQueue(input: {
 				sourceBranch: pr.source?.branch?.name ?? "",
 				targetBranch: pr.destination?.branch?.name,
 				headCommitSha: pr.headCommitSha,
+				author: pr.author,
+				updatedAt: pr.updatedOn,
 			},
 			pr.state.toLowerCase() === "open"
 		);
@@ -128,6 +138,7 @@ export function prevPr(queue: ReviewQueue, currentKey: string): ReviewQueuePR | 
 }
 
 export interface ReviewQueueFacts {
+	changedFiles?: number;
 	pathStatus?: ReviewPathStatus;
 	headCommitSha?: string;
 	/** Only supply a revision explicitly associated with the user's viewed state. */

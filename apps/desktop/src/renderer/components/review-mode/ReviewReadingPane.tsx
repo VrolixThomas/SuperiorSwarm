@@ -2,6 +2,8 @@ import type * as monaco from "monaco-editor";
 import type { ReactNode } from "react";
 import type { UnifiedThread } from "../../../shared/github-types";
 import type { CodeReference, ContextFileStep } from "../../../shared/review-path-types";
+import { matchesReviewFilter } from "../../lib/pr-review-threads";
+import { openThreadInChanges } from "../../lib/review-mode-nav";
 import { numberSteps, stepForPath, stepLabel } from "../../lib/review-path-model";
 import type { ReviewPathSource } from "../../lib/review-path-source";
 import { useReviewModeStore } from "../../stores/review-mode-store";
@@ -99,11 +101,24 @@ export function ReviewReadingPane({
 							details={data.details}
 							aiDraft={data.aiDraft}
 							counts={data.counts}
-							onJumpToComments={() => useReviewModeStore.getState().setPanel("threads")}
+							onJumpToComments={(filter) => {
+								const store = useReviewModeStore.getState();
+								if (filter === "pending" || filter === "accepted" || filter === "declined") {
+									const thread = data.allThreads.find(
+										(thread) =>
+											thread.isAIDraft && !thread.isOutdated && matchesReviewFilter(thread, filter)
+									);
+									if (thread) {
+										openThreadInChanges(active.workspaceId, active.prCtx, thread.path, thread.id);
+										store.setPanel(null);
+										return;
+									}
+								}
+								store.setCommentFilter(filter);
+								store.setPanel("threads");
+							}}
+							onReadFiles={() => nav.advance(1)}
 						/>
-						<p className="mx-auto max-w-[760px] px-6 text-[12px] text-[var(--text-tertiary)]">
-							j opens the first file.
-						</p>
 					</div>
 				) : context ? (
 					<ContextFileView

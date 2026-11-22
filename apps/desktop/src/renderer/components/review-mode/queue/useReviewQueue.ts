@@ -97,6 +97,14 @@ export function useReviewQueue(currentPr: PRContext) {
 			bitbucket.error?.message ??
 			cached.error?.message ??
 			null,
+		refresh: async () => {
+			await Promise.all([
+				cached.refetch(),
+				githubStatus.data?.connected ? github.refetch() : Promise.resolve(),
+				bitbucketStatus.data?.bitbucket.connected ? bitbucket.refetch() : Promise.resolve(),
+				utils.reviewPath.status.invalidate(),
+			]);
+		},
 		isLoading: cached.isLoading || github.isLoading || bitbucket.isLoading,
 	};
 }

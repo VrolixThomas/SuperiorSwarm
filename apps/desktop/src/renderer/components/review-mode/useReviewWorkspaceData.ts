@@ -7,6 +7,7 @@ import {
 	matchesReviewFilter,
 } from "../../lib/pr-review-threads";
 import { openThreadInChanges, openThreadInComments } from "../../lib/review-mode-nav";
+import { resetReviewSnapshotAcquisition } from "../../lib/snapshot-acquisition";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -71,6 +72,11 @@ export function useReviewWorkspaceData(
 			number: prCtx.number,
 		});
 	}, [prCtx.number, prCtx.owner, prCtx.provider, prCtx.repo, utils]);
+	const refreshDetails = useCallback(() => {
+		resetReviewSnapshotAcquisition(workspaceId);
+		invalidateDetails();
+		void utils.reviewExplanation.resolveSnapshot.invalidate({ workspaceId });
+	}, [workspaceId, invalidateDetails, utils]);
 
 	const { mutate: updateDraftComment } = trpc.aiReview.updateDraftComment.useMutation({
 		onSuccess: invalidateDrafts,
@@ -211,6 +217,7 @@ export function useReviewWorkspaceData(
 		callbacks,
 		handleClose,
 		handleSubmitted,
+		refreshDetails,
 		submitOpen,
 		setSubmitOpen,
 		jumpToComments,

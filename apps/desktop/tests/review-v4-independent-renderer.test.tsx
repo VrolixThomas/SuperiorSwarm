@@ -343,12 +343,17 @@ if (inIsolatedFileBrowserTest(import.meta.path, "V4 independent renderer boundar
 				expect(h.container.querySelector("[data-v4-diff]")?.getAttribute("data-read-only")).toBe(
 					"true"
 				);
-				for (const label of ["Submit review", "Start Review"])
-					expect(
-						[...h.container.querySelectorAll("button")].find(
-							(button) => button.textContent === label
-						)?.disabled
-					).toBe(true);
+				expect(
+					[...h.container.querySelectorAll("button")].find(
+						(button) => button.textContent === "Submit review"
+					)?.disabled
+				).toBe(true);
+				// The refreshed review header has one Map entry instead of a duplicate legacy launcher.
+				expect(
+					[...h.container.querySelectorAll("button")].filter(
+						(button) => button.textContent === "Start Review" && !button.disabled
+					)
+				).toEqual([]);
 				expect(h.calls.some((call) => call.path === "aiReview.triggerReview")).toBe(false);
 			} finally {
 				await h.cleanup();

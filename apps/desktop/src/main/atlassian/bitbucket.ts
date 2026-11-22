@@ -162,7 +162,47 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 	return allPRs;
 }
 
-/** Get the current state and head SHA of a Bitbucket pull request */
+interface BitbucketRevisionSide {
+	branch?: { name?: string };
+	commit?: { hash?: string };
+	repository?: { full_name?: string } | null;
+}
+
+const FULL_COMMIT_OID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+
+/** Expand the captured commit hash, never a branch that could have advanced. */
+async function resolveCommitOid(
+	workspace: string,
+	repoSlug: string,
+	side: BitbucketRevisionSide | undefined
+): Promise<string | undefined> {
+	const hash = side?.commit?.hash;
+	if (typeof hash !== "string") return undefined;
+	if (FULL_COMMIT_OID.test(hash)) return hash.toLowerCase();
+	if (!/^[a-f0-9]{4,63}$/i.test(hash)) return undefined;
+	// Fork heads belong to the source repository. Do not follow provider-supplied URLs.
+	const fullName = side?.repository?.full_name;
+	if (side?.repository && typeof fullName !== "string") return undefined;
+	const parts = fullName === undefined ? [workspace, repoSlug] : fullName.split("/");
+	if (parts.length !== 2 || parts.some((part) => !part || part === "." || part === ".."))
+		return undefined;
+	const repository = parts.map(encodeURIComponent).join("/");
+	// https://developer.atlassian.com/cloud/bitbucket/rest/api-group-commits/#api-repositories-workspace-repo-slug-commit-commit-get
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${repository}/commit/${hash}`
+	);
+	if (!res.ok) return undefined;
+	const data = (await res.json()) as { hash?: unknown };
+	const resolved = data.hash;
+	return typeof resolved === "string" &&
+		FULL_COMMIT_OID.test(resolved) &&
+		resolved.toLowerCase().startsWith(hash.toLowerCase())
+		? resolved.toLowerCase()
+		: undefined;
+}
+
+/** Get the current state and exact head SHA of a Bitbucket pull request. */
 export async function getPRState(
 	workspace: string,
 	repoSlug: string,
@@ -174,10 +214,12 @@ export async function getPRState(
 	);
 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
 	const data = (await res.json()) as {
-		source: { commit: { hash: string } };
+		source?: BitbucketRevisionSide;
 		state: string;
 	};
-	return { headSha: data.source.commit.hash, state: data.state };
+	const headSha = await resolveCommitOid(workspace, repoSlug, data.source);
+	if (!headSha) throw new Error("Bitbucket PR revision unavailable");
+	return { headSha, state: data.state };
 }
 
 /** Post a comment on a Bitbucket pull request */
@@ -398,6 +440,8 @@ export async function getBitbucketPRDetails(
 	targetBranch: string;
 	headCommitOid: string;
 	baseCommitOid?: string;
+	sourceRepoFullName?: string;
+	targetRepoFullName?: string;
 	participants: Array<{
 		user?: { display_name?: string } | null;
 		role: string;
@@ -414,14 +458,20 @@ export async function getBitbucketPRDetails(
 		description?: string;
 		state?: string;
 		author?: { display_name?: string; links?: { avatar?: { href?: string } } } | null;
-		source?: { branch?: { name?: string }; commit?: { hash?: string } };
-		destination?: { branch?: { name?: string }; commit?: { hash?: string } };
+		source?: BitbucketRevisionSide;
+		destination?: BitbucketRevisionSide;
 		participants?: Array<{
 			user?: { display_name?: string } | null;
 			role: string;
 			state?: string | null;
 		}>;
 	};
+	// Both selectors came from this metadata response. The adapter rechecks the
+	// expanded pair after loading mutable PR files before certifying its manifest.
+	const [headCommitOid, baseCommitOid] = await Promise.all([
+		resolveCommitOid(workspace, repoSlug, data.source),
+		resolveCommitOid(workspace, repoSlug, data.destination),
+	]);
 	return {
 		title: data.title ?? "",
 		description: normalizeBitbucketDescription(data.description ?? ""),
@@ -430,8 +480,10 @@ export async function getBitbucketPRDetails(
 		authorAvatarUrl: data.author?.links?.avatar?.href ?? "",
 		sourceBranch: data.source?.branch?.name ?? "",
 		targetBranch: data.destination?.branch?.name ?? "",
-		headCommitOid: data.source?.commit?.hash ?? "",
-		baseCommitOid: data.destination?.commit?.hash,
+		headCommitOid: headCommitOid ?? "",
+		baseCommitOid,
+		sourceRepoFullName: data.source?.repository?.full_name,
+		targetRepoFullName: data.destination?.repository?.full_name,
 		participants: data.participants ?? [],
 	};
 }

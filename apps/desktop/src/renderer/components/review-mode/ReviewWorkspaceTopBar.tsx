@@ -26,7 +26,12 @@ export function ReviewWorkspaceTopBar({
 	const files = data.details?.files ?? [];
 	return (
 		<ReviewTopBar
-			prCtx={{ ...prCtx, title: data.details?.title ?? prCtx.title }}
+			prCtx={{
+				...prCtx,
+				title: data.details?.title ?? prCtx.title,
+				sourceBranch: data.details?.sourceBranch ?? prCtx.sourceBranch,
+				targetBranch: data.details?.targetBranch ?? prCtx.targetBranch,
+			}}
 			queueCount={queue.queue.needsReview.length + queue.queue.waitingOnAuthor.length}
 			queueOpen={queueOpen}
 			onOpenTerminal={openTerminal}
@@ -36,10 +41,14 @@ export function ReviewWorkspaceTopBar({
 				useReviewModeStore.getState().setPanel(null);
 				useReviewModeStore.getState().setQueueOpen(true);
 			}}
-			onOpenOverview={() => useReviewModeStore.getState().setOverviewOpen(true)}
+			onOpenOverview={() => {
+				useReviewModeStore.getState().setQueueOpen(false);
+				useReviewModeStore.getState().setOverviewOpen(true);
+			}}
 			onNextPR={onNextPR}
+			onRefresh={queueOpen ? undefined : () => data.refreshDetails?.()}
 			statusSlot={
-				source.status === "mapping" ? (
+				queueOpen ? null : source.status === "mapping" ? (
 					<MappingPill
 						placed={source.path?.progress?.placed ?? 0}
 						total={files.length}
@@ -53,40 +62,32 @@ export function ReviewWorkspaceTopBar({
 							onOpen={openTerminal}
 							onCancel={data.agentActions.cancel}
 						/>
-						{!data.agentActions.isReviewActive && (
-							<button
-								type="button"
-								disabled={data.agentActions.isPending}
-								onClick={() => void data.agentActions.trigger()}
-								className="rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] disabled:opacity-40"
-							>
-								{data.agentActions.label}
-							</button>
-						)}
 					</>
 				)
 			}
 			submitSlot={
-				<>
-					<button
-						type="button"
-						disabled={!data.canSubmitReview}
-						onClick={() => data.setSubmitOpen(!data.submitOpen)}
-						className="rounded-md bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--accent-foreground)] disabled:opacity-40"
-					>
-						Submit review
-					</button>
-					{data.submitOpen && data.canSubmitReview && (
-						<SubmitReviewPopover
-							prCtx={prCtx}
-							draftId={data.aiDraft?.id ?? null}
-							acceptedThreads={data.acceptedThreads}
-							pendingCount={data.pendingCount}
-							onClose={() => data.setSubmitOpen(false)}
-							onSubmitted={data.handleSubmitted}
-						/>
-					)}
-				</>
+				queueOpen ? null : (
+					<>
+						<button
+							type="button"
+							disabled={!data.canSubmitReview}
+							onClick={() => data.setSubmitOpen(!data.submitOpen)}
+							className="rounded-md bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--accent-foreground)] disabled:opacity-40"
+						>
+							Submit review
+						</button>
+						{data.submitOpen && data.canSubmitReview && (
+							<SubmitReviewPopover
+								prCtx={prCtx}
+								draftId={data.aiDraft?.id ?? null}
+								acceptedThreads={data.acceptedThreads}
+								pendingCount={data.pendingCount}
+								onClose={() => data.setSubmitOpen(false)}
+								onSubmitted={data.handleSubmitted}
+							/>
+						)}
+					</>
+				)
 			}
 		/>
 	);

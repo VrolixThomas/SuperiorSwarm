@@ -15,6 +15,7 @@ export interface RailListProps {
 	children?: ReactNode;
 }
 function rowHeight(item: RailItem) {
+	if ("folderLabel" in item && item.folderLabel) return 46;
 	return item.kind === "test"
 		? 26
 		: item.kind === "context"

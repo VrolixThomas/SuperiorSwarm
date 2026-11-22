@@ -33,6 +33,7 @@ export function ReviewWorkspace({
 		useReviewConnections(workspaceId, prCtx, data.details, fixture);
 	const queue = useReviewQueue(prCtx);
 	const panel = useReviewModeStore((s) => s.panel);
+	const commentFilter = useReviewModeStore((s) => s.commentFilter);
 	const queueOpen = useReviewModeStore((s) => s.queueOpen);
 	const askAnchor = useReviewModeStore((s) => s.askAnchor);
 	const collapsed = useReviewModeStore((s) => s.navigatorCollapsed);
@@ -229,6 +230,7 @@ export function ReviewWorkspace({
 									path={source.path}
 									currentUser={reviewer?.login ?? undefined}
 									currentUserId={reviewer?.id}
+									initialFilter={commentFilter === "resolved" ? "resolved" : "open"}
 									onOpen={openThread}
 									onAsk={(question) => nav.ask(undefined, question)}
 								/>
@@ -275,10 +277,15 @@ export function ReviewWorkspace({
 			{queueOpen && (
 				<AllPRsDrawer
 					queue={queue.queue}
+					onRefresh={() => void queue.refresh()}
 					currentKey={queue.currentKey}
 					nextKey={queue.next?.key}
 					onClose={() => useReviewModeStore.getState().setQueueOpen(false)}
 					onSelect={async (pr) => {
+						if (pr.key === queue.currentKey) {
+							useReviewModeStore.getState().setQueueOpen(false);
+							return;
+						}
 						if (await queue.openPR(pr)) useReviewModeStore.getState().setQueueOpen(false);
 					}}
 					openingKey={queue.openingKey}
@@ -290,10 +297,14 @@ export function ReviewWorkspace({
 								queue.currentKey,
 								{
 									pathStatus: source.status,
-									viewed: {
-										viewed: files.filter((file) => viewed.has(file.path)).length,
-										total: files.length,
-									},
+									changedFiles: files.length,
+									viewed:
+										prCtx.provider === "github"
+											? {
+													viewed: files.filter((file) => viewed.has(file.path)).length,
+													total: files.length,
+												}
+											: undefined,
 								},
 							],
 						])

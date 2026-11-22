@@ -150,7 +150,16 @@ export function useReviewConnections(
 					if (!terminal) void recover();
 				}
 			: undefined;
-	const source = useReviewPath(prCtx, details, { fixture, identity, onLaunch });
+	const pathSource = useReviewPath(prCtx, details, { fixture, identity, onLaunch });
+	const source =
+		!fixture && !identity
+			? {
+					...pathSource,
+					unavailableReason: !details
+						? "Loading pull request details…"
+						: "The provider could not resolve the full PR revision. Refresh this PR or check its connection.",
+				}
+			: pathSource;
 	const askAgent = useAskAgent(prCtx, { fixture, identity, onLaunch });
 	const reviewer = useCurrentReviewer(prCtx, !fixture);
 	return { source, askAgent, reviewer, attachmentError, openTerminal, terminal };

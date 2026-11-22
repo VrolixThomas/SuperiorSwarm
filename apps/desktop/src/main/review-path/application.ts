@@ -24,7 +24,7 @@ export class ReviewPathApplication {
 		// revision is checked against the provider so an old renderer cannot roll back
 		// the authoritative head or invalidate a newer run.
 		const stored = this.deps.storage.peek(identity);
-		if (stored.identity.headSha === identity.headSha) return this.deps.storage.get(identity);
+		if (stored.identity.headSha === identity.headSha) return stored;
 		const generation = this.deps.storage.reserveMetadata(identity);
 		const resolved = await this.deps.resolve(identity);
 		this.deps.validateWorkspace(identity);

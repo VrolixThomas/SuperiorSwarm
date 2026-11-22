@@ -22,6 +22,27 @@ function caller() {
 	).createCaller({});
 }
 
+test("acquisition is an explicit mutation separate from local snapshot queries", async () => {
+	const acquisitions: unknown[] = [];
+	const api = createReviewExplanationRouter(
+		new ReviewSnapshotService({ resolveRoot: async () => fixture.root }),
+		async (input) => {
+			acquisitions.push(input);
+		}
+	).createCaller({});
+	const input = {
+		workspaceId: "registered",
+		targetTipOid: fixture.target,
+		headOid: fixture.head,
+		review: { provider: "bitbucket" as const, owner: "org", repo: "repo", number: 1 },
+	};
+	await api.resolveSnapshot(input);
+	expect(acquisitions).toHaveLength(0);
+	await api.acquireSnapshotRevisions(input);
+	expect(acquisitions).toEqual([input]);
+	await expect(api.acquireSnapshotRevisions({ ...input, headOid: "main" })).rejects.toThrow();
+});
+
 test("reads a pinned file through the registered-workspace router", async () => {
 	const api = caller();
 	const snapshot = await api.resolveSnapshot({

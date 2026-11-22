@@ -1,117 +1,28 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { useRememberedReviewPath } from "../../../lib/review-path-status-cache";
-import {
-	type ReviewQueue,
-	type ReviewQueueFacts,
-	type ReviewQueuePR,
-	queueStatus,
-} from "../../../lib/review-queue";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ReviewQueue, ReviewQueueFacts, ReviewQueuePR } from "../../../lib/review-queue";
 import { useReviewPathSettingsStore } from "../../../stores/review-path-settings-store";
-import { trpc } from "../../../trpc/client";
+import { PRQueueRow } from "./PRQueueRow";
 
 export interface AllPRsDrawerProps {
 	queue: ReviewQueue;
 	currentKey: string;
 	nextKey?: string;
 	onClose: () => void;
+	onRefresh?: () => void;
 	onSelect: (pr: ReviewQueuePR) => void;
 	openingKey?: string | null;
 	isLoading?: boolean;
 	error?: string | null;
-	/** Measured facts only; absent progress stays unknown. Keys include the provider. */
 	factsByKey?: ReadonlyMap<string, ReviewQueueFacts>;
 }
 
-function QueueRow({
-	pr,
-	current,
-	next,
-	openingKey,
-	facts,
-	onSelect,
-}: {
-	pr: ReviewQueuePR;
-	current: boolean;
-	next: boolean;
-	openingKey?: string | null;
-	facts?: ReviewQueueFacts;
-	onSelect: (pr: ReviewQueuePR) => void;
-}) {
-	const scope = {
-		provider: pr.provider,
-		owner: pr.owner,
-		repo: pr.repo,
-		prNumber: pr.number,
-		headSha: pr.headCommitSha ?? "",
-		projectId: pr.projectId,
-	};
-	const enabled = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(scope.headSha);
-	const remembered = useRememberedReviewPath(enabled ? scope : undefined);
-	const projection = trpc.reviewPath.status.useQuery(scope, {
-		enabled,
-		staleTime: 1000,
-		refetchInterval: 5000,
-	});
-	const matched = projection.data?.identity;
-	const pathStatus =
-		matched?.headSha === pr.headCommitSha &&
-		matched?.provider === pr.provider &&
-		matched.owner === pr.owner &&
-		matched.repo === pr.repo &&
-		matched.prNumber === pr.number
-			? projection.data?.status
-			: projection.data === null || projection.isError
-				? undefined
-				: remembered?.path?.status;
-	const status = queueStatus({
-		headCommitSha: pr.headCommitSha,
-		pathStatus,
-		...facts,
-	});
-	return (
-		<button
-			type="button"
-			aria-current={current ? "page" : undefined}
-			disabled={Boolean(openingKey)}
-			onClick={() => onSelect(pr)}
-			className={`mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded-[var(--radius-md)] px-3.5 py-2.5 text-left text-[var(--text)] disabled:cursor-wait ${current ? "bg-[var(--bg-overlay)]" : "hover:bg-[var(--bg-elevated)]"}`}
-		>
-			<span className="min-w-0 flex-1">
-				<span className="flex items-center gap-1.5 text-[13px] font-medium">
-					<span className="truncate" title={pr.title}>
-						{pr.title}
-					</span>
-					{next && (
-						<span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-subtle)] px-1.5 text-[11px] leading-[18px] text-[var(--accent-hover)]">
-							Next
-						</span>
-					)}
-				</span>
-				<span className="mt-0.5 block truncate text-[12px] text-[var(--text-tertiary)]">
-					{pr.owner}/{pr.repo} #{pr.number} · {pr.provider === "github" ? "GitHub" : "Bitbucket"}
-				</span>
-			</span>
-			<span
-				className={`flex shrink-0 items-center gap-1 text-[12px] ${status.tone === "accent" ? "text-[var(--accent-hover)]" : status.tone === "warning" ? "text-[var(--tag-amber-fg)]" : "text-[var(--text-tertiary)]"}`}
-			>
-				{status.label === "Mapping" && (
-					<span
-						aria-hidden="true"
-						className="size-3 animate-spin rounded-full border-2 border-current border-r-transparent"
-					/>
-				)}
-				{openingKey === pr.key ? "Opening…" : status.label}
-			</span>
-		</button>
-	);
-}
-
-/** Mount inside the relative workspace shell; the 44px top bar remains visible. */
+/** Dedicated PR overview; the current file/diff stays mounted behind it. */
 export function AllPRsDrawer({
 	queue,
 	currentKey,
 	nextKey,
 	onClose,
+	onRefresh,
 	onSelect,
 	openingKey,
 	isLoading,
@@ -119,190 +30,227 @@ export function AllPRsDrawer({
 	factsByKey,
 }: AllPRsDrawerProps) {
 	const [filter, setFilter] = useState("");
-	const [waitingExpanded, setWaitingExpanded] = useState(false);
-	const filterRef = useRef<HTMLInputElement>(null);
+	const [section, setSection] = useState<"needs" | "waiting">("needs");
+	const [repository, setRepository] = useState("");
+	const input = useRef<HTMLInputElement>(null);
 	const titleId = useId();
-	const settingsError = useReviewPathSettingsStore((s) => s.error);
-	const autoMap = useReviewPathSettingsStore((s) => s.autoMapOnReviewRequest);
-	const alsoReview = useReviewPathSettingsStore((s) => s.alsoReview);
-	const setAutoMap = useReviewPathSettingsStore((s) => s.setAutoMapOnReviewRequest);
-	const setAlsoReview = useReviewPathSettingsStore((s) => s.setAlsoReview);
+	const settings = useReviewPathSettingsStore();
+	const all = [...queue.needsReview, ...queue.waitingOnAuthor];
+	const repos = useMemo(
+		() =>
+			[
+				...new Set(
+					[...queue.needsReview, ...queue.waitingOnAuthor].map((pr) => `${pr.owner}/${pr.repo}`)
+				),
+			].sort(),
+		[queue]
+	);
+	const current = all.find((pr) => pr.key === currentKey);
+	const selected = section === "needs" ? queue.needsReview : queue.waitingOnAuthor;
+	const needle = filter.trim().toLowerCase();
+	const visible = selected.filter(
+		(pr) =>
+			(!repository || `${pr.owner}/${pr.repo}` === repository) &&
+			`${pr.title} ${pr.owner}/${pr.repo} #${pr.number} ${pr.author ?? ""}`
+				.toLowerCase()
+				.includes(needle)
+	);
 	useEffect(() => {
 		const previous = document.activeElement;
-		filterRef.current?.focus();
+		input.current?.focus();
 		return () => {
 			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
 		};
 	}, []);
-	const matches = (pr: ReviewQueuePR) =>
-		`${pr.title} ${pr.owner}/${pr.repo} #${pr.number}`
-			.toLowerCase()
-			.includes(filter.trim().toLowerCase());
-	const needsReview = queue.needsReview.filter(matches);
-	const waiting = queue.waitingOnAuthor.filter(matches);
-	const row = (pr: ReviewQueuePR) => (
-		<QueueRow
-			key={pr.key}
-			pr={pr}
-			current={pr.key === currentKey}
-			next={pr.key === nextKey}
-			openingKey={openingKey}
-			facts={factsByKey?.get(pr.key)}
-			onSelect={onSelect}
-		/>
-	);
 	return (
-		<div className="app-no-drag absolute inset-x-0 bottom-0 top-[44px] z-40">
-			<button
-				type="button"
-				tabIndex={-1}
-				aria-label="Close pull request queue"
-				onClick={onClose}
-				className="absolute inset-0 cursor-default bg-[var(--scrim)]"
-			/>
-			<dialog
-				open
-				aria-modal="true"
-				aria-labelledby={titleId}
-				className="absolute inset-y-0 left-0 m-0 flex h-full w-[440px] max-w-full flex-col border-0 border-r border-[var(--border)] bg-[var(--bg-surface)] p-0 shadow-[var(--shadow-lg)]"
-				onKeyDown={(event) => {
-					if (event.key === "Escape") {
-						event.preventDefault();
-						event.stopPropagation();
-						onClose();
-					}
-					if (event.key !== "Tab") return;
-					const controls = Array.from(
-						event.currentTarget.querySelectorAll<HTMLElement>(
-							'button:not(:disabled), input:not(:disabled), [tabindex="0"]'
+		<dialog
+			open
+			aria-modal="true"
+			aria-label="Pull request overview"
+			aria-labelledby={titleId}
+			className="app-no-drag absolute inset-x-0 bottom-0 top-[44px] z-40 m-0 flex h-[calc(100%-44px)] w-full max-w-none flex-col border-0 bg-[var(--bg-base)] p-0 text-[var(--text)]"
+			onKeyDown={(event) => {
+				if (event.key === "Escape") {
+					event.preventDefault();
+					event.stopPropagation();
+					onClose();
+				}
+				if (event.key !== "Tab") return;
+				const controls = Array.from(
+					event.currentTarget.querySelectorAll<HTMLElement>(
+						"button:not(:disabled),input:not(:disabled),select:not(:disabled),summary"
+					)
+				).filter((control) => {
+					if (control.closest("[hidden]")) return false;
+					let parent = control.parentElement;
+					while (parent && parent !== event.currentTarget) {
+						if (
+							parent.tagName === "DETAILS" &&
+							!parent.hasAttribute("open") &&
+							!parent.querySelector(":scope > summary")?.contains(control)
 						)
-					);
-					const first = controls[0];
-					const last = controls.at(-1);
-					if (event.shiftKey && document.activeElement === first) {
-						event.preventDefault();
-						last?.focus();
-					} else if (!event.shiftKey && document.activeElement === last) {
-						event.preventDefault();
-						first?.focus();
+							return false;
+						parent = parent.parentElement;
 					}
-				}}
-			>
-				<div className="flex items-center gap-2 pb-3 pl-[22px] pr-3 pt-4">
-					<h2 id={titleId} className="flex-1 text-[14px] font-semibold text-[var(--text)]">
-						Pull requests
-					</h2>
+					return true;
+				});
+				const first = controls[0];
+				const last = controls.at(-1);
+				if (event.shiftKey && document.activeElement === first) {
+					event.preventDefault();
+					last?.focus();
+				} else if (!event.shiftKey && document.activeElement === last) {
+					event.preventDefault();
+					first?.focus();
+				}
+			}}
+		>
+			<div className="mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col px-[32px] pb-[20px] pt-[28px]">
+				<header className="mb-[24px] flex shrink-0 items-start justify-between gap-[24px]">
+					<div>
+						<h1 id={titleId} className="text-[24px] font-semibold tracking-tight">
+							Pull requests
+						</h1>
+						<p className="mt-[6px] text-[13px] text-[var(--text-secondary)]">
+							Choose what to review next. Your own pull requests are excluded.
+						</p>
+					</div>
 					<button
 						type="button"
-						aria-label="Close"
+						aria-label="Back to review"
+						title={current?.title}
 						onClick={onClose}
-						className="flex size-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
+						className="flex shrink-0 items-center gap-[8px] rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] px-[12px] py-[8px] text-[13px] hover:bg-[var(--bg-overlay)]"
 					>
-						<svg
-							aria-hidden="true"
-							width="14"
-							height="14"
-							viewBox="0 0 16 16"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.6"
-						>
-							<path d="m4 4 8 8M12 4l-8 8" />
-						</svg>
+						← Back to review
+						{current && <span className="text-[var(--text-tertiary)]">#{current.number}</span>}
 					</button>
-				</div>
-				<div className="px-4 pb-3">
-					<div className="flex h-8 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-base)] px-2.5 text-[var(--text-tertiary)]">
-						<svg
-							aria-hidden="true"
-							width="14"
-							height="14"
-							viewBox="0 0 16 16"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.6"
-						>
-							<circle cx="7" cy="7" r="4.5" />
-							<path d="m10.5 10.5 3 3" />
-						</svg>
-						<input
-							ref={filterRef}
-							aria-label="Filter pull requests"
-							placeholder="Filter by title or repository"
-							value={filter}
-							onChange={(event) => setFilter(event.target.value)}
-							className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)] outline-none"
-						/>
+				</header>
+				<div className="mb-[16px] flex shrink-0 flex-wrap items-center gap-[12px]">
+					<div className="flex gap-[4px] rounded-[8px] bg-[var(--bg-surface)] p-[4px]">
+						{(
+							[
+								{ key: "needs", label: "Needs your review", count: queue.needsReview.length },
+								{ key: "waiting", label: "Waiting on author", count: queue.waitingOnAuthor.length },
+							] as const
+						).map((tab) => (
+							<button
+								key={tab.key}
+								type="button"
+								aria-pressed={section === tab.key}
+								onClick={() => setSection(tab.key)}
+								className={`rounded-[5px] px-[12px] py-[7px] text-[13px] ${section === tab.key ? "bg-[var(--bg-overlay)] text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
+							>
+								{tab.label}
+								<span className="ml-[8px] tabular-nums text-[var(--text-tertiary)]">
+									{tab.count}
+								</span>
+							</button>
+						))}
 					</div>
-				</div>
-				<div className="min-h-0 flex-1 overflow-y-auto pb-4">
-					{error && (
-						<p role="alert" className="px-[22px] pb-2 text-[12px] text-[var(--color-danger)]">
-							{error}
-						</p>
+					<div className="flex-1" />
+					{onRefresh && (
+						<button
+							type="button"
+							onClick={onRefresh}
+							disabled={isLoading}
+							className="h-[36px] rounded-[6px] border border-[var(--border)] px-[12px] text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
+						>
+							Refresh list
+						</button>
 					)}
-					<h3 className="px-[22px] pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
-						Needs your review · {needsReview.length}
-					</h3>
-					<div className="flex flex-col gap-0.5">{needsReview.map(row)}</div>
-					{needsReview.length === 0 && (
-						<p className="px-[22px] py-3 text-[12px] text-[var(--text-tertiary)]">
+					<select
+						aria-label="Filter by repository"
+						value={repository}
+						onChange={(event) => setRepository(event.target.value)}
+						className="h-[36px] max-w-[240px] rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] px-[10px] text-[12px]"
+					>
+						<option value="">All repositories</option>
+						{repos.map((repo) => (
+							<option key={repo} value={repo}>
+								{repo}
+							</option>
+						))}
+					</select>
+					<input
+						ref={input}
+						aria-label="Filter pull requests"
+						value={filter}
+						onChange={(event) => setFilter(event.target.value)}
+						placeholder="Search title, repository, author or #…"
+						className="h-[36px] w-[300px] max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] px-[12px] text-[13px] outline-none focus:border-[var(--accent)]"
+					/>
+				</div>
+				{error && (
+					<div
+						role="alert"
+						className="mb-[12px] shrink-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] p-[12px] text-[13px] text-[var(--color-danger)]"
+					>
+						{error}
+					</div>
+				)}
+				<div className="min-h-0 flex-1 overflow-y-auto rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+					<div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_140px] gap-[20px] border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-[20px] py-[10px] text-[11px] font-medium uppercase tracking-wide text-[var(--text-tertiary)] min-[1000px]:grid-cols-[minmax(0,1fr)_150px_140px]">
+						<span>Pull request</span>
+						<span className="hidden min-[1000px]:block">Activity</span>
+						<span className="text-right">Reading path</span>
+					</div>
+					{visible.map((pr) => (
+						<PRQueueRow
+							key={pr.key}
+							pr={pr}
+							current={pr.key === currentKey}
+							next={pr.key === nextKey}
+							openingKey={openingKey}
+							facts={factsByKey?.get(pr.key)}
+							onSelect={(item) => {
+								if (item.key === currentKey) onClose();
+								else onSelect(item);
+							}}
+						/>
+					))}
+					{!visible.length && (
+						<div className="px-[24px] py-[48px] text-center text-[13px] text-[var(--text-secondary)]">
 							{isLoading
 								? "Loading pull requests…"
-								: filter
-									? "No matching review requests."
-									: "No pull requests need your review."}
-						</p>
-					)}
-					<button
-						type="button"
-						aria-expanded={waitingExpanded || Boolean(filter)}
-						onClick={() => setWaitingExpanded((value) => !value)}
-						className="mt-3 flex w-full items-center gap-2 px-[22px] py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]"
-					>
-						<span aria-hidden="true">{waitingExpanded || filter ? "⌄" : "›"}</span> Waiting on the
-						author · {waiting.length}
-					</button>
-					{(waitingExpanded || filter) && (
-						<div className="flex flex-col gap-0.5">{waiting.map(row)}</div>
+								: needle || repository
+									? "No pull requests match these filters."
+									: section === "needs"
+										? "No pull requests need your review."
+										: "No pull requests are waiting on the author."}
+						</div>
 					)}
 				</div>
-				<footer className="flex flex-col gap-2.5 border-t border-[var(--border-subtle)] px-[22px] py-3.5">
-					<label
-						className="flex items-center gap-2 text-[12px] text-[var(--text)]"
-						title="Automatically map new review requests with the configured agent."
-					>
-						<input
-							type="checkbox"
-							checked={autoMap && alsoReview}
-							onChange={(event) => {
-								setAutoMap(event.target.checked);
-								if (event.target.checked) setAlsoReview(true);
-							}}
-							className="accent-[var(--accent)]"
-						/>
-						Map and review new requests automatically
-					</label>
-					<p className="text-[11px] text-[var(--text-tertiary)]">
-						Uses the configured review agent for eligible new requests.
-					</p>
-					{settingsError && (
-						<p role="alert" className="text-[12px] text-[var(--color-danger)]">
-							Could not save reading-path settings: {settingsError}
-						</p>
-					)}
-					<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-						<kbd className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-1.5 font-sans text-[var(--text-secondary)]">
-							⌘↓
-						</kbd>{" "}
-						next PR
-						<kbd className="ml-2 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-1.5 font-sans text-[var(--text-secondary)]">
-							⌘↑
-						</kbd>{" "}
-						previous
-					</div>
+				<footer className="mt-[14px] flex shrink-0 flex-wrap items-center justify-between gap-[12px] text-[12px] text-[var(--text-tertiary)]">
+					<span>
+						{visible.length} of {selected.length} pull requests · ⌘↓ next · ⌘↑ previous
+					</span>
+					<details className="relative">
+						<summary className="cursor-pointer text-[var(--text-secondary)]">
+							Automatic mapping
+						</summary>
+						<div className="absolute bottom-full right-0 mb-[8px] w-[300px] rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] p-[14px] shadow-[var(--shadow-lg)]">
+							<label className="flex items-start gap-[8px] text-[13px] text-[var(--text)]">
+								<input
+									type="checkbox"
+									checked={settings.autoMapOnReviewRequest && settings.alsoReview}
+									onChange={(event) => {
+										settings.setAutoMapOnReviewRequest(event.target.checked);
+										if (event.target.checked) settings.setAlsoReview(true);
+									}}
+									className="mt-[3px] accent-[var(--accent)]"
+								/>
+								Map and review new requests automatically
+							</label>
+							{settings.error && (
+								<p role="alert" className="mt-[8px] text-[12px] text-[var(--color-danger)]">
+									Could not save settings: {settings.error}
+								</p>
+							)}
+						</div>
+					</details>
 				</footer>
-			</dialog>
-		</div>
+			</div>
+		</dialog>
 	);
 }
