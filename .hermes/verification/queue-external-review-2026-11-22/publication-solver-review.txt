@@ -1,9 +1,0 @@
-bun test v1.3.9 (cf6cdbbb)
-
-tests/review-solver-exact-mutation.test.ts:
-(pass) solver publication pins local content, exact scope and remote without pushing [381.89ms]
-
- 1 pass
- 0 fail
- 15 expect() calls
-Ran 1 test across 1 file. [525.00ms]

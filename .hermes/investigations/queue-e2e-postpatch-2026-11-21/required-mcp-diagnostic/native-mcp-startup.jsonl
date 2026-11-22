@@ -1,6 +1,0 @@
-{"phase":"context-response","at":1795283440901,"terminal":"terminal-codex-folder-manual","reporter":null,"admissionOffered":true,"mode":"workspace-agent"}
-{"phase":"context-released","at":1795283440901,"terminal":"terminal-codex-folder-manual","reporter":null,"admissionOffered":true,"mode":"workspace-agent"}
-{"phase":"tool-catalog-sent","at":1795283440914,"terminal":"terminal-codex-folder-manual","hasSetStatus":true}
-{"phase":"context-response","at":1795283454030,"terminal":"terminal-codex-folder-manual","reporter":{"type":"terminal","entity":{"kind":"workspace","id":"codex-folder-manual"},"workspaceId":"codex-folder-manual","terminalId":"terminal-codex-folder-manual","provider":"codex","providerSessionId":"01a1ff3b-3d68-7bb1-aefd-10085454a88a"},"admissionOffered":false,"mode":"workspace-agent"}
-{"phase":"context-released","at":1795283454033,"terminal":"terminal-codex-folder-manual","reporter":{"type":"terminal","entity":{"kind":"workspace","id":"codex-folder-manual"},"workspaceId":"codex-folder-manual","terminalId":"terminal-codex-folder-manual","provider":"codex","providerSessionId":"01a1ff3b-3d68-7bb1-aefd-10085454a88a"},"admissionOffered":false,"mode":"workspace-agent"}
-{"phase":"tool-catalog-sent","at":1795283454041,"terminal":"terminal-codex-folder-manual","hasSetStatus":true}

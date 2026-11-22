@@ -1,8 +1,0 @@
-bun test v1.3.9 (cf6cdbbb)
-
-tests/bitbucket-revision-resolution.test.ts:
-(pass) Bitbucket exact revision resolution [42.22ms]
-
- 1 pass
- 0 fail
-Ran 1 test across 1 file. [51.00ms]

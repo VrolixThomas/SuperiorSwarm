@@ -1,2 +1,0 @@
-[rebuild-mcp-native] rebuilding better-sqlite3 in /Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/activity-queue/apps/desktop/mcp-standalone against electron@45.4.1
-[rebuild-mcp-native] done

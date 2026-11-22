@@ -1,1 +1,0 @@
-[native] rebuilding SQLite and PTY for Electron 45.4.1, ABI 150

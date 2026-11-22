@@ -121,6 +121,8 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 
 ## Never Do This
 
+- **Keep `.hermes/` and generated `docs/verification/` reports, screenshots, and results local. Never force-add them to a PR.** Reproducible test code belongs under `tests/`; artifacts remain ignored.
+
 - **Never add `Co-Authored-By` trailers to commit messages.**
 - **Never commit `.env` files or OAuth secrets.** Only `.env.example` belongs in the repo.
 - **Never run `git push --force` to `main`.**

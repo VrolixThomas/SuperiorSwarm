@@ -1,8 +1,0 @@
-{
-  "baselineCommit": "e1dfc112a2291157ac900eb23e13114b536ac5a1",
-  "baselineErrors": 204,
-  "currentErrors": 204,
-  "added": [],
-  "removed": [],
-  "pathNormalization": "Absolute repository prefixes in resolved import types replaced with <repo>."
-}

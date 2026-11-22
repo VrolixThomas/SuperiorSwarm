@@ -1,8 +1,0 @@
-{
-  "baseline": 221,
-  "current": 220,
-  "new": [],
-  "removed": [
-    "tests/fixtures/queue-reply-tui/main.ts(389,8): error TS2339: Property 'supported' does not exist on type 'string'."
-  ]
-}
