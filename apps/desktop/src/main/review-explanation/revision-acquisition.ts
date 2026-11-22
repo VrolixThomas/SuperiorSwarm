@@ -1,8 +1,9 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { ReviewFetchProgress } from "../../shared/review-fetch-progress";
 import type { ReviewSnapshotRevision } from "../../shared/review-snapshot-types";
+import { ReviewFetchProcessError, runReviewFetchGit } from "./fetch-process";
 import { readGit } from "./git-reader";
 
 export interface RevisionSources {
@@ -19,13 +20,16 @@ interface AcquisitionOptions {
 	fetchObjects?: typeof fetchRevisionObjects;
 	getAuthorization?: (remote: string, input: ReviewSnapshotRevision) => Promise<string | undefined>;
 	timeoutMs?: number;
+	lookupTimeoutMs?: number;
 }
 
 const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 const FETCH_FAILURE_MESSAGES = {
 	cancelled: "Review revision acquisition was cancelled.",
-	timeout: "Review revision fetch timed out. Retry preparation.",
+	timeout: "Review revision fetch exceeded its overall time limit. Retry preparation.",
+	stalled:
+		"Review revision fetch stopped making progress for 2 minutes. Check the connection and retry preparation.",
 	authentication:
 		"Review repository access was denied. Check credentials or repository permissions and retry preparation.",
 	"repository-unavailable":
@@ -99,48 +103,41 @@ export function classifyRevisionFetchFailure(input: {
 	return "unknown";
 }
 
-function fetchGit(
+async function fetchGit(
 	root: string,
 	args: string[],
 	signal: AbortSignal,
-	env: NodeJS.ProcessEnv
+	env: NodeJS.ProcessEnv,
+	onProgress?: (progress: ReviewFetchProgress) => void
 ): Promise<void> {
 	const started = Date.now();
 	const operation = args[0] === "init" ? "init" : "fetch";
-	return new Promise((resolve, reject) => {
-		execFile(
-			"git",
-			["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args],
-			{
-				cwd: root,
-				signal,
-				timeout: 45_000,
-				killSignal: "SIGKILL",
-				maxBuffer: 1024 * 1024,
-				env,
-			},
-			(error, _stdout, stderr) => {
-				if (error || signal.aborted) {
-					const category = classifyRevisionFetchFailure({
-						operation,
-						aborted: signal.aborted,
-						code: error?.code,
-						killed: error?.killed,
-						signal: error?.signal,
-						stderr,
-					});
-					// Deliberately omit command, URL, environment, error object and stderr.
-					console.warn("[review-acquisition] Git operation failed", {
-						operation,
-						category,
-						elapsedMs: Math.max(0, Date.now() - started),
-						exitCode: typeof error?.code === "number" ? error.code : null,
-					});
-					reject(new RevisionFetchError(category));
-				} else resolve();
-			}
-		);
-	});
+	try {
+		await runReviewFetchGit(root, args, signal, env, { onProgress });
+	} catch (error) {
+		const failure = error instanceof ReviewFetchProcessError ? error : undefined;
+		const category: RevisionFetchFailureCode =
+			signal.aborted || failure?.reason === "cancelled"
+				? "cancelled"
+				: failure?.reason === "timeout"
+					? "timeout"
+					: failure?.reason === "stalled"
+						? "stalled"
+						: classifyRevisionFetchFailure({
+								operation,
+								aborted: false,
+								code: failure?.code ?? failure?.exitCode,
+								signal: failure?.signal,
+								stderr: failure?.stderr ?? "",
+							});
+		console.warn("[review-acquisition] Git operation failed", {
+			operation,
+			category,
+			elapsedMs: Math.max(0, Date.now() - started),
+			exitCode: failure?.exitCode ?? null,
+		});
+		throw new RevisionFetchError(category);
+	}
 }
 
 /** Acquire objects without moving refs, changing files, or persisting application credentials. */
@@ -149,11 +146,13 @@ export async function fetchRevisionObjects(
 	remote: string,
 	oids: string[],
 	signal: AbortSignal,
-	authorization?: string
+	authorization?: string,
+	onProgress?: (progress: ReviewFetchProgress) => void
 ): Promise<void> {
 	const fetchRemote = authorization ? canonicalBitbucketHttpsRemote(remote) : remote;
 	const args = [
 		"fetch",
+		"--progress",
 		"--no-tags",
 		"--no-recurse-submodules",
 		"--no-write-fetch-head",
@@ -175,7 +174,7 @@ export async function fetchRevisionObjects(
 		GIT_ALLOW_PROTOCOL: "https:ssh",
 		GIT_SSH_COMMAND: "ssh -oBatchMode=yes",
 	};
-	if (!authorization) return fetchGit(root, args, signal, env);
+	if (!authorization) return fetchGit(root, args, signal, env, onProgress);
 	const auth = revisionAuthorizationEnvironment(remote, authorization);
 	const objects = await realpath(
 		resolve(
@@ -188,13 +187,49 @@ export async function fetchRevisionObjects(
 		.trim();
 	if (format !== "sha1" && format !== "sha256")
 		throw new Error("Review Git object format is unsupported");
+	// Share the knowledge of every local branch, not only the checked-out HEAD.
+	// A user may be on an old branch while remote-tracking refs already contain the PR history.
+	const haveLines = (
+		await readGit(
+			root,
+			["for-each-ref", "--format=%(objecttype) %(objectname)", "refs/heads", "refs/remotes"],
+			signal
+		)
+	)
+		.toString()
+		.trim()
+		.split("\n");
+	const haves = new Set(
+		haveLines.flatMap((line) => {
+			const [type, oid] = line.split(" ");
+			return type === "commit" && oid && fullOid.test(oid) ? [oid] : [];
+		})
+	);
 	try {
-		const tip = (await readGit(root, ["rev-parse", "--verify", "HEAD^{commit}"], signal))
+		const head = (await readGit(root, ["rev-parse", "--verify", "HEAD^{commit}"], signal))
 			.toString()
 			.trim();
-		if (fullOid.test(tip)) args.splice(args.indexOf("--"), 0, `--negotiation-tip=${tip}`);
+		if (fullOid.test(head)) haves.add(head);
 	} catch {
 		signal.throwIfAborted();
+	}
+	// Preserve shallow traversal boundaries when advertising shallow branch tips.
+	// Copy only validated object IDs; never copy repository configuration or update its shallow file.
+	let shallow: string | undefined;
+	if (
+		(await readGit(root, ["rev-parse", "--is-shallow-repository"], signal)).toString().trim() ===
+		"true"
+	) {
+		const shallowPath = (await readGit(root, ["rev-parse", "--git-path", "shallow"], signal))
+			.toString()
+			.trim();
+		const boundaries = (await readFile(resolve(root, shallowPath), "utf8")).trim().split("\n");
+		if (
+			!boundaries.length ||
+			boundaries.some((oid) => !fullOid.test(oid) || oid.length !== (format === "sha1" ? 40 : 64))
+		)
+			throw new RevisionFetchError("local-git");
+		shallow = `${boundaries.join("\n")}\n`;
 	}
 	const temporary = await mkdtemp(join(tmpdir(), "review-object-fetch-"));
 	try {
@@ -213,12 +248,32 @@ export async function fetchRevisionObjects(
 			signal,
 			isolated
 		);
-		await fetchGit(temporary, args, signal, {
-			...isolated,
-			...auth,
-			GIT_DIR: temporary,
-			GIT_OBJECT_DIRECTORY: objects,
-		});
+		if (shallow) await writeFile(join(temporary, "shallow"), shallow);
+		// Generated refs exist only in the disposable credential-isolated repository.
+		// Default fetch negotiation can now advertise all known branch histories.
+		await writeFile(
+			join(temporary, "packed-refs"),
+			[
+				"# pack-refs with: peeled fully-peeled sorted",
+				...[...haves].map(
+					(oid, index) => `${oid} refs/review-haves/${String(index).padStart(10, "0")}`
+				),
+				"",
+			].join("\n")
+		);
+		signal.throwIfAborted();
+		await fetchGit(
+			temporary,
+			args,
+			signal,
+			{
+				...isolated,
+				...auth,
+				GIT_DIR: temporary,
+				GIT_OBJECT_DIRECTORY: objects,
+			},
+			onProgress
+		);
 	} finally {
 		await rm(temporary, { recursive: true, force: true });
 	}
@@ -289,9 +344,13 @@ export class ReviewRevisionAcquisition {
 	private readonly active = new Map<string, Promise<void>>();
 	constructor(private readonly options: AcquisitionOptions) {}
 
-	acquire(input: ReviewSnapshotRevision, callerSignal?: AbortSignal): Promise<void> {
+	acquire(
+		input: ReviewSnapshotRevision,
+		callerSignal?: AbortSignal,
+		onProgress?: (progress: ReviewFetchProgress) => void
+	): Promise<void> {
 		// Runtime runs own their cancellation. Do not share their subprocess with a browser consumer.
-		if (callerSignal) return this.run(input, callerSignal);
+		if (callerSignal || onProgress) return this.run(input, callerSignal, onProgress);
 		const key = JSON.stringify(input);
 		const existing = this.active.get(key);
 		if (existing) return existing;
@@ -300,8 +359,12 @@ export class ReviewRevisionAcquisition {
 		return work;
 	}
 
-	private run(input: ReviewSnapshotRevision, callerSignal?: AbortSignal): Promise<void> {
-		const deadline = AbortSignal.timeout(this.options.timeoutMs ?? 60_000);
+	private run(
+		input: ReviewSnapshotRevision,
+		callerSignal?: AbortSignal,
+		onProgress?: (progress: ReviewFetchProgress) => void
+	): Promise<void> {
+		const deadline = AbortSignal.timeout(this.options.timeoutMs ?? 12 * 60_000);
 		const signal = callerSignal ? AbortSignal.any([deadline, callerSignal]) : deadline;
 		let onAbort = () => {};
 		const cancelled = new Promise<never>((_resolve, reject) => {
@@ -316,13 +379,43 @@ export class ReviewRevisionAcquisition {
 			signal.addEventListener("abort", onAbort, { once: true });
 			if (signal.aborted) onAbort();
 		});
-		const work = Promise.race([this.prepare(input, signal), cancelled]).finally(() => {
+		const work = Promise.race([this.prepare(input, signal, onProgress), cancelled]).finally(() => {
 			signal.removeEventListener("abort", onAbort);
 		});
 		return work;
 	}
 
-	private async prepare(input: ReviewSnapshotRevision, signal: AbortSignal): Promise<void> {
+	private async lookup<T>(
+		operation: () => Promise<T>,
+		signal: AbortSignal,
+		kind: "metadata" | "authorization"
+	): Promise<T> {
+		signal.throwIfAborted();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let abort = () => {};
+		const interrupted = new Promise<never>((_resolve, reject) => {
+			timer = setTimeout(
+				() => reject(new Error(`Review revision ${kind} lookup timed out. Retry preparation.`)),
+				this.options.lookupTimeoutMs ?? 60_000
+			);
+			timer.unref?.();
+			abort = () => reject(new Error("Review revision acquisition cancelled."));
+			signal.addEventListener("abort", abort, { once: true });
+			if (signal.aborted) abort();
+		});
+		try {
+			return await Promise.race([operation(), interrupted]);
+		} finally {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", abort);
+		}
+	}
+
+	private async prepare(
+		input: ReviewSnapshotRevision,
+		signal: AbortSignal,
+		onProgress?: (progress: ReviewFetchProgress) => void
+	): Promise<void> {
 		if (!input.review || !fullOid.test(input.headOid) || !fullOid.test(input.targetTipOid))
 			throw new Error("Review acquisition requires an exact PR revision");
 		const review = input.review;
@@ -342,7 +435,7 @@ export class ReviewRevisionAcquisition {
 			}
 		}
 		if (!missing.length) return;
-		const sources = await this.options.resolveSources(input);
+		const sources = await this.lookup(() => this.options.resolveSources(input), signal, "metadata");
 		signal.throwIfAborted();
 		if (sources.headOid !== input.headOid || sources.targetTipOid !== input.targetTipOid)
 			throw new Error("Review PR revision changed. Refresh before acquiring its commits.");
@@ -371,7 +464,11 @@ export class ReviewRevisionAcquisition {
 		const grouped = new Map<string, string[]>();
 		for (const { oid, remote } of plan) grouped.set(remote, [...(grouped.get(remote) ?? []), oid]);
 		for (const [remote, oids] of grouped) {
-			const authorization = await this.options.getAuthorization?.(remote, input);
+			const authorization = await this.lookup(
+				async () => this.options.getAuthorization?.(remote, input),
+				signal,
+				"authorization"
+			);
 			if ((await realpath(await this.options.resolveRoot(input))) !== root)
 				throw new Error("Review workspace changed while acquiring revisions. Reopen the PR.");
 			signal.throwIfAborted();
@@ -380,7 +477,8 @@ export class ReviewRevisionAcquisition {
 				remote,
 				oids,
 				signal,
-				authorization
+				authorization,
+				onProgress
 			);
 			for (const oid of oids)
 				try {

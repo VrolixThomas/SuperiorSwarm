@@ -30,6 +30,7 @@ if (inIsolatedFileBrowserTest(import.meta.path, "durable review agent tab UI")) 
 		kind: "mapping",
 		state: "preparing",
 		phase: "fetching",
+		fetchProgress: { stage: "receiving", percent: 42, current: 42, total: 100, bytes: 1048576 },
 		attempt: 1,
 		trigger: "manual",
 		alsoReview: true,
@@ -67,6 +68,9 @@ if (inIsolatedFileBrowserTest(import.meta.path, "durable review agent tab UI")) 
 		);
 		try {
 			expect(h.container.textContent).toContain("Fetching the exact PR revision");
+			expect(h.container.querySelector("output")?.textContent).toBe(
+				"Receiving objects · 42% · 42 / 100 · 1.0 MiB"
+			);
 			expect(terminals).toBe(0);
 			const button = [...h.container.querySelectorAll("button")].find(
 				(b) => b.textContent === "Cancel"

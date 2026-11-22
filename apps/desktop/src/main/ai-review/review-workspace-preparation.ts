@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { parsePrIdentifier } from "../../shared/pr-identifier";
+import type { ReviewFetchProgress } from "../../shared/review-fetch-progress";
 import type { ReviewSnapshotRevision } from "../../shared/review-snapshot-types";
 import { getDb } from "../db";
 import { projects, workspaces, worktrees } from "../db/schema";
@@ -31,6 +32,7 @@ export interface ReviewWorkspaceInput {
 
 interface PreparationOptions {
 	timeoutMs?: number;
+	metadataTimeoutMs?: number;
 	resolveSources?: typeof resolveReviewRevisionSources;
 	getAuthorization?: typeof getReviewRevisionAuthorization;
 	fetchObjects?: typeof fetchRevisionObjects;
@@ -151,6 +153,8 @@ export function getOrCreateReviewRecord(input: ReviewWorkspaceInput) {
 type PreparationPhase = "metadata" | "fetching" | "worktree";
 interface PendingPreparation {
 	listeners: Set<(phase: PreparationPhase) => void>;
+	progressListeners: Set<(progress: ReviewFetchProgress) => void>;
+	progress: () => ReviewFetchProgress | undefined;
 	phase: () => PreparationPhase;
 	controller: AbortController;
 	promise: Promise<PreparedWorkspace>;
@@ -170,6 +174,7 @@ export class ReviewWorkspacePreparer {
 			signal?: AbortSignal;
 			expectedHeadOid?: string;
 			onPhase?: (phase: PreparationPhase) => void;
+			onFetchProgress?: (progress: ReviewFetchProgress) => void;
 		} = {}
 	): Promise<PreparedWorkspace> {
 		if (opts.signal?.aborted)
@@ -182,7 +187,7 @@ export class ReviewWorkspacePreparer {
 			);
 		if (!entry) {
 			const controller = new AbortController();
-			const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 65_000);
+			const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 13 * 60_000);
 			const cancelled = new Promise<never>((_resolve, reject) =>
 				controller.signal.addEventListener(
 					"abort",
@@ -195,12 +200,18 @@ export class ReviewWorkspacePreparer {
 			);
 			const listeners = new Set<(phase: PreparationPhase) => void>();
 			let phase: PreparationPhase = "metadata";
+			const progressListeners = new Set<(progress: ReviewFetchProgress) => void>();
+			let progress: ReviewFetchProgress | undefined;
+			const reportProgress = (next: ReviewFetchProgress) => {
+				progress = next;
+				for (const listener of progressListeners) listener(next);
+			};
 			const report = (next: PreparationPhase) => {
 				phase = next;
 				for (const listener of listeners) listener(next);
 			};
 			const promise = Promise.race([
-				this.prepare(input, controller.signal, opts.expectedHeadOid, report),
+				this.prepare(input, controller.signal, opts.expectedHeadOid, report, reportProgress),
 				cancelled,
 			]).finally(() => {
 				clearTimeout(timeout);
@@ -209,6 +220,8 @@ export class ReviewWorkspacePreparer {
 			});
 			const owned: PendingPreparation = {
 				listeners,
+				progressListeners,
+				progress: () => progress,
 				phase: () => phase,
 				controller,
 				consumers: 0,
@@ -224,12 +237,18 @@ export class ReviewWorkspacePreparer {
 			owned.listeners.add(opts.onPhase);
 			opts.onPhase(owned.phase());
 		}
+		if (opts.onFetchProgress) {
+			owned.progressListeners.add(opts.onFetchProgress);
+			const progress = owned.progress();
+			if (progress) opts.onFetchProgress(progress);
+		}
 		owned.consumers++;
 		let released = false;
 		const release = () => {
 			if (released) return;
 			released = true;
 			if (opts.onPhase) owned.listeners.delete(opts.onPhase);
+			if (opts.onFetchProgress) owned.progressListeners.delete(opts.onFetchProgress);
 			owned.consumers--;
 			if (!owned.consumers && !owned.settled) owned.controller.abort();
 		};
@@ -248,11 +267,34 @@ export class ReviewWorkspacePreparer {
 		});
 	}
 
+	private async resolveMetadata(operation: () => Promise<RevisionSources>, signal: AbortSignal) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let onAbort = () => {};
+		try {
+			return await Promise.race([
+				operation(),
+				new Promise<never>((_resolve, reject) => {
+					timer = setTimeout(
+						() => reject(new Error("Review workspace metadata timed out. Retry preparation.")),
+						this.options.metadataTimeoutMs ?? 60_000
+					);
+					onAbort = () => reject(new Error("Review workspace preparation cancelled"));
+					signal.addEventListener("abort", onAbort, { once: true });
+					if (signal.aborted) onAbort();
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", onAbort);
+		}
+	}
+
 	private async prepare(
 		input: ReviewWorkspaceInput,
 		signal: AbortSignal,
 		expectedHeadOid?: string,
-		onPhase?: (phase: PreparationPhase) => void
+		onPhase?: (phase: PreparationPhase) => void,
+		onFetchProgress?: (progress: ReviewFetchProgress) => void
 	): Promise<PreparedWorkspace> {
 		const db = getDb();
 		const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
@@ -338,9 +380,10 @@ export class ReviewWorkspacePreparer {
 					throw new Error(
 						"Review workspace contains local changes. Preserve or move those changes before starting a checkout-based review."
 					);
-				const sources = await (this.options.resolveSources ?? resolveReviewRevisionSources)({
-					review,
-				});
+				const sources = await this.resolveMetadata(
+					() => (this.options.resolveSources ?? resolveReviewRevisionSources)({ review }),
+					signal
+				);
 				validate();
 				const head = (
 					await readGit(worktree.path, ["rev-parse", "--verify", "HEAD^{commit}"], signal)
@@ -357,7 +400,10 @@ export class ReviewWorkspacePreparer {
 			return { ...existing, worktreePath: worktree.path };
 		}
 		const resolveSources = this.options.resolveSources ?? resolveReviewRevisionSources;
-		const sources: RevisionSources = await resolveSources({ review });
+		const sources: RevisionSources = await this.resolveMetadata(
+			() => resolveSources({ review }),
+			signal
+		);
 		validate();
 		if (expectedHeadOid && sources.headOid !== expectedHeadOid)
 			throw new Error("Review PR head changed before workspace preparation");
@@ -379,7 +425,7 @@ export class ReviewWorkspacePreparer {
 			fetchObjects: this.options.fetchObjects,
 		});
 		onPhase?.("fetching");
-		await acquisition.acquire(revision, signal);
+		await acquisition.acquire(revision, signal, onFetchProgress);
 		validate();
 		const worktreeId = nanoid();
 		const safeId = input.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 100);

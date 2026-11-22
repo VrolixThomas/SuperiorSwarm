@@ -1,3 +1,4 @@
+import type { ReviewFetchProgress } from "./review-fetch-progress";
 import type { ReviewPathIdentity } from "./review-path-runtime";
 import type { AskMessage, ReviewPath } from "./review-path-types";
 
@@ -41,6 +42,7 @@ export interface ReviewAgentJob {
 	terminalId?: string;
 	cwd?: string;
 	error?: string;
+	fetchProgress?: ReviewFetchProgress;
 	progress?: { placed: number; total: number; currentFile?: string };
 	trigger: "manual" | "auto";
 	activity: Array<{ at: string; phase: ReviewAgentJobPhase; message: string }>;

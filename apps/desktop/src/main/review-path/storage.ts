@@ -7,6 +7,10 @@ import {
 	isReviewAgentJobActive,
 } from "../../shared/review-agent-job";
 import {
+	type ReviewFetchProgress,
+	formatReviewFetchProgress,
+} from "../../shared/review-fetch-progress";
+import {
 	type ReviewPathIdentity,
 	type ReviewPathQuestion,
 	type ReviewPathRun,
@@ -65,6 +69,10 @@ const now = () => new Date().toISOString();
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export class ReviewPathStorage {
+	private readonly fetchWrites = new Map<
+		string,
+		{ at: number; stage: ReviewFetchProgress["stage"]; signature: string }
+	>();
 	constructor(private readonly db: Db) {}
 	private load(identity: ReviewPathIdentity, projectionOnly = false): Document {
 		reviewPathIdentitySchema.parse(identity);
@@ -322,6 +330,61 @@ export class ReviewPathStorage {
 			(j) => j.runId === run.id && j.runVersion === run.version
 		);
 		if (job) this.updateJob(job, { phase }, message);
+	}
+	/** Progress is runtime evidence, never agent-provided text. Keep one live row per Git stage. */
+	reportRunFetchProgress(run: ReviewPathRun, progress: ReviewFetchProgress) {
+		const key = `${run.id}:${run.version}`;
+		const previous = this.fetchWrites.get(key);
+		const signature = JSON.stringify(progress);
+		if (previous?.signature === signature) return;
+		const clock = Date.now();
+		const complete =
+			progress.percent === 100 ||
+			(progress.total !== undefined &&
+				progress.current !== undefined &&
+				progress.current >= progress.total);
+		if (previous && previous.stage === progress.stage && !complete && clock - previous.at < 1000)
+			return;
+		const before = this.load(run.identity, true);
+		const validRun = before.runs.find(
+			(r) =>
+				r.id === run.id &&
+				r.version === run.version &&
+				r.state === "running" &&
+				r.identity.headSha === run.identity.headSha
+		);
+		const job = before.jobData?.jobs.find(
+			(j) =>
+				j.runId === run.id &&
+				j.runVersion === run.version &&
+				j.state === "preparing" &&
+				j.identity.headSha === run.identity.headSha
+		);
+		if (!validRun || !job || before.identity.headSha !== run.identity.headSha) {
+			this.fetchWrites.delete(key);
+			return;
+		}
+		this.transaction(run.identity, (doc) => {
+			const current = doc.jobData?.jobs.find(
+				(j) => j.id === job.id && j.attempt === job.attempt && j.state === "preparing"
+			);
+			if (!current) return;
+			const at = now();
+			const last = current.activity.at(-1);
+			const coalesce =
+				last?.phase === "fetching" && current.fetchProgress?.stage === progress.stage;
+			current.fetchProgress = { ...progress };
+			current.phase = "fetching";
+			current.updatedAt = at;
+			const activity = {
+				at,
+				phase: "fetching" as const,
+				message: formatReviewFetchProgress(progress),
+			};
+			if (coalesce) current.activity[current.activity.length - 1] = activity;
+			else current.activity.push(activity);
+		});
+		this.fetchWrites.set(key, { at: clock, stage: progress.stage, signature });
 	}
 	interruptPreparingJobs() {
 		for (const doc of this.documents())

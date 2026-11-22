@@ -345,3 +345,72 @@ test("only the current mapping receives measured progress; remapping preserves o
 		total: 2,
 	});
 });
+
+test("fetch progress is throttled, coalesced, and fenced to the preparing attempt", () => {
+	const { storage } = setup();
+	const { job } = storage.acceptJob({ ...input, requestId: "fetch-progress" });
+	const run = storage.begin(identity, input.agent, ["a.ts"]);
+	storage.updateJob(
+		job,
+		{ runId: run.id, runVersion: run.version, state: "preparing", phase: "fetching" },
+		"Acquiring commits"
+	);
+	const originalNow = Date.now;
+	let clock = 1000;
+	Date.now = () => clock;
+	try {
+		storage.reportRunFetchProgress(run, {
+			stage: "receiving",
+			percent: 1,
+			current: 1,
+			total: 100,
+			bytes: 100,
+		});
+		const first = required(storage.jobs("w").find((j) => j.id === job.id));
+		expect(first.fetchProgress?.current).toBe(1);
+		const activityLength = first.activity.length;
+		clock += 50;
+		storage.reportRunFetchProgress(run, {
+			stage: "receiving",
+			percent: 2,
+			current: 2,
+			total: 100,
+			bytes: 200,
+		});
+		expect(storage.jobs("w").find((j) => j.id === job.id)?.fetchProgress?.current).toBe(1);
+		clock += 1000;
+		storage.reportRunFetchProgress(run, {
+			stage: "receiving",
+			percent: 3,
+			current: 3,
+			total: 100,
+			bytes: 300,
+		});
+		expect(storage.jobs("w").find((j) => j.id === job.id)?.activity).toHaveLength(activityLength);
+		expect(storage.jobs("w").find((j) => j.id === job.id)?.fetchProgress?.current).toBe(3);
+		clock += 1;
+		storage.reportRunFetchProgress(run, { stage: "resolving", percent: 1, current: 1, total: 100 });
+		expect(storage.jobs("w").find((j) => j.id === job.id)?.activity).toHaveLength(
+			activityLength + 1
+		);
+		storage.reportRunFetchProgress(run, {
+			stage: "resolving",
+			percent: 100,
+			current: 100,
+			total: 100,
+		});
+		expect(storage.jobs("w").find((j) => j.id === job.id)?.fetchProgress?.percent).toBe(100);
+		const before = JSON.stringify(storage.jobs("w"));
+		storage.reportRunFetchProgress(
+			{ ...run, version: run.version + 1 },
+			{ stage: "receiving", percent: 50 }
+		);
+		expect(JSON.stringify(storage.jobs("w"))).toBe(before);
+		storage.updateJob(job, { state: "cancelled", phase: "cancelled" });
+		const cancelled = JSON.stringify(storage.jobs("w"));
+		storage.reportRunFetchProgress(run, { stage: "receiving", percent: 60 });
+		expect(JSON.stringify(storage.jobs("w"))).toBe(cancelled);
+	} finally {
+		Date.now = originalNow;
+	}
+});

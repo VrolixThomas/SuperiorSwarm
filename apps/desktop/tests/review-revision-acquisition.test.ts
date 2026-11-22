@@ -9,6 +9,7 @@ import {
 	revisionRemoteRepository,
 } from "../src/main/review-explanation/revision-acquisition";
 import { ReviewSnapshotService } from "../src/main/review-explanation/snapshot";
+import type { ReviewFetchProgress } from "../src/shared/review-fetch-progress";
 import type { ReviewSnapshotRevision } from "../src/shared/review-snapshot-types";
 import { fixtureGitEnv, snapshotFixture } from "./helpers/review-snapshot-fixture";
 
@@ -189,75 +190,101 @@ test("stalled provider lookup times out and cannot fetch when it eventually retu
 	expect(fetches).toBe(0);
 });
 
-test("application-auth fetch isolates hostile config and shares only Git objects", async () => {
-	const originalPath = process.env["PATH"];
-	const originalGlobalConfig = process.env["GIT_CONFIG_GLOBAL"];
-	const realGit = execFileSync("/usr/bin/which", ["git"], { encoding: "utf8" }).trim();
-	const bin = join(fixture.directory, "bin");
-	const capture = join(fixture.directory, "calls.jsonl");
-	const trace = join(fixture.directory, "trace.jsonl");
-	mkdirSync(bin);
-	const hostile = `[url "https://wrong.invalid/"]\n insteadOf = https://bitbucket.org/\n[http]\n extraHeader = X-Untrusted: true\n[trace2]\n envVars = GIT_CONFIG_VALUE_1\n eventTarget = ${trace}\n`;
-	writeFileSync(join(fixture.directory, ".gitconfig"), hostile);
-	git("config", "url.https://wrong.invalid/.insteadOf", "https://bitbucket.org/");
-	const beforeRefs = git("show-ref");
-	writeFileSync(
-		join(bin, "git"),
-		`#!${process.execPath}
+test.each([false, true])(
+	"application-auth fetch isolates config and reuses branch tips (shallow=%s)",
+	async (shallow) => {
+		const originalPath = process.env["PATH"];
+		const originalGlobalConfig = process.env["GIT_CONFIG_GLOBAL"];
+		const realGit = execFileSync("/usr/bin/which", ["git"], { encoding: "utf8" }).trim();
+		const bin = join(fixture.directory, "bin");
+		const capture = join(fixture.directory, "calls.jsonl");
+		const trace = join(fixture.directory, "trace.jsonl");
+		mkdirSync(bin);
+		const hostile = `[url "https://wrong.invalid/"]\n insteadOf = https://bitbucket.org/\n[http]\n extraHeader = X-Untrusted: true\n[trace2]\n envVars = GIT_CONFIG_VALUE_1\n eventTarget = ${trace}\n`;
+		writeFileSync(join(fixture.directory, ".gitconfig"), hostile);
+		git("config", "url.https://wrong.invalid/.insteadOf", "https://bitbucket.org/");
+		// Current HEAD is unrelated/old; a remote-tracking tip has newer shared history.
+		git(
+			"fetch",
+			...(shallow ? ["--depth=1"] : []),
+			"--no-tags",
+			"--no-write-fetch-head",
+			"--refmap=",
+			"--",
+			fixture.root,
+			fixture.target
+		);
+		git("update-ref", "refs/remotes/origin/recent", fixture.target);
+		const expectedHaves = [git("rev-parse", "HEAD"), fixture.target];
+		const shallowBefore = shallow ? readFileSync(join(root, ".git", "shallow"), "utf8") : null;
+		const beforeRefs = git("show-ref");
+		writeFileSync(
+			join(bin, "git"),
+			`#!${process.execPath}
 const {execFileSync}=require('node:child_process');
 const fs=require('node:fs');
 const args=process.argv.slice(2);
 const realGit=${JSON.stringify(realGit)};
 if(args.includes('fetch')) {
  const config=(...a)=>{try{return execFileSync(realGit,['config',...a],{env:process.env,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim()}catch{return ''}};
- fs.appendFileSync(${JSON.stringify(capture)},JSON.stringify({args,cwd:process.cwd(),objects:process.env.GIT_OBJECT_DIRECTORY,hasHeader:config('--get-urlmatch','http.extraHeader','https://bitbucket.org/org/repo.git')===process.env.GIT_CONFIG_VALUE_1,redirects:config('--get','http.followRedirects'),rewrites:config('--get-regexp','^url\\\\.'),global:process.env.GIT_CONFIG_GLOBAL,protocol:process.env.GIT_ALLOW_PROTOCOL})+'\\n');
+ fs.appendFileSync(${JSON.stringify(capture)},JSON.stringify({haves:execFileSync(realGit,['for-each-ref','--format=%(objectname)'],{env:process.env,encoding:'utf8'}).trim().split('\\n'),args,cwd:process.cwd(),objects:process.env.GIT_OBJECT_DIRECTORY,hasHeader:config('--get-urlmatch','http.extraHeader','https://bitbucket.org/org/repo.git')===process.env.GIT_CONFIG_VALUE_1,redirects:config('--get','http.followRedirects'),rewrites:config('--get-regexp','^url\\\\.'),global:process.env.GIT_CONFIG_GLOBAL,protocol:process.env.GIT_ALLOW_PROTOCOL})+'\\n');
  // Only the transport is substituted: real Git fetch writes into the production-selected object directory.
  args[args.indexOf('--')+1]=${JSON.stringify(fixture.root)};
- execFileSync(realGit,args,{env:{...process.env,GIT_ALLOW_PROTOCOL:'file'},stdio:'pipe'});
+ execFileSync(realGit,args,{env:{...process.env,GIT_ALLOW_PROTOCOL:'file'},stdio:['ignore','pipe','inherit']});
 } else {
  const output=execFileSync(realGit,args,{env:process.env,stdio:['ignore','pipe','pipe']});
  process.stdout.write(output);
 }
 `,
-		{ mode: 0o700 }
-	);
-	process.env["PATH"] = `${bin}:${originalPath}`;
-	process.env["GIT_CONFIG_GLOBAL"] = join(fixture.directory, ".gitconfig");
-	try {
-		await fetchRevisionObjects(
-			root,
-			"https://user:configured-secret@bitbucket.org/org/repo.git",
-			[fixture.head, fixture.target],
-			AbortSignal.timeout(5000),
-			"Authorization: Basic synthetic-test-token"
+			{ mode: 0o700 }
 		);
-		const record = JSON.parse(readFileSync(capture, "utf8"));
-		expect(record.args.join(" ")).not.toContain("synthetic-test-token");
-		expect(record.args.join(" ")).not.toContain("configured-secret");
-		expect(record).toMatchObject({
-			hasHeader: true,
-			redirects: "false",
-			rewrites: "",
-			global: "/dev/null",
-			protocol: "https",
-		});
-		expect(record.objects).toBe(realpathSync(join(root, ".git", "objects")));
-		expect(() => readFileSync(join(record.cwd, "config"))).toThrow();
-		expect(git("show-ref")).toBe(beforeRefs);
-		expect(git("cat-file", "-t", fixture.head)).toBe("commit");
-		expect(readFileSync(join(root, "work.txt"), "utf8")).toBe("uncommitted user work");
+		process.env["PATH"] = `${bin}:${originalPath}`;
+		process.env["GIT_CONFIG_GLOBAL"] = join(fixture.directory, ".gitconfig");
 		try {
-			expect(readFileSync(trace, "utf8")).not.toContain("synthetic-test-token");
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			const progress: ReviewFetchProgress[] = [];
+			await fetchRevisionObjects(
+				root,
+				"https://user:configured-secret@bitbucket.org/org/repo.git",
+				[fixture.head, fixture.target],
+				AbortSignal.timeout(5000),
+				"Authorization: Basic synthetic-test-token",
+				(item) => progress.push(item)
+			);
+			expect(progress.length).toBeGreaterThan(0);
+			expect(JSON.stringify(progress)).not.toMatch(
+				/synthetic-test-token|configured-secret|bitbucket|file:/
+			);
+			const record = JSON.parse(readFileSync(capture, "utf8"));
+			expect(new Set(record.haves)).toEqual(new Set(expectedHaves));
+			expect(record.args).not.toContain(`--negotiation-tip=${expectedHaves[0]}`);
+			expect(record.args.join(" ")).not.toContain("synthetic-test-token");
+			expect(record.args.join(" ")).not.toContain("configured-secret");
+			expect(record).toMatchObject({
+				hasHeader: true,
+				redirects: "false",
+				rewrites: "",
+				global: "/dev/null",
+				protocol: "https",
+			});
+			expect(record.objects).toBe(realpathSync(join(root, ".git", "objects")));
+			expect(() => readFileSync(join(record.cwd, "config"))).toThrow();
+			expect(git("show-ref")).toBe(beforeRefs);
+			if (shallow) expect(readFileSync(join(root, ".git", "shallow"), "utf8")).toBe(shallowBefore);
+			expect(git("cat-file", "-t", fixture.head)).toBe("commit");
+			expect(readFileSync(join(root, "work.txt"), "utf8")).toBe("uncommitted user work");
+			try {
+				expect(readFileSync(trace, "utf8")).not.toContain("synthetic-test-token");
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+		} finally {
+			process.env["PATH"] = originalPath;
+			if (originalGlobalConfig === undefined)
+				Reflect.deleteProperty(process.env, "GIT_CONFIG_GLOBAL");
+			else process.env["GIT_CONFIG_GLOBAL"] = originalGlobalConfig;
 		}
-	} finally {
-		process.env["PATH"] = originalPath;
-		if (originalGlobalConfig === undefined)
-			Reflect.deleteProperty(process.env, "GIT_CONFIG_GLOBAL");
-		else process.env["GIT_CONFIG_GLOBAL"] = originalGlobalConfig;
 	}
-});
+);
 
 test("app authentication rejects altered HTTPS destinations", () => {
 	for (const url of [
@@ -312,3 +339,39 @@ test("runtime cancellation aborts its fetch and cannot cancel a browser acquisit
 	await browser;
 	expect(git("cat-file", "-t", fixture.target)).toBe("commit");
 });
+
+test.each(["metadata", "authorization"])(
+	"%s lookup stays bounded independently of long transfer allowance",
+	async (stage) => {
+		let release: (() => void) | undefined;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let fetches = 0;
+		const service = new ReviewRevisionAcquisition({
+			resolveRoot: async () => root,
+			resolveSources: async () => {
+				if (stage === "metadata") await pending;
+				return {
+					headOid: fixture.head,
+					targetTipOid: fixture.target,
+					headRepository: "org/repo",
+					targetRepository: "org/repo",
+				};
+			},
+			getAuthorization: async () => {
+				if (stage === "authorization") await pending;
+				return undefined;
+			},
+			fetchObjects: async () => {
+				fetches++;
+			},
+			timeoutMs: 2000,
+			lookupTimeoutMs: 30,
+		});
+		await expect(service.acquire(input)).rejects.toThrow(`${stage} lookup timed out`);
+		release?.();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(fetches).toBe(0);
+	}
+);

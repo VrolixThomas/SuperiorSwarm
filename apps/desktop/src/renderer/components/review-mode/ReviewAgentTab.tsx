@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isReviewAgentJobActive } from "../../../shared/review-agent-job";
+import { formatReviewFetchProgress } from "../../../shared/review-fetch-progress";
 import {
 	observeReviewAgentJob,
 	revealReview,
@@ -137,6 +138,11 @@ export function ReviewAgentTab({
 				<div className="min-h-0 flex-1 overflow-auto p-6">
 					<div className="mx-auto max-w-[640px] py-8">
 						<h2 className="text-lg font-semibold">{reviewAgentJobLabel(job)}</h2>
+						{job.phase === "fetching" && job.fetchProgress && (
+							<output aria-live="polite" className="mt-3 block text-[14px] text-[var(--text)]">
+								{formatReviewFetchProgress(job.fetchProgress)}
+							</output>
+						)}
 						<p className="mt-1 text-[12px] text-[var(--text-tertiary)]">
 							Attempt {job.attempt} · {job.phase}
 							{job.updatedAt ? ` · Updated ${new Date(job.updatedAt).toLocaleTimeString()}` : ""}

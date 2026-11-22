@@ -6,6 +6,7 @@ import { app } from "electron";
 import type { CliPresetName } from "../../shared/cli-preset";
 import type { GitHubPRDetails } from "../../shared/github-types";
 import type { ReviewAgentJobPhase } from "../../shared/review-agent-job";
+import type { ReviewFetchProgress } from "../../shared/review-fetch-progress";
 import type { ReviewPathRun, ReviewPathRuntimePort } from "../../shared/review-path-runtime";
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getReviewDrafts, getSettings } from "../ai-review/orchestrator";
@@ -28,6 +29,7 @@ import { buildReviewPathLaunchScript, quoteShell } from "./launch";
 import { resolveReviewMergeBase } from "./revisions";
 
 export interface RuntimeStorage {
+	reportRunFetchProgress?(run: ReviewPathRun, progress: ReviewFetchProgress): void;
 	reportRunPhase?(run: ReviewPathRun, phase: ReviewAgentJobPhase, message: string): void;
 	interruptPreparingJobs?(): void;
 	getRun(id: string): ReviewPathRun | null | undefined;
@@ -117,6 +119,7 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 						sourceBranch: details.sourceBranch,
 						targetBranch: details.targetBranch,
 						expectedHeadOid: run.identity.headSha,
+						onFetchProgress: (progress) => store.reportRunFetchProgress?.(run, progress),
 						onPhase: (phase) =>
 							store.reportRunPhase?.(
 								run,
@@ -156,7 +159,8 @@ export function getReviewPathRuntime(store: RuntimeStorage): ReviewPathRuntimePo
 								number: run.identity.prNumber,
 							},
 						},
-						controller.signal
+						controller.signal,
+						(progress) => store.reportRunFetchProgress?.(run, progress)
 					);
 				}
 				if (headMissing) await requireLocalCommit(cwd, run.identity.headSha, controller.signal);

@@ -150,10 +150,13 @@ if (inIsolatedFileBrowserTest(import.meta.path, "exact review workspace opening"
 		db.update(schema.projects).set({ repoPath: root }).run();
 		const refs = git("show-ref");
 		const fetches: string[][] = [];
+		const firstProgress: unknown[] = [];
+		const secondProgress: unknown[] = [];
 		const preparer = new ReviewWorkspacePreparer({
 			resolveSources: async () => sources(),
 			getAuthorization: async () => "synthetic-authorization",
-			fetchObjects: async (cwd, remote, oids, _signal, authorization) => {
+			fetchObjects: async (cwd, remote, oids, _signal, authorization, onProgress) => {
+				onProgress?.({ stage: "receiving", percent: 20, current: 2, total: 10, bytes: 1024 });
 				expect(cwd).toContain("consumer");
 				expect(remote).toBe("https://bitbucket.org/org/repo.git");
 				expect(authorization).toBe("synthetic-authorization");
@@ -170,12 +173,22 @@ if (inIsolatedFileBrowserTest(import.meta.path, "exact review workspace opening"
 			},
 		});
 		const [first, second] = await Promise.all([
-			preparer.open(input, { expectedHeadOid: fixture.head }),
-			preparer.open(input, { expectedHeadOid: fixture.head }),
+			preparer.open(input, {
+				expectedHeadOid: fixture.head,
+				onFetchProgress: (p) => firstProgress.push(p),
+			}),
+			preparer.open(input, {
+				expectedHeadOid: fixture.head,
+				onFetchProgress: (p) => secondProgress.push(p),
+			}),
 		]);
 		expect(first.id).toBe(second.id);
 		expect(first.worktreePath).toBe(second.worktreePath);
 		expect(fetches).toEqual([[fixture.head]]);
+		expect(firstProgress).toEqual([
+			{ stage: "receiving", percent: 20, current: 2, total: 10, bytes: 1024 },
+		]);
+		expect(secondProgress).toEqual(firstProgress);
 		expect(db.select().from(schema.worktrees).all()).toHaveLength(1);
 		expect(db.select().from(schema.workspaces).all()).toHaveLength(1);
 		expect(git("show-ref")).toBe(refs);
@@ -214,6 +227,24 @@ if (inIsolatedFileBrowserTest(import.meta.path, "exact review workspace opening"
 		expect(db.select().from(schema.worktrees).all()).toHaveLength(0);
 		expect(db.select().from(schema.workspaces).all()[0]?.worktreeId).toBeNull();
 		expect(existsSync(join(fixture.directory, "repo-worktrees"))).toBe(false);
+	});
+
+	test("metadata keeps its short deadline despite the longer transfer budget", async () => {
+		let release: (() => void) | undefined;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const preparer = new ReviewWorkspacePreparer({
+			metadataTimeoutMs: 15,
+			resolveSources: async () => {
+				await pending;
+				return sources();
+			},
+		});
+		await expect(preparer.open(input)).rejects.toThrow("metadata timed out");
+		release?.();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(db.select().from(schema.worktrees).all()).toHaveLength(0);
 	});
 
 	test("provider head drift is rejected before checkout", async () => {
