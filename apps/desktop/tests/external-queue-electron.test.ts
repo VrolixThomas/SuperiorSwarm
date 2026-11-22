@@ -120,6 +120,7 @@ test.skipIf(process.platform !== "darwin")(
 			expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8"))).toEqual({
 				unified: true,
 				openOnly: true,
+				projectNavigation: true,
 				doneUndo: true,
 				laterBringBack: true,
 				hookCleanup: true,

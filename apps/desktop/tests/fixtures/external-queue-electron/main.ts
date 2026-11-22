@@ -210,6 +210,16 @@ async function run() {
 	console.log("hook selected");
 	await click("Open project ↵");
 	console.log("opened");
+	const navigation = await js<{
+		projectId: string | null;
+		workspaceId: string | null;
+		cwd: string;
+		segment: string;
+	}>("window.externalQueueNavigationProbe()");
+	check(navigation.projectId === "repo", "Open must select the hook's project");
+	check(navigation.segment === "repos", "Open must navigate to repositories");
+	check(navigation.workspaceId === null, "Open must not restore an unrelated saved workspace");
+	check(navigation.cwd === "", "Open must not restore an unrelated cwd");
 	check(queue.read(hook.id)?.acknowledgedRevision === null, "Open must not acknowledge");
 	await click("Done E");
 	await until(() => rowCount(2));
@@ -252,6 +262,7 @@ async function run() {
 		JSON.stringify({
 			unified: true,
 			openOnly: true,
+			projectNavigation: true,
 			doneUndo: true,
 			laterBringBack: true,
 			hookCleanup: true,
