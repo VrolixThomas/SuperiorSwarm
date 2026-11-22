@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.24.0 (2026-11-23)
+
+### What's New
+
+SuperiorSwarm now includes a built-in browser with workspace-specific sessions, address-bar search, and responsive previews. The new activity queue brings agent updates and questions, pull requests, tickets, and project checks into one place, with quick ways to open, reply to, or defer work. Pull request reviews now stay in workspace tabs, with guided reading paths, contextual questions, inline findings, and side-by-side agent sessions.
+
+### Changes
+
+- feat(browser): add persistent workspace browsing and search (#162)
+- Investigate/explainable pr review flow (#163)
+- Activity queue (#164)
+
 ## v0.23.4 (2026-10-13)
 
 ### What's New
