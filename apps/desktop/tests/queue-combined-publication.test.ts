@@ -573,7 +573,7 @@ test("legacy submitted verdict receipts without resolution metadata remain conse
 	const key = "queue-pr-publication:legacy";
 	const row = getDb().select().from(sessionState).where(eq(sessionState.key, key)).get()!;
 	const receipt = JSON.parse(row.value);
-	delete receipt.resolvesOccurrence;
+	receipt.resolvesOccurrence = undefined;
 	getDb()
 		.update(sessionState)
 		.set({ value: JSON.stringify(receipt) })
