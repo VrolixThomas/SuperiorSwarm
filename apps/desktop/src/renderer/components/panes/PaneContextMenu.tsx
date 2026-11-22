@@ -78,6 +78,7 @@ export function PaneContextMenu({
 	return createPortal(
 		<div
 			ref={menuRef}
+			data-browser-modal
 			className="fixed z-[9999] min-w-[170px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-lg)]"
 			style={{ top: clampedY, left: clampedX }}
 			onContextMenu={(e) => e.preventDefault()}

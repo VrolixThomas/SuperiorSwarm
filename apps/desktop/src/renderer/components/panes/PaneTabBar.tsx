@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
+import { openBrowserTab } from "../../browser/lifecycle";
 import {
 	closePaneWithTerminalCleanup,
 	closeTabWithTerminalCleanup,
@@ -11,6 +12,7 @@ import { TAB_DRAG_MIME } from "./DropZoneOverlay";
 import { PaneContextMenu } from "./PaneContextMenu";
 
 function TabIcon({ kind }: { kind: TabItem["kind"] }) {
+	if (kind === "browser") return <span aria-hidden="true">◎</span>;
 	if (kind === "terminal") {
 		return (
 			<span className="shrink-0 font-mono text-[10px] text-[var(--text-quaternary)]">&gt;_</span>
@@ -205,6 +207,19 @@ export function PaneTabBar({
 				})}
 			</div>
 
+			{/* Workspace browser entry beside the new terminal button. */}
+			<button
+				type="button"
+				aria-label="New browser tab"
+				title="New browser tab"
+				className="app-no-drag shrink-0 rounded px-2 text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+				onClick={() => {
+					setFocusedPane(pane.id);
+					openBrowserTab(workspaceId);
+				}}
+			>
+				◎
+			</button>
 			{/* New terminal button */}
 			<div className="app-no-drag shrink-0 pr-1">
 				<button

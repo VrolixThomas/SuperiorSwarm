@@ -1,4 +1,5 @@
 import type { LayoutNode } from "../../shared/pane-types";
+import { openBrowserTab } from "../browser/lifecycle";
 import { closePaneWithTerminalCleanup, closeTabWithTerminalCleanup } from "../lib/pane-lifecycle";
 import { useActionStore } from "../stores/action-store";
 import { useBranchStore } from "../stores/branch-store";
@@ -83,6 +84,17 @@ export function registerCoreActions() {
 	const hasWorkspace = () => useTabStore.getState().activeWorkspaceId !== null;
 
 	store.registerMany([
+		{
+			id: "browser.open",
+			label: "Open Browser Tab",
+			category: "General",
+			when: hasWorkspace,
+			keywords: ["web", "preview", "localhost"],
+			execute: () => {
+				const id = useTabStore.getState().activeWorkspaceId;
+				if (id) openBrowserTab(id);
+			},
+		},
 		// ── General ─────────────────────────────────────────────────────────
 		{
 			id: "general.commandPalette",

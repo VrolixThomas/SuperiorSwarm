@@ -16,5 +16,8 @@
 		"turbo": "^2.8.13",
 		"typescript": "^5.9.3"
 	},
-	"packageManager": "bun@1.1.38"
+	"packageManager": "bun@1.1.38",
+	"overrides": {
+		"node-abi": "4.43.0"
+	}
 }

@@ -1,3 +1,4 @@
+import type { BrowserAPI } from "../shared/browser";
 import type { TerminalFilesAPI } from "../shared/terminal-files";
 import type {
 	AgentAlertAPI,
@@ -16,6 +17,7 @@ import type {
 } from "../shared/types";
 
 export interface ElectronAPI {
+	browser: BrowserAPI;
 	terminal: TerminalAPI;
 	terminalFiles: TerminalFilesAPI;
 	trpc: TrpcAPI;

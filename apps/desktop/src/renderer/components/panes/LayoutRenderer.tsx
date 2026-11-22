@@ -43,16 +43,17 @@ function SplitRenderer({
 	}, []);
 
 	const handleLayoutChanged = useCallback(
-		(sizes: number[]) => {
-			if (sizes[0] !== undefined) {
-				latestRatioRef.current = sizes[0] / 100;
+		(sizes: Record<string, number>) => {
+			const first = sizes[`${node.id}-first`];
+			if (first !== undefined) {
+				latestRatioRef.current = first / 100;
 				if (debounceTimerRef.current !== null) {
 					clearTimeout(debounceTimerRef.current);
 				}
 				debounceTimerRef.current = setTimeout(commitRatio, RATIO_DEBOUNCE_MS);
 			}
 		},
-		[commitRatio]
+		[commitRatio, node.id]
 	);
 
 	return (

@@ -1,4 +1,5 @@
 import type { Pane } from "../../../shared/pane-types";
+import { BrowserTab } from "../../browser/BrowserTab";
 import { trpc } from "../../trpc/client";
 import { CrossRepoOrchestratorCanvas } from "../CrossRepoOrchestratorCanvas";
 import { DiffFileTab } from "../DiffFileTab";
@@ -53,6 +54,11 @@ export function PaneContent({
 			))}
 
 			{/* Non-terminal: mount only if active */}
+			{activeTab?.kind === "browser" && (
+				<div className="absolute inset-0">
+					<BrowserTab key={activeTab.id} tab={activeTab} />
+				</div>
+			)}
 			{activeTab?.kind === "diff-file" && (
 				<div className="absolute inset-0">
 					<DiffFileTab

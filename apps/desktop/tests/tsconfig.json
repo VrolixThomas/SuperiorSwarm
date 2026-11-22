@@ -7,5 +7,6 @@
 		"moduleResolution": "bundler",
 		"types": ["bun"]
 	},
-	"include": ["./**/*", "../src/shared/**/*", "../src/renderer/types.d.ts"]
+	"include": ["./**/*", "../src/shared/**/*", "../src/renderer/types.d.ts"],
+	"exclude": ["./fixtures/workspace-browser-app-renderer.tsx"]
 }

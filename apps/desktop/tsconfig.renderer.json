@@ -7,5 +7,9 @@
 			"@/*": ["./src/renderer/*"]
 		}
 	},
-	"include": ["src/renderer/**/*", "src/shared/**/*"]
+	"include": [
+		"src/renderer/**/*",
+		"src/shared/**/*",
+		"tests/fixtures/workspace-browser-app-renderer.tsx"
+	]
 }
