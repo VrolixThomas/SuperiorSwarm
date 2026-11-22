@@ -6,6 +6,9 @@ export interface PRFeedbackEvent {
 	body: string;
 	at: number;
 	resolved?: boolean;
+	filePath?: string;
+	lineNumber?: number | null;
+	threadId?: string;
 }
 export interface PRFeedbackSnapshot {
 	version: 1;

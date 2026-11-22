@@ -8,6 +8,7 @@ import { getDb } from "../db";
 import { commentSolveSessions, workspaces } from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
 import { defaultSpawnFn } from "../services/workspace-service";
+import { fetchPRFeedback } from "./pr-feedback-fetch";
 import { isPRQueueItemCurrent } from "./pr-scope";
 import { currentExternalQueueItem } from "./queue-view";
 const running = new Set<string>();
@@ -50,9 +51,13 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 				.some((session) => session.id !== ownSessionId)
 		)
 			throw new Error("A solver is already running for this workspace.");
-		return { workspace: row, target: item.target };
+		return {
+			workspace: row,
+			target: item.target,
+			feedbackIds: item.reasons.map((reason) => reason.code),
+		};
 	};
-	const { workspace, target } = requireLinked();
+	const { workspace, target, feedbackIds } = requireLinked();
 	bound.workspaceId = workspace.id;
 	if (running.has(workspace.id)) throw new Error("A solver launch is already in progress.");
 	running.add(workspace.id);
@@ -73,12 +78,26 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 			getSettings().skipPermissions !== settings.skipPermissions
 		)
 			throw new Error("Solver configuration changed while confirming. Review the launch again.");
-		// A failed or unchanged conditional fetch cannot certify the legacy cache.
-		// Force a complete fetch, bind it to this account/PR, and pass that exact result forward.
 		const git = getGitProvider(target.provider);
 		if (!git.isConnected()) throw new Error("The PR provider is unavailable.");
-		const refresh = await git.getPRCommentsIfChanged(target.owner, target.repo, target.number);
-		if (!refresh.changed) throw new Error("Complete current feedback could not be refreshed.");
+		// Fetch the same complete event model that produced this occurrence, including review bodies.
+		const fresh = await fetchPRFeedback(target.provider, target.owner, target.repo, target.number);
+		const selected = fresh.filter(
+			(event) =>
+				feedbackIds.includes(event.id) && !event.resolved && event.authorId !== target.accountId
+		);
+		if (!selected.length)
+			throw new Error("This feedback is no longer actionable. Refresh the queue.");
+		const comments = selected.map((event) => ({
+			id: `queue-feedback:${event.id}`,
+			author: event.author,
+			body: `Feedback ${event.id} from ${event.author} (${event.authorId}):\n\n${event.body}`,
+			createdAt: new Date(event.at).toISOString(),
+			filePath: event.filePath ?? null,
+			lineNumber: event.lineNumber ?? null,
+			side: null,
+			threadId: event.threadId,
+		}));
 		requireLinked();
 		if (
 			getSettings().cliPreset !== settings.cliPreset ||
@@ -87,7 +106,8 @@ export async function solveQueuePRFeedback(input: WorkspaceQueueRevisionInput) {
 			throw new Error("Solver configuration changed. Review the launch again.");
 		const solve = await createAndQueueSolve({
 			workspaceId: workspace.id,
-			comments: refresh.comments,
+			comments,
+			queueOccurrence: input,
 			expectedAccountId: target.accountId,
 		});
 		try {

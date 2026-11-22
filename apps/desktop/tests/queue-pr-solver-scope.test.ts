@@ -26,6 +26,19 @@ mock.module("../src/main/control-plane/confirm-bridge", () => ({
 mock.module("../src/main/ai-review/orchestrator", () => ({
 	getSettings: () => ({ cliPreset: "codex", skipPermissions: false, autoSolveEnabled: false }),
 }));
+mock.module("../src/main/activity-queue/pr-feedback-fetch", () => ({
+	fetchPRFeedback: async () => {
+		return [
+			{
+				id: "review:42",
+				author: "Reviewer",
+				authorId: "external",
+				body: "current comments",
+				at: 1,
+			},
+		];
+	},
+}));
 mock.module("../src/main/providers/git-provider", () => ({
 	getGitProvider: () => ({
 		isConnected: () => true,
@@ -137,7 +150,7 @@ test("new queue solver preserves active other-provider session with same PR iden
 		.values({
 			id: "old-comment",
 			solveSessionId: "previous-account",
-			platformCommentId: "1",
+			platformCommentId: "queue-feedback:review:42",
 			author: "old",
 			body: "already handled under another account",
 			filePath: "",
@@ -148,6 +161,7 @@ test("new queue solver preserves active other-provider session with same PR iden
 		id: "queue",
 		revision: 1,
 		kind: "pr-feedback",
+		reasons: [{ code: "review:42", label: "Changes requested" }],
 		target: {
 			type: "pr",
 			provider: "github",
@@ -180,14 +194,14 @@ test("new queue solver preserves active other-provider session with same PR iden
 			.from(s.prComments)
 			.where(eq(s.prComments.solveSessionId, result.sessionId))
 			.get()?.body
-	).toBe("current comments");
+	).toBe("Feedback review:42 from Reviewer (external):\n\ncurrent comments");
 	expect(
 		getDb()
 			.select()
 			.from(s.sessionState)
 			.where(eq(s.sessionState.key, `comment-solve-scope:${result.sessionId}`))
 			.get()?.value
-	).toBe(JSON.stringify([ws, "github", "github.com", "me", "owner/repo#7"]));
+	).toBe(JSON.stringify([ws, "github", "github.com", "me", "owner/repo#7", "queue", 1]));
 	expect(
 		getDb()
 			.select()

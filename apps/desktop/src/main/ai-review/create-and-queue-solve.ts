@@ -12,7 +12,8 @@ export async function createAndQueueSolve(params: {
 	workspaceId: string;
 	excludeCommentIds?: string[];
 	/** Complete fresh comments supplied by guarded Queue admission; never fall back to cache. */
-	comments?: readonly NormalizedComment[];
+	comments?: readonly (NormalizedComment & { threadId?: string | null })[];
+	queueOccurrence?: { id: string; revision: number };
 	expectedAccountId?: string;
 }): Promise<SolveLaunchInfo> {
 	const db = getDb();
@@ -78,7 +79,16 @@ export async function createAndQueueSolve(params: {
 	if (params.expectedAccountId && account?.accountId !== params.expectedAccountId)
 		throw new Error("The PR account changed before solver preparation.");
 	const scope = account
-		? JSON.stringify([workspace.id, prProvider, account.host, account.accountId, prIdentifier])
+		? JSON.stringify([
+				workspace.id,
+				prProvider,
+				account.host,
+				account.accountId,
+				prIdentifier,
+				...(params.queueOccurrence
+					? [params.queueOccurrence.id, params.queueOccurrence.revision]
+					: []),
+			])
 		: null;
 
 	// Never delete an active session as implicit 'cleanup'. Recovery owns that lifecycle.
@@ -113,7 +123,10 @@ export async function createAndQueueSolve(params: {
 				createdAt: c.createdAt,
 			}));
 	if (cachedComments.length === 0) throw new Error("No unresolved comments to solve.");
-	const rawComments = cachedComments.map((c) => ({ ...c, threadId: null as string | null }));
+	const rawComments = cachedComments.map((c) => ({
+		...c,
+		threadId: "threadId" in c && typeof c.threadId === "string" ? c.threadId : null,
+	}));
 
 	// 5. Filter out comments already known in completed sessions
 	const completedSessions = db

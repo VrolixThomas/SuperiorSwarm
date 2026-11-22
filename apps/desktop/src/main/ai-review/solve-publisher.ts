@@ -51,6 +51,10 @@ async function postRepliesAndResolveThreads(
 
 	const replyResults = await Promise.allSettled(
 		approvedReplies.map(async ({ reply, comment }) => {
+			if (comment.platformCommentId.startsWith("queue-feedback:") && !comment.threadId)
+				throw new Error(
+					"This feedback has no reply thread. Respond in the PR conversation; the prepared reply is retained."
+				);
 			await git.replyToComment({
 				owner,
 				repo,
@@ -79,14 +83,18 @@ async function postRepliesAndResolveThreads(
 			.all();
 
 		const resolveResults = await Promise.allSettled(
-			fixedComments.map((comment) =>
-				git.resolveComment({
-					owner,
-					repo,
-					prNumber,
-					commentId: comment.threadId ?? comment.platformCommentId,
-				})
-			)
+			fixedComments
+				.filter(
+					(comment) => !comment.platformCommentId.startsWith("queue-feedback:") || comment.threadId
+				)
+				.map((comment) =>
+					git.resolveComment({
+						owner,
+						repo,
+						prNumber,
+						commentId: comment.threadId ?? comment.platformCommentId,
+					})
+				)
 		);
 		for (const r of resolveResults) {
 			if (r.status === "fulfilled") threadsResolved++;

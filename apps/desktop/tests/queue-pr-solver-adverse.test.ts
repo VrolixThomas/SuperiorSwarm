@@ -26,6 +26,11 @@ mock.module("../src/main/control-plane/confirm-bridge", () => ({
 mock.module("../src/main/ai-review/orchestrator", () => ({
 	getSettings: () => ({ cliPreset: "codex", skipPermissions: false, autoSolveEnabled: false }),
 }));
+mock.module("../src/main/activity-queue/pr-feedback-fetch", () => ({
+	fetchPRFeedback: async () => {
+		throw new Error("synthetic unavailable");
+	},
+}));
 mock.module("../src/main/providers/git-provider", () => ({
 	getGitProvider: () => ({
 		isConnected: () => true,
@@ -102,6 +107,7 @@ test("new queue solver should refuse stale cache when refresh fails and preserve
 		id: "queue",
 		revision: 1,
 		kind: "pr-feedback",
+		reasons: [{ code: "review:42", label: "Changes requested" }],
 		target: {
 			type: "pr",
 			provider: "github",
