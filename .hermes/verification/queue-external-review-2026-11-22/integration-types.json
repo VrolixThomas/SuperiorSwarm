@@ -1,0 +1,10 @@
+{
+  "main": {
+    "diagnostics": 57,
+    "queuePathDiagnostics": []
+  },
+  "renderer": {
+    "diagnostics": 78,
+    "queuePathDiagnostics": []
+  }
+}
