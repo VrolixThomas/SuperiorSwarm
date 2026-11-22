@@ -1,0 +1,22 @@
+[
+  {
+    "case": "codex-hook",
+    "fixture": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-h48FJj",
+    "credentialLinkRemoved": true
+  },
+  {
+    "case": "claude-hook",
+    "fixture": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-Zj8LGn",
+    "credentialLinkRemoved": true
+  },
+  {
+    "case": "codex-pr",
+    "fixture": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-FB4XuI",
+    "credentialLinkRemoved": true
+  },
+  {
+    "case": "claude-pr",
+    "fixture": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-Pub6wR",
+    "credentialLinkRemoved": true
+  }
+]

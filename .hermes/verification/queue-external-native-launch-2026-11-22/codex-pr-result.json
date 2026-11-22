@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "provider": "codex",
+  "scenario": "pr",
+  "productionPreparedScript": true,
+  "rendererCreateBeforeWrite": true,
+  "actualNativeCallback": true,
+  "sameWorkspace": true,
+  "freshConversation": true,
+  "siblingManagedPreserved": true,
+  "sourceNotAcknowledged": true,
+  "postDoneLaunchRejected": true,
+  "adapter": "Test-only restrictive config/hooks flags; production argv retained",
+  "foregroundLeader": "/bin/bash",
+  "providerInForegroundGroup": true,
+  "trace": [
+    {
+      "event": "SessionStart",
+      "provider": "codex",
+      "terminal": "eeG2kXSfgA6RkiDX_pe8D",
+      "conversation": "01a20328-d93d-7e00-bad2-8b3cfffd49f9",
+      "accepted": true,
+      "cwd": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-FB4XuI/repo"
+    },
+    {
+      "event": "UserPromptSubmit",
+      "provider": "codex",
+      "terminal": "eeG2kXSfgA6RkiDX_pe8D",
+      "conversation": "01a20328-d93d-7e00-bad2-8b3cfffd49f9",
+      "accepted": true,
+      "cwd": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-FB4XuI/repo"
+    }
+  ]
+}

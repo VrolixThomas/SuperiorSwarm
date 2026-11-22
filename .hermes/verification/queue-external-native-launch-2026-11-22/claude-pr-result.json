@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "provider": "claude",
+  "scenario": "pr",
+  "productionPreparedScript": true,
+  "rendererCreateBeforeWrite": true,
+  "actualNativeCallback": true,
+  "sameWorkspace": true,
+  "freshConversation": true,
+  "siblingManagedPreserved": true,
+  "sourceNotAcknowledged": true,
+  "postDoneLaunchRejected": true,
+  "adapter": "Test-only restrictive config/hooks flags; production argv retained",
+  "foregroundLeader": "/bin/bash",
+  "providerInForegroundGroup": true,
+  "trace": [
+    {
+      "event": "SessionStart",
+      "provider": "claude",
+      "terminal": "6NsH6J9HGvO6jjRbrkUHc",
+      "conversation": "c09094cb-4523-49dc-a3b4-e338669c7ba5",
+      "accepted": true,
+      "cwd": "/Users/Werk/Documents/Repositories/SuperiorSwarm"
+    },
+    {
+      "event": "UserPromptSubmit",
+      "provider": "claude",
+      "terminal": "6NsH6J9HGvO6jjRbrkUHc",
+      "conversation": "c09094cb-4523-49dc-a3b4-e338669c7ba5",
+      "accepted": true,
+      "cwd": "/Users/Werk/Documents/Repositories/SuperiorSwarm"
+    }
+  ]
+}

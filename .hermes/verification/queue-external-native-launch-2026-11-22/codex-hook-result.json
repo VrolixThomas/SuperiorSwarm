@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "provider": "codex",
+  "scenario": "hook",
+  "productionPreparedScript": true,
+  "rendererCreateBeforeWrite": true,
+  "actualNativeCallback": true,
+  "sameWorkspace": true,
+  "freshConversation": true,
+  "siblingManagedPreserved": true,
+  "sourceNotAcknowledged": true,
+  "postDoneLaunchRejected": true,
+  "adapter": "Test-only restrictive config/hooks flags; production argv retained",
+  "foregroundLeader": "/Users/Werk/.codex/packages/standalone/releases/0.170.0-aarch64-apple-darwin/bin/codex",
+  "providerInForegroundGroup": true,
+  "trace": [
+    {
+      "event": "SessionStart",
+      "provider": "codex",
+      "terminal": "G2EIhN4-5PnZKrQWnAnuq",
+      "conversation": "01a20327-d4e9-7523-8f11-8036c8b8ecc3",
+      "accepted": true,
+      "cwd": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-h48FJj/repo",
+      "launchId": "c31ae469-78a4-4f53-8421-3a12b41d8e3d"
+    },
+    {
+      "event": "UserPromptSubmit",
+      "provider": "codex",
+      "terminal": "G2EIhN4-5PnZKrQWnAnuq",
+      "conversation": "01a20327-d4e9-7523-8f11-8036c8b8ecc3",
+      "accepted": true,
+      "cwd": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-ql-h48FJj/repo",
+      "launchId": "c31ae469-78a4-4f53-8421-3a12b41d8e3d"
+    }
+  ]
+}

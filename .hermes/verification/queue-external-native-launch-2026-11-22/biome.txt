@@ -1,0 +1,168 @@
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:59:14 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    57 │ import { codexHookTrust } from "../queue-reply-tui/codex-hooks";
+    58 │ 
+  > 59 │ const root = process.env["SS_QUEUE_FIXTURE_ROOT"]!;
+       │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    60 │ const provider = process.env["SS_QUEUE_NATIVE_CASES"] === "codex" ? "codex" : "claude";
+    61 │ const scenario = process.env["SS_QUEUE_LAUNCH_KIND"] === "pr" ? "pr" : "hook";
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:101:8 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+     99 │ 	assert(app.getAppPath().startsWith(root));
+    100 │ 	symlinkSync(
+  > 101 │ 		join(process.env["SS_QUEUE_SOURCE_DESKTOP"]!, "mcp-standalone"),
+        │ 		     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    102 │ 		join(app.getAppPath(), "mcp-standalone")
+    103 │ 	);
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:104:39 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    102 │ 		join(app.getAppPath(), "mcp-standalone")
+    103 │ 	);
+  > 104 │ 	migrate(getDb(), { migrationsFolder: process.env["SS_QUEUE_MIGRATIONS"]! });
+        │ 	                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    105 │ 	const cwd = provider === "claude" ? process.env["SS_QUEUE_TRUSTED_CWD"]! : join(root, "repo");
+    106 │ 	assert(
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:105:38 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    103 │ 	);
+    104 │ 	migrate(getDb(), { migrationsFolder: process.env["SS_QUEUE_MIGRATIONS"]! });
+  > 105 │ 	const cwd = provider === "claude" ? process.env["SS_QUEUE_TRUSTED_CWD"]! : join(root, "repo");
+        │ 	                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    106 │ 	assert(
+    107 │ 		(cwd && existsSync(cwd)) || provider === "codex",
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:185:3 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    183 │ 	);
+    184 │ 	const realBinary =
+  > 185 │ 		process.env[provider === "codex" ? "SS_QUEUE_CODEX_BIN" : "SS_QUEUE_CLAUDE_BIN"]!;
+        │ 		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    186 │ 	const wrapperArgs: string[] = [];
+    187 │ 	if (provider === "claude")
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:308:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    306 │ 		() => {}
+    307 │ 	);
+  > 308 │ 	const siblingPid = (await daemon.listSessionsStrict()).find((s) => s.id === "sibling")!.pid;
+        │ 	                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    309 │ 	setupTerminalIPC(daemon, manager);
+    310 │ 	win = new BrowserWindow({
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    306 306 │   		() => {}
+    307 307 │   	);
+    308     │ - → const·siblingPid·=·(await·daemon.listSessionsStrict()).find((s)·=>·s.id·===·"sibling")!.pid;
+        308 │ + → const·siblingPid·=·(await·daemon.listSessionsStrict()).find((s)·=>·s.id·===·"sibling")?.pid;
+    309 309 │   	setupTerminalIPC(daemon, manager);
+    310 310 │   	win = new BrowserWindow({
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:360:14 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    358 │ 		);
+    359 │ 		itemId = projectHookSourceId("project", "check", "native");
+  > 360 │ 		revision = queue.read(itemId)!.revision;
+        │ 		           ^^^^^^^^^^^^^^^^^^^
+    361 │ 		step = "production hook action preparation";
+    362 │ 		prepared = await fixProjectHook({ id: itemId, revision, workspaceId: "workspace" });
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    358 358 │   		);
+    359 359 │   		itemId = projectHookSourceId("project", "check", "native");
+    360     │ - → → revision·=·queue.read(itemId)!.revision;
+        360 │ + → → revision·=·queue.read(itemId)?.revision;
+    361 361 │   		step = "production hook action preparation";
+    362 362 │   		prepared = await fixProjectHook({ id: itemId, revision, workspaceId: "workspace" });
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:431:14 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    429 │ 			},
+    430 │ 		});
+  > 431 │ 		revision = queue.read(itemId)!.revision;
+        │ 		           ^^^^^^^^^^^^^^^^^^^
+    432 │ 		step = "production PR action preparation";
+    433 │ 		prepared = await solveQueuePRFeedback({ id: itemId, revision });
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    429 429 │   			},
+    430 430 │   		});
+    431     │ - → → revision·=·queue.read(itemId)!.revision;
+        431 │ + → → revision·=·queue.read(itemId)?.revision;
+    432 432 │   		step = "production PR action preparation";
+    433 433 │   		prepared = await solveQueuePRFeedback({ id: itemId, revision });
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:461:17 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    459 │ 		)
+    460 │ 	);
+  > 461 │ 	const prompt = trace.find(
+        │ 	               ^^^^^^^^^^^
+  > 462 │ 		(event) =>
+  > 463 │ 			event.terminal === launch.terminalId && event.accepted && event.event === "UserPromptSubmit"
+  > 464 │ 	)!;
+        │ 	^^
+    465 │ 	assert(prompt.conversation && prompt.conversation !== oldConversation);
+    466 │ 	assert.equal(prompt.cwd, cwd);
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:477:29 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    475 │ 		siblingPid
+    476 │ 	);
+  > 477 │ 	assert.notEqual(queue.read(itemId!)?.acknowledgedRevision, revision!);
+        │ 	                           ^^^^^^^
+    478 │ 	const live = (await daemon.listSessionsStrict()).find((s) => s.id === launch.terminalId);
+    479 │ 	assert(live);
+  
+
+apps/desktop/tests/fixtures/queue-external-launch-native/main.ts:477:61 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    475 │ 		siblingPid
+    476 │ 	);
+  > 477 │ 	assert.notEqual(queue.read(itemId!)?.acknowledgedRevision, revision!);
+        │ 	                                                           ^^^^^^^^^
+    478 │ 	const live = (await daemon.listSessionsStrict()).find((s) => s.id === launch.terminalId);
+    479 │ 	assert(live);
+  
+
+Skipped 3 suggested fixes.
+If you wish to apply the suggested (unsafe) fixes, use the command biome check --fix --unsafe
+
+Checked 3 files in 26ms. Fixed 1 file.
+Found 11 warnings.
