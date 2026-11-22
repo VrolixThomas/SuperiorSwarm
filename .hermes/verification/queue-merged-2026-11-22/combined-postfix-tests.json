@@ -1,0 +1,42 @@
+[
+  {
+    "file": "queue-combined-lifecycle.test.ts",
+    "exitCode": 0,
+    "passed": 13
+  },
+  {
+    "file": "queue-combined-publication.test.ts",
+    "exitCode": 0,
+    "passed": 9
+  },
+  {
+    "file": "queue-combined-publication-navigation.test.tsx",
+    "exitCode": 0,
+    "passed": 7
+  },
+  {
+    "file": "queue-pr-publication.test.ts",
+    "exitCode": 0,
+    "passed": 21
+  },
+  {
+    "file": "queue-pr-actions.test.ts",
+    "exitCode": 0,
+    "passed": 9
+  },
+  {
+    "file": "queue-pr-approval-recovery.test.ts",
+    "exitCode": 0,
+    "passed": 1
+  },
+  {
+    "file": "queue-publication-surface-review.test.tsx",
+    "exitCode": 0,
+    "passed": 7
+  },
+  {
+    "file": "queue-external-view.test.ts",
+    "exitCode": 0,
+    "passed": 4
+  }
+]

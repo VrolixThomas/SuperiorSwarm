@@ -1,0 +1,20 @@
+{
+  "commit": "12ff7784",
+  "decision": "approve within reviewed scope",
+  "baseline": "84edb72c",
+  "baselineResult": "7 pass / 2 failures reproducing old own-feedback acknowledgement behavior",
+  "fixedTests": 53,
+  "additionalIndependentCases": 6,
+  "evidence": [
+    "/tmp/independent-feedback-base.txt",
+    "/tmp/independent-feedback-fixed.txt",
+    "/tmp/independent-feedback-regressions.json"
+  ],
+  "fixedSnapshot": "/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/ss-feedback-review-fixed-ii2ikf6s",
+  "limits": [
+    "Fake external provider calls only; no GUI or live posts.",
+    "Legacy submitted verdict receipts lacking resolvesOccurrence metadata remain conservatively reserved.",
+    "No automatic repair of historical acknowledgements is introduced or claimed."
+  ],
+  "dependencyLinksRemoved": true
+}
