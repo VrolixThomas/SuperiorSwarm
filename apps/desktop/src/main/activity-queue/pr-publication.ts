@@ -12,7 +12,7 @@ import { assertPRMutationAvailable } from "./pr-mutation-reservations";
 import { isPRQueueItemCurrent } from "./pr-scope";
 import { currentExternalQueueItem } from "./queue-view";
 import { getActivityQueueService } from "./service";
-import { solvePublicationSnapshot } from "./solve-publication";
+import { assertSolveMutationCurrent, solvePublicationSnapshot } from "./solve-publication";
 interface Receipt {
 	origin: QueuePROrigin;
 	requestId: string;
@@ -69,8 +69,32 @@ function draftDigest(origin: QueuePROrigin, operation: QueuePRPublication) {
 		.where(eq(draftComments.reviewDraftId, draft.id))
 		.all()
 		.sort((a, b) => a.id.localeCompare(b.id));
+	const originals = comments
+		.filter((comment) => comment.previousCommentId)
+		.map((comment) => {
+			const original = getDb()
+				.select()
+				.from(draftComments)
+				.where(eq(draftComments.id, comment.previousCommentId!))
+				.get();
+			const owner = original
+				? getDb()
+						.select()
+						.from(reviewDrafts)
+						.where(eq(reviewDrafts.id, original.reviewDraftId))
+						.get()
+				: null;
+			if (
+				!original ||
+				!owner ||
+				owner.prProvider !== target.provider ||
+				owner.prIdentifier !== draft.prIdentifier
+			)
+				throw new Error("A resolution comment belongs to another PR or is unavailable.");
+			return original;
+		});
 	return createHash("sha256")
-		.update(JSON.stringify([draft, comments]))
+		.update(JSON.stringify([draft, comments, originals]))
 		.digest("hex");
 }
 async function validate(receipt: Receipt, expectedHead = receipt.headSha) {
@@ -138,6 +162,7 @@ export async function dispatchQueuePRPublication(requestId: string) {
 	if (receipt.status !== "pending") return receipt;
 	if (Date.now() < receipt.notBefore) throw new Error("Publication undo period has not finished.");
 	let attempted = false;
+	let externalStarted = false;
 	try {
 		if (Date.now() > receipt.expiresAt) throw new Error("Publication expired.");
 		const target = await validate(receipt);
@@ -167,6 +192,12 @@ export async function dispatchQueuePRPublication(requestId: string) {
 		const won = getDb().transaction(() => {
 			const current = read(requestId);
 			if (current?.status !== "pending") return false;
+			if (Date.now() > current.expiresAt) {
+				current.status = "rejected";
+				current.detail = "Publication expired.";
+				write(current);
+				return false;
+			}
 			requireItem(receipt.origin);
 			receipt.status = "attempted";
 			write(receipt);
@@ -176,6 +207,12 @@ export async function dispatchQueuePRPublication(requestId: string) {
 		attempted = true;
 		const params = { owner: target.owner, repo: target.repo, prNumber: target.number };
 		let expectedHead = receipt.headSha;
+		let expectedDraftDigest = receipt.draftDigest;
+		const assertDraftCurrent = () => {
+			if (operation.kind !== "draft") return;
+			if (draftDigest(receipt.origin, operation) !== expectedDraftDigest)
+				throw new Error("Draft content or approval changed before publication.");
+		};
 		const guard = async () => {
 			await validate(receipt, expectedHead);
 		};
@@ -184,6 +221,8 @@ export async function dispatchQueuePRPublication(requestId: string) {
 				if (property === "submitReview")
 					return async (input: Parameters<GitProvider["submitReview"]>[0]) => {
 						await guard();
+						assertDraftCurrent();
+						externalStarted = true;
 						if (target.provider === "github") {
 							const response = await githubFetch(
 								`/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}/pulls/${target.number}/reviews`,
@@ -208,24 +247,30 @@ export async function dispatchQueuePRPublication(requestId: string) {
 					)
 				)
 					return async (...args: unknown[]) => {
-						await guard();
-						if (solve) {
-							const input = args[0] as { commentId?: string; body?: string };
-							const comment = solve.comments.find(
-								(row) => (row.threadId ?? row.platformCommentId) === input.commentId
+						if (target.provider === "github" && property !== "createInlineComment") {
+							const input = args[0] as { commentId?: string };
+							const threads = await object.getReviewThreads(
+								target.owner,
+								target.repo,
+								target.number
 							);
-							if (
-								!comment ||
-								(property === "replyToComment" &&
-									!solve.replies.some(
-										(reply) =>
-											reply.prCommentId === comment.id &&
-											reply.status === "approved" &&
-											reply.body === input.body
-									))
-							)
-								throw new Error("Solver reply identity or approved text changed.");
+							if (!threads.some((thread) => thread.nodeId === input.commentId))
+								throw new Error("The thread is not in this PR.");
 						}
+						await guard();
+						assertDraftCurrent();
+						if (solve)
+							assertSolveMutationCurrent(
+								solve,
+								String(property),
+								args[0] as {
+									commentId?: string;
+									body?: string;
+									queueReplyId?: string;
+									queueCommentId?: string;
+								}
+							);
+						externalStarted = true;
 						return Reflect.apply(value, object, args);
 					};
 				return value.bind(object);
@@ -246,6 +291,7 @@ export async function dispatchQueuePRPublication(requestId: string) {
 					await guard();
 					if (solvePublicationSnapshot(receipt.origin, operation).signature !== receipt.draftDigest)
 						throw new Error("Solver content changed before push.");
+					externalStarted = true;
 				},
 				afterPush: () => {
 					expectedHead = receipt.solveHead ?? receipt.headSha;
@@ -266,6 +312,10 @@ export async function dispatchQueuePRPublication(requestId: string) {
 			outcome = await publishReview(operation.draftId, operation.verdict, {
 				provider: guarded,
 				body: operation.body,
+				beforePersist: assertDraftCurrent,
+				afterPersist: () => {
+					expectedDraftDigest = draftDigest(receipt.origin, operation);
+				},
 			});
 		else if (operation.kind === "review") {
 			await guarded.submitReview({ ...params, verdict: operation.verdict, body: operation.body });
@@ -296,14 +346,20 @@ export async function dispatchQueuePRPublication(requestId: string) {
 		}
 		return receipt;
 	} catch (error) {
-		// Never downgrade a successful/attempted external call to retryable rejection.
-		if (!attempted) receipt.status = "rejected";
-		receipt.detail = error instanceof Error ? error.message : "Publication failed.";
-		try {
-			write(receipt);
-		} catch {
-			/* Durable attempted claim already prevents blind retry. */
-		}
-		return receipt;
+		// Async preflight can lose to another dispatch or cancellation. Only transition
+		// the status this caller still owns; never write its stale pending snapshot.
+		return getDb().transaction(() => {
+			const current = read(requestId);
+			if (!current) return receipt;
+			if (current.status !== (attempted ? "attempted" : "pending")) return current;
+			if (!attempted || !externalStarted) receipt.status = "rejected";
+			receipt.detail = error instanceof Error ? error.message : "Publication failed.";
+			try {
+				write(receipt);
+			} catch {
+				/* The original durable attempted claim still prevents retry. */
+			}
+			return receipt;
+		});
 	}
 }

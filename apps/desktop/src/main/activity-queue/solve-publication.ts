@@ -27,11 +27,12 @@ export function solvePublicationSnapshot(
 	}).trim();
 	if (branch !== resolved.session.sourceBranch)
 		throw new Error("Solver branch changed before publication.");
-	const groups = getDb()
+	const allGroups = getDb()
 		.select()
 		.from(commentGroups)
 		.where(eq(commentGroups.solveSessionId, operation.sessionId))
-		.all()
+		.all();
+	const groups = allGroups
 		.filter((group) =>
 			operation.groupId ? group.id === operation.groupId : group.status === "approved"
 		)
@@ -68,6 +69,24 @@ export function solvePublicationSnapshot(
 		cwd: resolved.worktreePath,
 		encoding: "utf8",
 	}).trim();
+	const base = resolved.session.commitSha;
+	if (!base) throw new Error("Solver base commit is unavailable.");
+	const range = execFileSync("git", ["rev-list", `${base}..${head}`], {
+		cwd: resolved.worktreePath,
+		encoding: "utf8",
+	})
+		.trim()
+		.split("\n")
+		.filter(Boolean);
+	const approvedCommits = new Set(
+		[...groups, ...allGroups.filter((group) => group.status === "submitted")]
+			.map((group) => group.commitHash)
+			.filter(Boolean)
+	);
+	if (range.some((commit) => !approvedCommits.has(commit)))
+		throw new Error(
+			"The push includes commits outside the selected approved groups. Review all commits before publishing."
+		);
 	const remote = execFileSync("git", ["remote", "get-url", "origin"], {
 		cwd: resolved.worktreePath,
 		encoding: "utf8",
@@ -99,4 +118,46 @@ export function solvePublicationSnapshot(
 		)
 		.digest("hex");
 	return { context, head, signature, comments, replies };
+}
+
+export function assertSolveMutationCurrent(
+	snapshot: ReturnType<typeof solvePublicationSnapshot>,
+	method: string,
+	input: { commentId?: string; body?: string; queueReplyId?: string; queueCommentId?: string }
+) {
+	const expected =
+		method === "replyToComment"
+			? snapshot.replies.find((reply) => reply.id === input.queueReplyId)
+			: undefined;
+	const expectedComment = snapshot.comments.find(
+		(comment) => comment.id === (expected?.prCommentId ?? input.queueCommentId)
+	);
+	if (
+		!expectedComment ||
+		(expectedComment.threadId ?? expectedComment.platformCommentId) !== input.commentId
+	)
+		throw new Error("Solver comment identity changed.");
+	const current = getDb()
+		.select()
+		.from(prComments)
+		.where(eq(prComments.id, expectedComment.id))
+		.get();
+	if (JSON.stringify(current) !== JSON.stringify(expectedComment))
+		throw new Error("Solver comment changed before publication.");
+	const group = current?.groupId
+		? getDb().select().from(commentGroups).where(eq(commentGroups.id, current.groupId)).get()
+		: null;
+	if (group?.status !== "approved") throw new Error("Solver group approval changed.");
+	if (method === "replyToComment") {
+		if (!expected || expected.status !== "approved" || expected.body !== input.body)
+			throw new Error("Solver reply identity or approved text changed.");
+		const reply = getDb()
+			.select()
+			.from(commentReplies)
+			.where(eq(commentReplies.id, expected.id))
+			.get();
+		if (JSON.stringify(reply) !== JSON.stringify(expected))
+			throw new Error("Solver reply changed before publication.");
+	} else if (current?.status !== "fixed")
+		throw new Error("Only fixed solver threads may be resolved.");
 }

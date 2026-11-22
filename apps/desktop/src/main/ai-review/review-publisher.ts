@@ -67,7 +67,12 @@ function resolveCommentPath(
 export async function publishReview(
 	draftId: string,
 	verdict: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" = "COMMENT",
-	options?: { provider: GitProvider; body: string }
+	options?: {
+		provider: GitProvider;
+		body: string;
+		beforePersist?: () => void;
+		afterPersist?: () => void;
+	}
 ): Promise<PublishResult> {
 	const db = getDb();
 	const draft = db
@@ -123,6 +128,7 @@ export async function publishReview(
 		validPaths = maps.validPaths;
 		renameMap = maps.renameMap;
 	} catch (err) {
+		if (options) throw err;
 		console.error("[review-publisher] Failed to fetch PR state/files, using stored commit:", err);
 	}
 
@@ -160,10 +166,14 @@ export async function publishReview(
 					? { line: comment.lineNumber, side: (comment.side as "LEFT" | "RIGHT") ?? "RIGHT" }
 					: {}),
 			});
-			db.update(schema.draftComments)
-				.set({ platformCommentId: result.nodeId ?? result.id, status: "submitted" })
-				.where(eq(schema.draftComments.id, comment.id))
-				.run();
+			db.transaction(() => {
+				options?.beforePersist?.();
+				db.update(schema.draftComments)
+					.set({ platformCommentId: result.nodeId ?? result.id, status: "submitted" })
+					.where(eq(schema.draftComments.id, comment.id))
+					.run();
+				options?.afterPersist?.();
+			});
 			postedCount++;
 		} catch (err) {
 			failedCount++;
@@ -227,10 +237,14 @@ export async function publishReview(
 				});
 			}
 
-			db.update(schema.draftComments)
-				.set({ platformCommentId: originalComment.platformCommentId, status: "submitted" })
-				.where(eq(schema.draftComments.id, comment.id))
-				.run();
+			db.transaction(() => {
+				options?.beforePersist?.();
+				db.update(schema.draftComments)
+					.set({ platformCommentId: originalComment.platformCommentId, status: "submitted" })
+					.where(eq(schema.draftComments.id, comment.id))
+					.run();
+				options?.afterPersist?.();
+			});
 			postedCount++;
 		} catch (err) {
 			failedCount++;
@@ -259,10 +273,13 @@ export async function publishReview(
 
 	const success = failedCount === 0 && skippedCount === 0;
 	if (success) {
-		db.update(schema.reviewDrafts)
-			.set({ status: "submitted", updatedAt: new Date() })
-			.where(eq(schema.reviewDrafts.id, draftId))
-			.run();
+		db.transaction(() => {
+			options?.beforePersist?.();
+			db.update(schema.reviewDrafts)
+				.set({ status: "submitted", updatedAt: new Date() })
+				.where(eq(schema.reviewDrafts.id, draftId))
+				.run();
+		});
 	}
 
 	return {

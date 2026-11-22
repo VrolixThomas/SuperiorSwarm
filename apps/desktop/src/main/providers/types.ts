@@ -74,6 +74,8 @@ export interface CreateCommentParams {
 }
 
 export interface ReplyParams {
+	/** Internal local receipt; adapters must not forward this to the provider. */
+	queueReplyId?: string;
 	owner: string;
 	repo: string;
 	prNumber: number;
@@ -82,6 +84,8 @@ export interface ReplyParams {
 }
 
 export interface ResolveParams {
+	/** Internal local receipt for guarded solver publication. */
+	queueCommentId?: string;
 	owner: string;
 	repo: string;
 	prNumber: number;

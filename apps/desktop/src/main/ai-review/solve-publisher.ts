@@ -68,11 +68,26 @@ async function postRepliesAndResolveThreads(
 				prNumber,
 				commentId: comment.threadId ?? comment.platformCommentId,
 				body: reply.body,
+				...(provider ? { queueReplyId: reply.id } : {}),
 			});
-			db.update(schema.commentReplies)
+			const saved = db
+				.update(schema.commentReplies)
 				.set({ status: "posted" })
-				.where(eq(schema.commentReplies.id, reply.id))
+				.where(
+					provider
+						? and(
+								eq(schema.commentReplies.id, reply.id),
+								eq(schema.commentReplies.body, reply.body),
+								eq(schema.commentReplies.status, "approved"),
+								eq(schema.commentReplies.prCommentId, reply.prCommentId)
+							)
+						: eq(schema.commentReplies.id, reply.id)
+				)
 				.run();
+			if (provider && saved.changes !== 1)
+				throw new Error(
+					"The reply was edited while submitting. Its current text is retained; inspect the provider before retrying."
+				);
 		})
 	);
 	for (const r of replyResults) {
@@ -100,6 +115,7 @@ async function postRepliesAndResolveThreads(
 						repo,
 						prNumber,
 						commentId: comment.threadId ?? comment.platformCommentId,
+						...(provider ? { queueCommentId: comment.id } : {}),
 					})
 				)
 		);
@@ -181,11 +197,19 @@ export async function publishGroup(
 	threadsResolved = result.threadsResolved;
 	errors.push(...result.errors);
 
-	if (!guard || errors.length === 0)
-		db.update(schema.commentGroups)
+	if (!guard || errors.length === 0) {
+		const saved = db
+			.update(schema.commentGroups)
 			.set({ status: "submitted" })
-			.where(eq(schema.commentGroups.id, groupId))
+			.where(
+				guard
+					? and(eq(schema.commentGroups.id, groupId), eq(schema.commentGroups.status, "approved"))
+					: eq(schema.commentGroups.id, groupId)
+			)
 			.run();
+		if (guard && saved.changes !== 1)
+			errors.push("Group approval changed during publication. Its current state is retained.");
+	}
 
 	maybeFinishSession(group.solveSessionId, session.status);
 
@@ -249,11 +273,22 @@ export async function publishSolve(
 		threadsResolved = result.threadsResolved;
 		errors.push(...result.errors);
 
-		if (!guard || errors.length === 0)
-			db.update(schema.commentGroups)
+		if (!guard || errors.length === 0) {
+			const saved = db
+				.update(schema.commentGroups)
 				.set({ status: "submitted" })
-				.where(inArray(schema.commentGroups.id, approvedGroupIds))
+				.where(
+					guard
+						? and(
+								inArray(schema.commentGroups.id, approvedGroupIds),
+								eq(schema.commentGroups.status, "approved")
+							)
+						: inArray(schema.commentGroups.id, approvedGroupIds)
+				)
 				.run();
+			if (guard && saved.changes !== approvedGroupIds.length)
+				errors.push("Group approval changed during publication. Its current state is retained.");
+		}
 	}
 
 	maybeFinishSession(sessionId, session.status);

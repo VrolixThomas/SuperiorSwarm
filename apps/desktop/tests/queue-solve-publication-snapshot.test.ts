@@ -11,7 +11,9 @@ import { seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 mock.module("../src/main/ai-review/orchestrator", () => ({
 	getSettings: () => ({ solveAutoResolveThreads: false }),
 }));
-const { solvePublicationSnapshot } = await import("../src/main/activity-queue/solve-publication");
+const { solvePublicationSnapshot, assertSolveMutationCurrent } = await import(
+	"../src/main/activity-queue/solve-publication"
+);
 const { requireOrdinarySolvePublication } = await import(
 	"../src/main/activity-queue/solve-queue-origin"
 );
@@ -107,6 +109,18 @@ test("solver publication pins local content, exact scope and remote without push
 		const input = { kind: "solve" as const, sessionId: "solve" };
 		const origin = { id: "queue", revision: 1 };
 		const before = solvePublicationSnapshot(origin, input);
+		assertSolveMutationCurrent(before, "replyToComment", {
+			commentId: "thread",
+			queueReplyId: "reply",
+			body: "Approved",
+		});
+		expect(() =>
+			assertSolveMutationCurrent(before, "replyToComment", {
+				commentId: "thread",
+				queueReplyId: "other",
+				body: "Approved",
+			})
+		).toThrow("identity");
 		expect(before.head).toBe(git("rev-parse", "HEAD"));
 		expect(() => requireOrdinarySolvePublication("solve")).toThrow("Undo");
 		expect(() => solvePublicationSnapshot({ id: "other", revision: 1 }, input)).toThrow(
@@ -114,9 +128,38 @@ test("solver publication pins local content, exact scope and remote without push
 		);
 		getDb().update(s.commentReplies).set({ body: "Changed" }).run();
 		expect(solvePublicationSnapshot(origin, input).signature).not.toBe(before.signature);
+		expect(() =>
+			assertSolveMutationCurrent(before, "replyToComment", {
+				commentId: "thread",
+				queueReplyId: "reply",
+				body: "Approved",
+			})
+		).toThrow("reply changed");
 		getDb().update(s.commentReplies).set({ status: "draft" }).run();
 		expect(() => solvePublicationSnapshot(origin, input)).toThrow("draft replies");
 		getDb().update(s.commentReplies).set({ status: "approved" }).run();
+		writeFileSync(join(root, "file.ts"), "unreviewed change\n");
+		git("add", "file.ts");
+		git(
+			"-c",
+			"user.name=Fixture",
+			"-c",
+			"user.email=fixture@example.invalid",
+			"commit",
+			"-qm",
+			"unreviewed"
+		);
+		expect(() => solvePublicationSnapshot(origin, { ...input, groupId: "group" })).toThrow(
+			"outside the selected approved groups"
+		);
+		getDb()
+			.update(s.commentGroups)
+			.set({ commitHash: git("rev-parse", "HEAD") })
+			.where(eq(s.commentGroups.id, "group"))
+			.run();
+		expect(solvePublicationSnapshot(origin, { ...input, groupId: "group" }).head).toBe(
+			git("rev-parse", "HEAD")
+		);
 		git("remote", "set-url", "origin", "git@github.com:unrelated/repo.git");
 		expect(() => solvePublicationSnapshot(origin, input)).toThrow("remote");
 	} finally {

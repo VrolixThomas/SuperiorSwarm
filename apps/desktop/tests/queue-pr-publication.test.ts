@@ -10,6 +10,8 @@ let current = true;
 let uncertain = false;
 let ackFails = false;
 let posts: unknown[] = [];
+let stateResponder: (() => Promise<{ headSha: string; state: string }>) | undefined;
+let inlineHook: (() => void) | undefined;
 let stateHook: (() => void) | undefined;
 const item = {
 	id: "queue",
@@ -50,6 +52,7 @@ mock.module("../src/main/providers/git-provider", () => ({
 	getGitProvider: () => ({
 		getPRState: async () => {
 			stateHook?.();
+			if (stateResponder) return stateResponder();
 			return { headSha: head, state: "open" };
 		},
 		getPRFiles: async () => [{ path: "file.ts", status: "modified" }],
@@ -63,6 +66,7 @@ mock.module("../src/main/providers/git-provider", () => ({
 		},
 		createInlineComment: async (input: unknown) => {
 			posts.push(input);
+			inlineHook?.();
 			return { id: "comment" };
 		},
 	}),
@@ -71,6 +75,13 @@ let pushes = 0;
 let solveSignature = "snapshot";
 let failSolvePost = false;
 mock.module("../src/main/activity-queue/solve-publication", () => ({
+	assertSolveMutationCurrent: (
+		_snapshot: unknown,
+		_method: string,
+		input: { queueReplyId?: string }
+	) => {
+		if (input.queueReplyId !== "reply") throw Error("Missing exact reply receipt");
+	},
 	solvePublicationSnapshot: () => ({
 		signature: solveSignature,
 		head: "local-head",
@@ -99,6 +110,7 @@ const publishSolve = async (
 		prNumber: 7,
 		commentId: "thread",
 		body: "Approved reply",
+		queueReplyId: "reply",
 	});
 	return { pushed: true, repliesPosted: 1, threadsResolved: 0, errors: [] };
 };
@@ -118,6 +130,8 @@ beforeEach(() => {
 	ackFails = false;
 	posts = [];
 	stateHook = undefined;
+	inlineHook = undefined;
+	stateResponder = undefined;
 	pushes = 0;
 	solveSignature = "snapshot";
 	failSolvePost = false;
@@ -313,4 +327,170 @@ test("partial solver publication keeps durable uncertainty and blocks new IDs", 
 		"unknown outcome"
 	);
 	expect(pushes).toBe(1);
+});
+
+test("losing concurrent validation cannot downgrade another caller's submitted receipt", async () => {
+	await prepare("race");
+	elapsed("race");
+	let release!: (value: { headSha: string; state: string }) => void;
+	stateResponder = () => {
+		stateResponder = undefined;
+		return new Promise((resolve) => {
+			release = resolve;
+		});
+	};
+	const delayed = pub.dispatchQueuePRPublication("race");
+	const won = await pub.dispatchQueuePRPublication("race");
+	expect(won.status).toBe("submitted");
+	release({ headSha: "changed", state: "open" });
+	expect((await delayed).status).toBe("submitted");
+	await expect(prepare("retry")).rejects.toThrow("reservation");
+	expect(posts).toHaveLength(1);
+});
+
+test("current draft edit during publisher reads blocks stale text before POST", async () => {
+	draft();
+	await prepare("draft-race", {
+		kind: "draft",
+		draftId: "draft",
+		verdict: "COMMENT",
+		body: "typed",
+	});
+	elapsed("draft-race");
+	let reads = 0;
+	stateHook = () => {
+		if (++reads === 2)
+			getDb().update(draftComments).set({ userEdit: "Correction: do NOT deploy" }).run();
+	};
+	expect((await pub.dispatchQueuePRPublication("draft-race")).status).toBe("rejected");
+	expect(posts).toHaveLength(0);
+	expect(getDb().select().from(draftComments).get()?.userEdit).toBe("Correction: do NOT deploy");
+	expect(getDb().select().from(draftComments).get()?.status).toBe("user-pending");
+});
+test("edit during successful network POST survives local receipt cleanup", async () => {
+	draft();
+	await prepare("draft-post-race", {
+		kind: "draft",
+		draftId: "draft",
+		verdict: "COMMENT",
+		body: "typed",
+	});
+	elapsed("draft-post-race");
+	inlineHook = () => getDb().update(draftComments).set({ userEdit: "Newer correction" }).run();
+	expect((await pub.dispatchQueuePRPublication("draft-post-race")).status).toBe("attempted");
+	expect(posts).toHaveLength(1);
+	expect(getDb().select().from(draftComments).get()?.userEdit).toBe("Newer correction");
+	expect(getDb().select().from(draftComments).get()?.status).toBe("user-pending");
+	await expect(
+		prepare("again", { kind: "review", verdict: "COMMENT", body: "new" })
+	).rejects.toThrow("unknown outcome");
+});
+test("resolution draft cannot reference another PR's global thread", async () => {
+	draft();
+	const now = new Date();
+	getDb()
+		.insert(reviewDrafts)
+		.values({
+			id: "foreign",
+			prProvider: "github",
+			prIdentifier: "other/repo#8",
+			prTitle: "Other",
+			prAuthor: "author",
+			sourceBranch: "branch",
+			targetBranch: "main",
+			status: "submitted",
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+	getDb()
+		.insert(draftComments)
+		.values({
+			id: "original",
+			reviewDraftId: "foreign",
+			filePath: "file.ts",
+			body: "old",
+			status: "submitted",
+			platformCommentId: "foreign-thread",
+			createdAt: now,
+		})
+		.run();
+	getDb()
+		.update(draftComments)
+		.set({ previousCommentId: "original", resolution: "resolved-by-code" })
+		.where(eq(draftComments.id, "comment"))
+		.run();
+	await expect(
+		prepare("foreign", { kind: "draft", draftId: "draft", verdict: "COMMENT", body: "" })
+	).rejects.toThrow("another PR");
+	expect(posts).toHaveLength(0);
+});
+test("same-PR draft resolution still verifies current provider thread membership", async () => {
+	draft();
+	getDb()
+		.insert(draftComments)
+		.values({
+			id: "original",
+			reviewDraftId: "draft",
+			filePath: "file.ts",
+			body: "old",
+			status: "submitted",
+			platformCommentId: "foreign-thread",
+			createdAt: new Date(),
+		})
+		.run();
+	getDb()
+		.update(draftComments)
+		.set({ previousCommentId: "original", resolution: "resolved-by-code" })
+		.where(eq(draftComments.id, "comment"))
+		.run();
+	await prepare("foreign-thread", {
+		kind: "draft",
+		draftId: "draft",
+		verdict: "COMMENT",
+		body: "",
+	});
+	elapsed("foreign-thread");
+	expect((await pub.dispatchQueuePRPublication("foreign-thread")).status).toBe("rejected");
+	expect(posts).toHaveLength(0);
+});
+test("read-only failure after claim remains retryable when no mutation began", async () => {
+	await prepare("read-failure");
+	elapsed("read-failure");
+	let reads = 0;
+	stateHook = () => {
+		if (++reads === 2) throw Error("temporary GET failure");
+	};
+	expect((await pub.dispatchQueuePRPublication("read-failure")).status).toBe("rejected");
+	expect(posts).toHaveLength(0);
+	stateHook = undefined;
+	await prepare("retry-read");
+	elapsed("retry-read");
+	expect((await pub.dispatchQueuePRPublication("retry-read")).status).toBe("submitted");
+	expect(posts).toHaveLength(1);
+});
+test("expired slow preflight cannot publish after a newer reservation wins", async () => {
+	await prepare("slow");
+	elapsed("slow");
+	let release!: (value: { headSha: string; state: string }) => void;
+	stateResponder = () => {
+		stateResponder = undefined;
+		return new Promise((resolve) => {
+			release = resolve;
+		});
+	};
+	const delayed = pub.dispatchQueuePRPublication("slow");
+	const key = "queue-pr-publication:slow";
+	const value = getDb().select().from(sessionState).where(eq(sessionState.key, key)).get()!;
+	getDb()
+		.update(sessionState)
+		.set({ value: JSON.stringify({ ...JSON.parse(value.value), expiresAt: Date.now() - 1 }) })
+		.where(eq(sessionState.key, key))
+		.run();
+	await prepare("newer");
+	elapsed("newer");
+	expect((await pub.dispatchQueuePRPublication("newer")).status).toBe("submitted");
+	release({ headSha: "head", state: "open" });
+	expect((await delayed).status).toBe("rejected");
+	expect(posts).toHaveLength(1);
 });
