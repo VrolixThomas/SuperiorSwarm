@@ -1,0 +1,29 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-pr-publication.test.ts:
+(pass) five-second Undo and cancel prevent every external post [3.48ms]
+(pass) account or head change during delay rejects without a post [1.20ms]
+(pass) cancel during async final validation wins over dispatch [0.95ms]
+(pass) duplicate concurrent dispatch publishes exactly once, pinned to viewed head [1.57ms]
+(pass) different IDs cannot reserve same occurrence concurrently [0.75ms]
+(pass) unknown outcome blocks publication and direct Queue approval [1.01ms]
+(pass) submitted status survives queue cleanup failure [0.67ms]
+(pass) draft edits during delay reject while retaining all local text [1.49ms]
+(pass) draft publication uses reviewed payload and guarded provider calls [3.92ms]
+(pass) reply must belong to current PR and never acknowledges by opening [1.35ms]
+(pass) queue solver Undo blocks both git push and replies [0.61ms]
+(pass) queue solver publishes once and verifies pushed head before exact reply [0.67ms]
+(pass) solver group or reply edits during Undo cancel before push [0.50ms]
+(pass) partial solver publication keeps durable uncertainty and blocks new IDs [0.61ms]
+(pass) losing concurrent validation cannot downgrade another caller's submitted receipt [0.66ms]
+(pass) current draft edit during publisher reads blocks stale text before POST [2.02ms]
+(pass) edit during successful network POST survives local receipt cleanup [2.20ms]
+(pass) resolution draft cannot reference another PR's global thread [0.86ms]
+(pass) same-PR draft resolution still verifies current provider thread membership [2.39ms]
+(pass) read-only failure after claim remains retryable when no mutation began [1.62ms]
+(pass) expired slow preflight cannot publish after a newer reservation wins [1.38ms]
+
+ 21 pass
+ 0 fail
+ 68 expect() calls
+Ran 21 tests across 1 file. [98.00ms]

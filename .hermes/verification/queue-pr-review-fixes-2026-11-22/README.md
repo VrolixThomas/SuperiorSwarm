@@ -39,3 +39,11 @@ bun test tests/review-mode-store.test.ts
 ```
 
 Graphify rebuild was attempted by the required hook and is unavailable because the optional module is absent. No dependency install or hook bypass was used.
+
+## Independent backend publication findings corrected
+
+`9b3097e3` corrects the independently reproduced concurrent-dispatch and expiry races: a delayed loser cannot overwrite a winner's submitted/attempted/cancelled receipt, and the final claim rechecks expiration. Read-only failure before any irreversible call is retryable; after a push/POST actually begins, receipt uncertainty remains durable.
+
+The same correction binds the full pushed commit range to selected approved or previously submitted groups. Draft text/approvals are rechecked after asynchronous provider reads and again transactionally before local cleanup. Only the publisher's own successful row receipts advance its expected snapshot. Newer text is retained if it changed while a POST was in flight. Prior resolution comments must belong to the same provider/PR, and every GitHub global-thread mutation checks fresh membership, including draft and solver batches. Solver sends carry exact local comment/reply receipt IDs; live reply/group changes cannot be overwritten by cleanup.
+
+Final targeted follow-up: **21 backend publication tests**, **1 real Git range/snapshot test (8 assertions)**, **2 real SQLite cleanup tests with fake push/provider**, and **3 existing publisher tests** pass. Changed-file Biome has no errors; newly owned main/test paths have no TypeScript diagnostics. The global baseline remains failing. No actual push or provider post was executed. Independent retest of this exact correction is requested from the parent; separate UI origin-lifetime and stale-draft completion fixes are owned by another agent.

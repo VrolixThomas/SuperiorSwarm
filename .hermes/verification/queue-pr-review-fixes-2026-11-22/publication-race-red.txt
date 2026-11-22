@@ -1,0 +1,36 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-pr-publication.test.ts:
+(pass) five-second Undo and cancel prevent every external post [6.03ms]
+(pass) account or head change during delay rejects without a post [3.90ms]
+(pass) cancel during async final validation wins over dispatch [1.36ms]
+(pass) duplicate concurrent dispatch publishes exactly once, pinned to viewed head [3.23ms]
+(pass) different IDs cannot reserve same occurrence concurrently [0.42ms]
+(pass) unknown outcome blocks publication and direct Queue approval [0.85ms]
+(pass) submitted status survives queue cleanup failure [0.73ms]
+(pass) draft edits during delay reject while retaining all local text [1.81ms]
+(pass) draft publication uses reviewed payload and guarded provider calls [4.66ms]
+(pass) reply must belong to current PR and never acknowledges by opening [2.47ms]
+(pass) queue solver Undo blocks both git push and replies [0.81ms]
+(pass) queue solver publishes once and verifies pushed head before exact reply [1.11ms]
+(pass) solver group or reply edits during Undo cancel before push [0.44ms]
+(pass) partial solver publication keeps durable uncertainty and blocks new IDs [1.20ms]
+322 |  let release!:(value:{headSha:string;state:string})=>void;
+323 |  stateResponder=()=>{stateResponder=undefined;return new Promise(resolve=>{release=resolve;});};
+324 |  const delayed=pub.dispatchQueuePRPublication("race");
+325 |  const won=await pub.dispatchQueuePRPublication("race");expect(won.status).toBe("submitted");
+326 |  release({headSha:"changed",state:"open"});
+327 |  expect((await delayed).status).toBe("submitted");
+                                      ^
+error: expect(received).toBe(expected)
+
+Expected: "submitted"
+Received: "rejected"
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/fix/queue-pr-review/apps/desktop/tests/queue-pr-publication.test.ts:327:33)
+(fail) losing concurrent validation cannot downgrade another caller's submitted receipt [1.67ms]
+
+ 14 pass
+ 1 fail
+ 46 expect() calls
+Ran 15 tests across 1 file. [155.00ms]

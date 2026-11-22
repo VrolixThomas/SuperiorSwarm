@@ -1,0 +1,11 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/review-publisher.test.ts:
+(pass) publishReview > publishes accepted comments, persists platform state, and submits an empty-body verdict [27.90ms]
+(pass) publishReview > publishes follow-up resolutions as replies and updates the original thread state [2.22ms]
+(pass) publishReview > keeps a partially failed draft retryable without duplicating successful comments [1.59ms]
+
+ 3 pass
+ 0 fail
+ 19 expect() calls
+Ran 3 tests across 1 file. [75.00ms]
